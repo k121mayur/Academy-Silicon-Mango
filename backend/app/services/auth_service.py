@@ -178,8 +178,10 @@ async def verify_signup_otp_and_create(
     # Cleanup OTP records for this email
     await db.execute(delete(OTPRecord).where(OTPRecord.email == email))
     await db.commit()
-    await db.refresh(user)
 
+    # Re-fetch with relationships eagerly loaded so the response handler
+    # doesn't trigger an async lazy-load.
+    user = await get_user_by_email(db, email)
     print(f"[AUTH] Student account created via OTP: {email}")
     return user
 
@@ -218,8 +220,8 @@ async def get_or_create_google_user(db: AsyncSession, *, email: str, google_id: 
     )
     db.add(profile)
     await db.commit()
-    await db.refresh(user)
 
+    user = await get_user_by_email(db, email)
     print(f"[AUTH] Google student account created: {email}")
     return user
 

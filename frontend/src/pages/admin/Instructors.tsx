@@ -1,0 +1,162 @@
+import { FormEvent, useEffect, useState } from "react";
+import toast from "react-hot-toast";
+import { Button } from "@/components/ui/Button";
+import { Input, Textarea } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
+import { Table, THead, TR, TH, TD } from "@/components/ui/Table";
+import { Avatar } from "@/components/ui/Avatar";
+import { Badge } from "@/components/ui/Badge";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { extractErrorMessage } from "@/lib/api";
+import { createInstructor, listInstructors, InstructorDTO } from "@/services/admin.service";
+
+export default function AdminInstructors() {
+  const [items, setItems] = useState<InstructorDTO[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [created, setCreated] = useState<{ email: string; password: string } | null>(null);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const res = await listInstructors({ search });
+      setItems(res.data);
+    } catch (e) {
+      toast.error(extractErrorMessage(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchData(); /* eslint-disable-next-line */ }, [search]);
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="font-display font-bold text-display-md text-ink">Instructors</h1>
+          <p className="text-body-sm text-ink-variant">Manage your teaching team</p>
+        </div>
+        <Button leftIcon="person_add" onClick={() => setCreateOpen(true)}>Add Instructor</Button>
+      </div>
+
+      <Input placeholder="Search by email" value={search} onChange={(e) => setSearch(e.target.value)} leftIcon="search" containerClassName="max-w-sm" />
+
+      {loading ? (
+        <p className="text-body-sm text-ink-outline">Loading…</p>
+      ) : items.length === 0 ? (
+        <EmptyState title="No instructors" icon="psychology" />
+      ) : (
+        <Table>
+          <THead>
+            <tr>
+              <TH>Name</TH>
+              <TH>Email</TH>
+              <TH>Skills</TH>
+              <TH>Status</TH>
+              <TH>Joined</TH>
+            </tr>
+          </THead>
+          <tbody>
+            {items.map((u) => (
+              <TR key={u.user_id}>
+                <TD>
+                  <div className="flex items-center gap-3">
+                    <Avatar name={u.display_name} src={u.avatar_url} size="sm" />
+                    <span className="font-medium">{u.display_name}</span>
+                  </div>
+                </TD>
+                <TD className="text-ink-variant">{u.email}</TD>
+                <TD>
+                  <div className="flex flex-wrap gap-1">
+                    {(u.skills || []).slice(0, 3).map((s, i) => <Badge key={i} tone="neutral">{s}</Badge>)}
+                    {u.skills && u.skills.length > 3 && <Badge tone="neutral">+{u.skills.length - 3}</Badge>}
+                  </div>
+                </TD>
+                <TD><Badge tone={u.is_active ? "success" : "danger"}>{u.is_active ? "Active" : "Inactive"}</Badge></TD>
+                <TD>{u.created_at ? new Date(u.created_at).toLocaleDateString() : "—"}</TD>
+              </TR>
+            ))}
+          </tbody>
+        </Table>
+      )}
+
+      <CreateInstructorModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(payload) => {
+          setCreated(payload);
+          setCreateOpen(false);
+          fetchData();
+        }}
+      />
+
+      <Modal open={!!created} onClose={() => setCreated(null)} title="Instructor account created" size="sm">
+        <p className="text-body-sm text-ink-variant mb-3">A welcome email has been sent. Save these credentials:</p>
+        <div className="bg-surface-containerLow rounded-xl p-3 space-y-2">
+          <p className="text-label text-ink-outline">Email</p>
+          <p className="font-mono text-body-sm">{created?.email}</p>
+          <p className="text-label text-ink-outline mt-2">Temporary password</p>
+          <p className="font-mono text-body-sm">{created?.password}</p>
+        </div>
+        <Button className="mt-4" fullWidth onClick={() => setCreated(null)}>Done</Button>
+      </Modal>
+    </div>
+  );
+}
+
+function CreateInstructorModal({
+  open,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreated: (p: { email: string; password: string }) => void;
+}) {
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [bio, setBio] = useState("");
+  const [skills, setSkills] = useState("");
+  const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const res = await createInstructor({
+        email: email.trim(),
+        display_name: name.trim(),
+        bio,
+        skills: skills.split(",").map((s) => s.trim()).filter(Boolean),
+        password: password || undefined,
+      });
+      toast.success("Instructor created");
+      onCreated({ email: res.email, password: res.temporary_password || password });
+      setEmail(""); setName(""); setBio(""); setSkills(""); setPassword("");
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Add Instructor" size="md"
+      footer={<>
+        <Button variant="ghost" onClick={onClose} disabled={submitting}>Cancel</Button>
+        <Button onClick={(e) => submit(e as any)} loading={submitting}>Create</Button>
+      </>}
+    >
+      <form onSubmit={submit} className="space-y-3">
+        <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required leftIcon="mail" />
+        <Input label="Display name" value={name} onChange={(e) => setName(e.target.value)} required leftIcon="person" />
+        <Textarea label="Bio" value={bio} onChange={(e) => setBio(e.target.value)} rows={2} />
+        <Input label="Skills (comma-separated)" value={skills} onChange={(e) => setSkills(e.target.value)} placeholder="Python, ML, Data Science" />
+        <Input label="Password (optional — auto-generated if blank)" value={password} onChange={(e) => setPassword(e.target.value)} hint="Min 8 characters" />
+      </form>
+    </Modal>
+  );
+}

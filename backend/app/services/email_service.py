@@ -29,13 +29,15 @@ async def send_email(to_email: str, subject: str, html_body: str, text_body: Opt
     msg.add_alternative(html_body, subtype="html")
 
     try:
+        use_implicit_tls = settings.SMTP_PORT == 465
         await aiosmtplib.send(
             msg,
             hostname=settings.SMTP_HOST,
             port=settings.SMTP_PORT,
             username=settings.SMTP_USER,
             password=settings.SMTP_PASSWORD,
-            start_tls=True,
+            use_tls=use_implicit_tls,
+            start_tls=not use_implicit_tls,
             timeout=15,
         )
         print(f"[EMAIL] Sent to {to_email}: {subject}")

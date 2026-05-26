@@ -84,8 +84,10 @@ async def rate_limit_check(key: str, limit: int, window_seconds: int) -> tuple[b
 # ---------------- OTP rate limiting (per-email) ----------------
 
 async def otp_rate_limit(email: str) -> tuple[bool, int]:
-    return await rate_limit_check(f"otp:{email.lower()}", limit=3, window_seconds=900)
+    # Dev-friendly: 1000 OTPs/15min per email. Tighten before production.
+    return await rate_limit_check(f"otp:{email.lower()}", limit=1000, window_seconds=900)
 
 
 async def login_rate_limit(ip: str) -> tuple[bool, int]:
-    return await rate_limit_check(f"login:{ip}", limit=10, window_seconds=900)
+    # Dev-friendly: 1000 logins/15min per IP. Tighten before production.
+    return await rate_limit_check(f"login:{ip}", limit=1000, window_seconds=900)

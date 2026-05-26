@@ -1,0 +1,32 @@
+export const ROUTES = {
+  landing: "/",
+  login: "/login",
+  signup: "/signup",
+  admin: {
+    root: "/admin",
+    dashboard: "/admin/dashboard",
+    courses: "/admin/courses",
+    courseCreate: "/admin/courses/create",
+    courseEdit: (id: string) => `/admin/courses/${id}/edit`,
+    batches: "/admin/batches",
+    batchCreate: "/admin/batches/create",
+    batchDetail: (id: string) => `/admin/batches/${id}`,
+    instructors: "/admin/users/instructors",
+    students: "/admin/users/students",
+    studentDetail: (id: string) => `/admin/users/students/${id}`,
+    assignInstructors: "/admin/assign-instructors",
+    enrollments: "/admin/enrollments",
+    batchOps: "/admin/batch-ops",
+    certificates: "/admin/certificates",
+    payments: "/admin/payments",
+    paymentSettings: "/admin/payment-settings",
+    catalogue: "/admin/catalogue",
+  },
+  instructor: {
+    dashboard: "/instructor/dashboard",
+  },
+  student: {
+    dashboard: "/portal/dashboard",
+    profile: "/portal/profile",
+  },
+} as const;

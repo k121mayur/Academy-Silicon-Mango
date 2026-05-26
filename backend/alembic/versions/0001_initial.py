@@ -18,45 +18,77 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+# All enums defined here. We use postgresql.ENUM(..., create_type=False) so that
+# alembic's create_table does NOT attempt to re-create them — they're already
+# created by the idempotent SQL block in upgrade().
+ENUM_DEFS = [
+    ("auth_provider_enum", ["email", "google"]),
+    ("user_role_enum", ["admin", "instructor", "student"]),
+    ("occupation_enum", ["student", "employee", "other"]),
+    ("otp_purpose_enum", ["signup", "reset"]),
+    ("course_type_enum", ["live", "self_paced"]),
+    ("duration_unit_enum", ["weeks", "days"]),
+    ("delivery_mode_enum", ["live", "recorded"]),
+    ("batch_status_enum", ["upcoming", "active", "completed", "cancelled"]),
+    ("slot_type_enum", ["weekday", "date_based"]),
+    ("enrollment_status_enum", ["active", "dropped", "completed"]),
+    ("session_type_enum", ["live", "recorded"]),
+    ("session_status_enum", ["scheduled", "completed", "cancelled"]),
+    ("session_origin_enum", ["inherited", "manual"]),
+    ("resource_type_enum", ["file", "link", "video"]),
+    ("payment_status_enum", ["pending", "paid", "failed"]),
+    ("payment_mode_enum", ["test", "live"]),
+    ("assignment_type_enum", ["quiz", "pdf_upload", "text_upload", "file_upload", "link_submission"]),
+    ("submission_status_enum", ["submitted", "graded", "late", "missing"]),
+    ("attendance_status_enum", ["not_marked", "present", "absent", "late", "excused"]),
+    ("attendance_source_enum", ["manual", "zoom", "google_meet", "pending_integration"]),
+    ("cert_email_status_enum", ["pending", "sent", "failed"]),
+]
+
+
+def _enum(name: str) -> postgresql.ENUM:
+    """Reference an existing enum without creating it."""
+    values = dict(ENUM_DEFS)[name]
+    return postgresql.ENUM(*values, name=name, create_type=False)
+
+
 def upgrade() -> None:
     # ---------- ENUMS ----------
-    auth_provider = sa.Enum("email", "google", name="auth_provider_enum")
-    user_role = sa.Enum("admin", "instructor", "student", name="user_role_enum")
-    occupation = sa.Enum("student", "employee", "other", name="occupation_enum")
-    otp_purpose = sa.Enum("signup", "reset", name="otp_purpose_enum")
-    course_type = sa.Enum("live", "self_paced", name="course_type_enum")
-    duration_unit = sa.Enum("weeks", "days", name="duration_unit_enum")
-    delivery_mode = sa.Enum("live", "recorded", name="delivery_mode_enum")
-    batch_status = sa.Enum("upcoming", "active", "completed", "cancelled", name="batch_status_enum")
-    slot_type = sa.Enum("weekday", "date_based", name="slot_type_enum")
-    enrollment_status = sa.Enum("active", "dropped", "completed", name="enrollment_status_enum")
-    session_type = sa.Enum("live", "recorded", name="session_type_enum")
-    session_status = sa.Enum("scheduled", "completed", "cancelled", name="session_status_enum")
-    session_origin = sa.Enum("inherited", "manual", name="session_origin_enum")
-    resource_type = sa.Enum("file", "link", "video", name="resource_type_enum")
-    payment_status = sa.Enum("pending", "paid", "failed", name="payment_status_enum")
-    payment_mode = sa.Enum("test", "live", name="payment_mode_enum")
-    assignment_type = sa.Enum(
-        "quiz", "pdf_upload", "text_upload", "file_upload", "link_submission", name="assignment_type_enum"
-    )
-    submission_status = sa.Enum("submitted", "graded", "late", "missing", name="submission_status_enum")
-    attendance_status = sa.Enum(
-        "not_marked", "present", "absent", "late", "excused", name="attendance_status_enum"
-    )
-    attendance_source = sa.Enum(
-        "manual", "zoom", "google_meet", "pending_integration", name="attendance_source_enum"
-    )
-    cert_email_status = sa.Enum("pending", "sent", "failed", name="cert_email_status_enum")
+    # Idempotent enum creation via raw SQL DO blocks. Safe to run on a partial
+    # database where some enums already exist.
+    for enum_name, values in ENUM_DEFS:
+        values_sql = ", ".join(f"'{v}'" for v in values)
+        op.execute(f"""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = '{enum_name}') THEN
+                    CREATE TYPE {enum_name} AS ENUM ({values_sql});
+                END IF;
+            END
+            $$;
+        """)
 
-    bind = op.get_bind()
-    for e in [
-        auth_provider, user_role, occupation, otp_purpose, course_type, duration_unit,
-        delivery_mode, batch_status, slot_type, enrollment_status, session_type,
-        session_status, session_origin, resource_type, payment_status, payment_mode,
-        assignment_type, submission_status, attendance_status, attendance_source,
-        cert_email_status,
-    ]:
-        e.create(bind, checkfirst=True)
+    auth_provider = _enum("auth_provider_enum")
+    user_role = _enum("user_role_enum")
+    occupation = _enum("occupation_enum")
+    otp_purpose = _enum("otp_purpose_enum")
+    course_type = _enum("course_type_enum")
+    duration_unit = _enum("duration_unit_enum")
+    delivery_mode = _enum("delivery_mode_enum")
+    batch_status = _enum("batch_status_enum")
+    slot_type = _enum("slot_type_enum")
+    enrollment_status = _enum("enrollment_status_enum")
+    session_type = _enum("session_type_enum")
+    session_status = _enum("session_status_enum")
+    session_origin = _enum("session_origin_enum")
+    resource_type = _enum("resource_type_enum")
+    payment_status = _enum("payment_status_enum")
+    payment_mode = _enum("payment_mode_enum")
+    assignment_type = _enum("assignment_type_enum")
+    submission_status = _enum("submission_status_enum")
+    attendance_status = _enum("attendance_status_enum")
+    attendance_source = _enum("attendance_source_enum")
+    cert_email_status = _enum("cert_email_status_enum")
 
     # ---------- USERS ----------
     op.create_table(
@@ -335,14 +367,5 @@ def downgrade() -> None:
     op.drop_table("instructor_profiles")
     op.drop_table("users")
 
-    bind = op.get_bind()
-    for name in [
-        "cert_email_status_enum", "attendance_source_enum", "attendance_status_enum",
-        "submission_status_enum", "assignment_type_enum", "payment_mode_enum",
-        "payment_status_enum", "resource_type_enum", "session_origin_enum",
-        "session_status_enum", "session_type_enum", "enrollment_status_enum",
-        "slot_type_enum", "batch_status_enum", "delivery_mode_enum",
-        "duration_unit_enum", "course_type_enum", "otp_purpose_enum",
-        "occupation_enum", "user_role_enum", "auth_provider_enum",
-    ]:
-        sa.Enum(name=name).drop(bind, checkfirst=True)
+    for enum_name, _ in reversed(ENUM_DEFS):
+        op.execute(f"DROP TYPE IF EXISTS {enum_name} CASCADE;")

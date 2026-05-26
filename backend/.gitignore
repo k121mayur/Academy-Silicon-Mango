@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# venv
+.venv
+venv
+env/
+ENV/
+
+# Local
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.DS_Store
+
+# Uploads (generated)
+uploads/course_banners/*
+uploads/syllabus_pdfs/*
+uploads/session_resources/*
+uploads/receipts/*
+uploads/certificate_templates/*
+uploads/certificates/*
+!uploads/.gitkeep
+!uploads/*/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp

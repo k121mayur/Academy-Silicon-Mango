@@ -65,6 +65,8 @@ def create_app() -> FastAPI:
 
     origins = [
         settings.FRONTEND_URL,
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:5173",
@@ -73,6 +75,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(dict.fromkeys(origins)),
+        allow_origin_regex=r"^http://(localhost|127\.0\.0\.1)(:\d+)?$",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -93,12 +96,34 @@ def create_app() -> FastAPI:
     async def health():
         return {"status": "ok"}
 
+    def _cors_headers(request: Request) -> dict:
+        """Build CORS headers manually for exception responses.
+        Starlette's CORSMiddleware doesn't always wrap responses from
+        the global Exception handler, so we add them here as a safety net.
+        """
+        origin = request.headers.get("origin")
+        if not origin:
+            return {}
+        # Allow any localhost/127.0.0.1 port, plus the configured frontend
+        import re
+        if (
+            re.match(r"^http://(localhost|127\.0\.0\.1)(:\d+)?$", origin)
+            or origin == settings.FRONTEND_URL
+        ):
+            return {
+                "access-control-allow-origin": origin,
+                "access-control-allow-credentials": "true",
+                "vary": "Origin",
+            }
+        return {}
+
     @app.exception_handler(APIError)
     async def api_error_handler(request: Request, exc: APIError):
         detail = exc.detail if isinstance(exc.detail, dict) else {"code": "ERROR", "message": str(exc.detail)}
         return JSONResponse(
             status_code=exc.status_code,
             content={"success": False, "error": detail},
+            headers=_cors_headers(request),
         )
 
     @app.exception_handler(StarletteHTTPException)
@@ -107,6 +132,7 @@ def create_app() -> FastAPI:
             return JSONResponse(
                 status_code=exc.status_code,
                 content={"success": False, "error": exc.detail},
+                headers=_cors_headers(request),
             )
         return JSONResponse(
             status_code=exc.status_code,
@@ -114,6 +140,7 @@ def create_app() -> FastAPI:
                 "success": False,
                 "error": {"code": "HTTP_ERROR", "message": str(exc.detail)},
             },
+            headers=_cors_headers(request),
         )
 
     @app.exception_handler(RequestValidationError)
@@ -126,9 +153,10 @@ def create_app() -> FastAPI:
                 "error": {
                     "code": "VALIDATION_ERROR",
                     "message": "Validation failed",
-                    "details": exc.errors(),
+                    "details": _safe_errors(exc.errors()),
                 },
             },
+            headers=_cors_headers(request),
         )
 
     @app.exception_handler(Exception)
@@ -137,12 +165,40 @@ def create_app() -> FastAPI:
         import traceback
 
         traceback.print_exc()
+        # Detect Redis connection issues and report them clearly
+        msg = str(exc).lower()
+        if "redis" in type(exc).__module__.lower() or "connection refused" in msg:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "success": False,
+                    "error": {
+                        "code": "SERVICE_UNAVAILABLE",
+                        "message": "Backend dependency (Redis) is not reachable. Start Redis and try again.",
+                    },
+                },
+                headers=_cors_headers(request),
+            )
         return JSONResponse(
             status_code=500,
             content={"success": False, "error": {"code": "INTERNAL_ERROR", "message": "Internal server error"}},
+            headers=_cors_headers(request),
         )
 
     return app
+
+
+def _safe_errors(errors: list) -> list:
+    """Strip non-JSON-serializable bits (e.g., bytes) from validation errors."""
+    safe = []
+    for e in errors:
+        e2 = dict(e)
+        if "input" in e2 and isinstance(e2["input"], (bytes, bytearray)):
+            e2["input"] = "<binary>"
+        if "ctx" in e2 and isinstance(e2["ctx"], dict):
+            e2["ctx"] = {k: str(v) for k, v in e2["ctx"].items()}
+        safe.append(e2)
+    return safe
 
 
 app = create_app()

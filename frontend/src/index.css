@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+  html, body {
+    height: 100%;
+  }
+  body {
+    @apply bg-surface text-ink font-sans antialiased;
+    font-feature-settings: "ss01" on, "cv11" on;
+  }
+  *:focus-visible {
+    @apply outline-none ring-2 ring-primary-container ring-offset-2 ring-offset-surface;
+  }
+}
+
+@layer components {
+  .icon {
+    font-family: "Material Symbols Outlined";
+    font-weight: normal;
+    font-style: normal;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    display: inline-block;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    -webkit-font-feature-settings: "liga";
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: #d5c4ab;
+    border-radius: 3px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .grid-pattern {
+    background-image: radial-gradient(circle, rgba(255,184,0,0.18) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  .gradient-mango {
+    background: linear-gradient(135deg, #ffb800 0%, #ffba20 50%, #7c5800 100%);
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { scrollbar-width: none; }
+}

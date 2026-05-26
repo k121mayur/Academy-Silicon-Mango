@@ -51,7 +51,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD:-sm_secure_pass_2024}@postgres:5432/silicon_mango
       REDIS_URL: redis://:${REDIS_PASSWORD:-sm_redis_pass_2024}@redis:6379/0
     ports:
-      - "8000:8000"
+      - "8085:8085"
     volumes:
       - ./backend/uploads:/app/uploads
       - ./backend/app:/app/app
@@ -64,7 +64,7 @@ services:
       dockerfile: Dockerfile
     container_name: sm_frontend
     ports:
-      - "3000:80"
+      - "5174:80"
     depends_on:
       - backend
     networks:

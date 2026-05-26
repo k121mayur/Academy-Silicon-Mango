@@ -21,6 +21,6 @@ RUN mkdir -p /app/uploads/course_banners \
     /app/uploads/certificate_templates \
     /app/uploads/certificates
 
-EXPOSE 8000
+EXPOSE 8085
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8085 --reload"]
