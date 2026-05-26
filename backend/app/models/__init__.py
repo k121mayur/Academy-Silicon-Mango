@@ -1,0 +1,75 @@
+from app.models.assignment import Assignment, AssignmentType, Submission, SubmissionStatus
+from app.models.attendance import AttendanceRecord, AttendanceSource, AttendanceStatus
+from app.models.batch import (
+    Batch,
+    BatchPlan,
+    BatchScheduleSlot,
+    BatchStatus,
+    DeliveryMode,
+    Enrollment,
+    EnrollmentStatus,
+    SlotType,
+)
+from app.models.certificate import Certificate, CertificateEmailStatus, CertificateTemplate
+from app.models.course import Course, CourseInstructor, CourseType, DurationUnit
+from app.models.otp import OTPPurpose, OTPRecord
+from app.models.payment import Payment, PaymentMode, PaymentSettings, PaymentStatus
+from app.models.session import (
+    ResourceType,
+    Session,
+    SessionOrigin,
+    SessionResource,
+    SessionStatus,
+    SessionType,
+)
+from app.models.user import (
+    AuthProvider,
+    InstructorProfile,
+    OccupationType,
+    StudentProfile,
+    User,
+    UserRole,
+)
+
+__all__ = [
+    "Assignment",
+    "AssignmentType",
+    "AttendanceRecord",
+    "AttendanceSource",
+    "AttendanceStatus",
+    "AuthProvider",
+    "Batch",
+    "BatchPlan",
+    "BatchScheduleSlot",
+    "BatchStatus",
+    "Certificate",
+    "CertificateEmailStatus",
+    "CertificateTemplate",
+    "Course",
+    "CourseInstructor",
+    "CourseType",
+    "DeliveryMode",
+    "DurationUnit",
+    "Enrollment",
+    "EnrollmentStatus",
+    "InstructorProfile",
+    "OccupationType",
+    "OTPPurpose",
+    "OTPRecord",
+    "Payment",
+    "PaymentMode",
+    "PaymentSettings",
+    "PaymentStatus",
+    "ResourceType",
+    "Session",
+    "SessionOrigin",
+    "SessionResource",
+    "SessionStatus",
+    "SessionType",
+    "SlotType",
+    "StudentProfile",
+    "Submission",
+    "SubmissionStatus",
+    "User",
+    "UserRole",
+]
