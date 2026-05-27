@@ -94,7 +94,9 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
     submit(false);
   };
 
-  const finalPrice = Math.max(parseFloat(price || "0") - parseFloat(discount || "0"), 0);
+  const priceNum = parseFloat(price || "0");
+  const discountPct = Math.min(parseFloat(discount || "0"), 100);
+  const finalPrice = Math.max(priceNum - (priceNum * discountPct) / 100, 0);
 
   return (
     <form onSubmit={onSubmit} className="space-y-5 max-w-4xl">
@@ -139,7 +141,7 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
           <Input label="Duration" type="number" min={1} max={104} value={durationValue} onChange={(e) => setDurationValue(parseInt(e.target.value) || 1)} />
           <div />
           <Input label="Price (INR)" type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} leftIcon="currency_rupee" />
-          <Input label="Discount (INR)" type="number" min={0} value={discount} onChange={(e) => setDiscount(e.target.value)} leftIcon="discount" />
+          <Input label="Discount (%)" type="number" min={0} max={100} value={discount} onChange={(e) => setDiscount(e.target.value)} leftIcon="percent" />
           <div className="flex flex-col justify-end">
             <p className="text-label text-ink-outline">Final price</p>
             <p className="font-display font-bold text-title-lg text-primary">{formatCurrency(finalPrice)}</p>
@@ -155,7 +157,8 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
             accept="image/*"
             value={bannerUrl ? `${bannerUrl}` : null}
             onChange={(f) => setBannerFile(f)}
-            hint="PNG/JPG, recommended 1200×600"
+            hint="PNG/JPG · will be cropped to 16:9"
+            cropAspectRatio={16 / 9}
           />
           <FileUpload
             label="Syllabus PDF"

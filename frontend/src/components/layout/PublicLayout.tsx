@@ -19,9 +19,7 @@ export default function PublicLayout() {
       <header className="sticky top-0 z-30 backdrop-blur-md bg-surface/80 border-b border-ink-outlineVariant/30">
         <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl gradient-mango grid place-items-center font-display font-extrabold text-primary-onContainer">
-              M
-            </div>
+            <img src="/Logo1.png" alt="Silicon Mango" className="w-9 h-9 object-contain" />
             <span className="font-display font-extrabold text-title-md text-ink">Silicon Mango</span>
           </Link>
           <nav className="hidden md:flex items-center gap-6 text-body-sm text-ink-variant">
@@ -59,9 +57,7 @@ export default function PublicLayout() {
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-12 grid grid-cols-2 md:grid-cols-4 gap-8">
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <div className="w-8 h-8 rounded-lg gradient-mango grid place-items-center font-display font-extrabold text-primary-onContainer">
-                M
-              </div>
+              <img src="/Logo1.png" alt="Silicon Mango" className="w-8 h-8 object-contain" />
               <span className="font-display font-extrabold">Silicon Mango</span>
             </div>
             <p className="text-body-sm text-surface-containerHigh/70">Learn. Build. Get Certified.</p>
