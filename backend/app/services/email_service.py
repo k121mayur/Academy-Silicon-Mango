@@ -71,6 +71,54 @@ def render_otp_email(otp: str, minutes: int = 5) -> tuple[str, str, str]:
     return subject, html, text
 
 
+def render_welcome_student_email(
+    display_name: str,
+    email: str,
+    password: str,
+    login_url: str,
+    batch_name: str | None = None,
+    instructor_name: str | None = None,
+) -> tuple[str, str, str]:
+    subject = "Welcome to Silicon Mango Academy — Your Account is Ready"
+
+    batch_line = f"You have been enrolled in <strong>{batch_name}</strong>." if batch_name else ""
+    instructor_line = f"Your instructor is <strong>{instructor_name}</strong>." if instructor_name else ""
+    context_block = ""
+    if batch_line or instructor_line:
+        context_block = f"<p style='color:#514532;line-height:1.5;'>{batch_line} {instructor_line}</p>"
+
+    batch_text = f"\nBatch: {batch_name}" if batch_name else ""
+    instructor_text = f"\nInstructor: {instructor_name}" if instructor_name else ""
+
+    text = (
+        f"Hi {display_name},\n\n"
+        f"An admin has created your student account on Silicon Mango Academy.\n"
+        f"{batch_text}{instructor_text}\n\n"
+        f"Email: {email}\n"
+        f"Password: {password}\n\n"
+        f"Sign in here: {login_url}\n\n"
+        "For your security, please change your password after the first login.\n\n"
+        "— Silicon Mango Academy"
+    )
+    html = f"""
+    <!doctype html><html><body style="font-family:Inter,sans-serif;background:#f8f9fa;padding:32px;">
+      <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;">
+        <h2 style="font-family:Manrope,sans-serif;color:#7c5800;margin:0 0 8px;">Welcome, {display_name}!</h2>
+        <p style="color:#514532;line-height:1.5;">Your student account has been created on <strong>Silicon Mango Academy</strong>.</p>
+        {context_block}
+        <div style="background:#f3f4f5;border-radius:12px;padding:16px;margin:20px 0;">
+          <p style="margin:0 0 8px;color:#514532;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">Your login credentials</p>
+          <p style="margin:4px 0;color:#191c1d;"><strong>Email:</strong> {email}</p>
+          <p style="margin:4px 0;color:#191c1d;"><strong>Password:</strong> <code style="background:#edeeef;padding:3px 7px;border-radius:4px;">{password}</code></p>
+        </div>
+        <a href="{login_url}" style="display:inline-block;background:#7c5800;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Sign In Now</a>
+        <p style="color:#837560;font-size:13px;margin-top:20px;">Please change your password after your first login to keep your account secure.</p>
+      </div>
+    </body></html>
+    """
+    return subject, html, text
+
+
 def render_welcome_instructor_email(display_name: str, email: str, password: str, login_url: str) -> tuple[str, str, str]:
     subject = "Welcome to Silicon Mango Academy — Instructor Account"
     text = (

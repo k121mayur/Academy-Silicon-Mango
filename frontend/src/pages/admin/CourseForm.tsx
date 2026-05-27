@@ -15,6 +15,7 @@ import {
   togglePublishCourse,
 } from "@/services/admin.service";
 import { FileUpload } from "@/components/shared/FileUpload";
+import { RichTextEditor } from "@/components/shared/RichTextEditor";
 import { formatCurrency } from "@/lib/utils";
 
 interface CourseFormProps {
@@ -43,6 +44,8 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
   const [bannerFile, setBannerFile] = useState<File | null>(null);
   const [syllabusFile, setSyllabusFile] = useState<File | null>(null);
   const [bannerUrl, setBannerUrl] = useState<string | null>(initial?.banner_url || null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const clearErr = (field: string) => setErrors((prev) => { const n = { ...prev }; delete n[field]; return n; });
 
   const addTag = () => {
     const t = tagInput.trim();
@@ -51,7 +54,32 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
     setTagInput("");
   };
 
+  function validate(): boolean {
+    const e: Record<string, string> = {};
+    if (!title.trim()) e.title = "Title is required";
+    if (!category.trim()) e.category = "Category is required";
+    const priceVal = parseFloat(price);
+    if (price !== "" && isNaN(priceVal)) e.price = "Price must be a valid number";
+    syllabus.forEach((s, i) => {
+      if (!s.title.trim()) e[`syllabus_${i}`] = `Module ${i + 1}: title is required`;
+    });
+    faqs.forEach((f, i) => {
+      if (!f.question.trim()) e[`faq_q_${i}`] = `FAQ ${i + 1}: question is required`;
+      if (!f.answer.trim()) e[`faq_a_${i}`] = `FAQ ${i + 1}: answer is required`;
+    });
+    criteria.forEach((c, i) => {
+      if (!c.text.trim()) e[`crit_${i}`] = `Criterion ${i + 1}: text is required`;
+    });
+    setErrors(e);
+    if (Object.keys(e).length > 0) {
+      const first = Object.values(e)[0];
+      toast.error(first);
+    }
+    return Object.keys(e).length === 0;
+  }
+
   const submit = async (publishAfter: boolean) => {
+    if (!validate()) return;
     setSubmitting(true);
     try {
       const payload: any = {
@@ -117,15 +145,15 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
       <Card>
         <CardHeader><p className="text-title-md font-semibold">Basic Info</p></CardHeader>
         <CardBody className="grid md:grid-cols-2 gap-4">
-          <Input label="Title" value={title} onChange={(e) => setTitle(e.target.value)} required containerClassName="md:col-span-2" />
-          <Input label="Category" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. Web Development" />
+          <Input label="Title" value={title} onChange={(e) => { setTitle(e.target.value); clearErr("title"); }} containerClassName="md:col-span-2" error={errors.title} />
+          <Input label="Category" value={category} onChange={(e) => { setCategory(e.target.value); clearErr("category"); }} placeholder="e.g. Web Development" error={errors.category} />
           <Select
             label="Course Type"
             value={courseType}
             onChange={(e) => setCourseType(e.target.value)}
             options={[{ value: "live", label: "Live cohort" }, { value: "self_paced", label: "Self-paced" }]}
           />
-          <Textarea label="Description" value={description} onChange={(e) => setDescription(e.target.value)} rows={4} containerClassName="md:col-span-2" />
+          <RichTextEditor label="Description" value={description} onChange={setDescription} placeholder="Describe what students will learn in this course…" containerClassName="md:col-span-2" minHeight={160} />
         </CardBody>
       </Card>
 
@@ -140,7 +168,7 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
           />
           <Input label="Duration" type="number" min={1} max={104} value={durationValue} onChange={(e) => setDurationValue(parseInt(e.target.value) || 1)} />
           <div />
-          <Input label="Price (INR)" type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} leftIcon="currency_rupee" />
+          <Input label="Price (INR)" type="number" min={0} value={price} onChange={(e) => { setPrice(e.target.value); clearErr("price"); }} leftIcon="currency_rupee" error={errors.price} />
           <Input label="Discount (%)" type="number" min={0} max={100} value={discount} onChange={(e) => setDiscount(e.target.value)} leftIcon="percent" />
           <div className="flex flex-col justify-end">
             <p className="text-label text-ink-outline">Final price</p>
@@ -209,12 +237,24 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
           {syllabus.length === 0 && <p className="text-body-sm text-ink-outline">No items yet — add modules / lessons</p>}
           {syllabus.map((s, i) => (
             <div key={i} className="bg-surface-containerLow rounded-xl p-3 space-y-2">
-              <div className="flex gap-2">
-                <span className="text-label text-ink-outline pt-3">{i + 1}.</span>
-                <Input value={s.title} onChange={(e) => setSyllabus(syllabus.map((x, j) => j === i ? { ...x, title: e.target.value } : x))} placeholder="Module title" containerClassName="flex-1" />
+              <div className="flex gap-2 items-center">
+                <span className="text-label text-ink-outline">{i + 1}.</span>
+                <Input
+                  value={s.title}
+                  onChange={(e) => { setSyllabus(syllabus.map((x, j) => j === i ? { ...x, title: e.target.value } : x)); clearErr(`syllabus_${i}`); }}
+                  placeholder="Module title"
+                  containerClassName="flex-1"
+                  className="font-bold text-[15px]"
+                  error={errors[`syllabus_${i}`]}
+                />
                 <Button type="button" variant="ghost" leftIcon="delete" onClick={() => setSyllabus(syllabus.filter((_, j) => j !== i))} className="text-danger" />
               </div>
-              <Textarea value={s.description || ""} onChange={(e) => setSyllabus(syllabus.map((x, j) => j === i ? { ...x, description: e.target.value } : x))} placeholder="Brief description (optional)" rows={2} />
+              <RichTextEditor
+                value={s.description || ""}
+                onChange={(html) => setSyllabus(syllabus.map((x, j) => j === i ? { ...x, description: html } : x))}
+                placeholder="Brief description (optional)"
+                minHeight={80}
+              />
             </div>
           ))}
         </CardBody>
@@ -231,10 +271,10 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
           {faqs.map((f, i) => (
             <div key={i} className="bg-surface-containerLow rounded-xl p-3 space-y-2">
               <div className="flex gap-2">
-                <Input value={f.question} onChange={(e) => setFaqs(faqs.map((x, j) => j === i ? { ...x, question: e.target.value } : x))} placeholder="Question" containerClassName="flex-1" />
+                <Input value={f.question} onChange={(e) => { setFaqs(faqs.map((x, j) => j === i ? { ...x, question: e.target.value } : x)); clearErr(`faq_q_${i}`); }} placeholder="Question" containerClassName="flex-1" error={errors[`faq_q_${i}`]} />
                 <Button type="button" variant="ghost" leftIcon="delete" onClick={() => setFaqs(faqs.filter((_, j) => j !== i))} className="text-danger" />
               </div>
-              <Textarea value={f.answer} onChange={(e) => setFaqs(faqs.map((x, j) => j === i ? { ...x, answer: e.target.value } : x))} placeholder="Answer" rows={2} />
+              <Textarea value={f.answer} onChange={(e) => { setFaqs(faqs.map((x, j) => j === i ? { ...x, answer: e.target.value } : x)); clearErr(`faq_a_${i}`); }} placeholder="Answer" rows={2} error={errors[`faq_a_${i}`]} />
             </div>
           ))}
         </CardBody>

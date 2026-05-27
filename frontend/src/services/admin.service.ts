@@ -130,13 +130,13 @@ export async function togglePublishCourse(id: string) {
 export async function uploadCourseBanner(id: string, file: File) {
   const fd = new FormData();
   fd.append("file", file);
-  const res = await api.post(`/admin/courses/${id}/banner`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+  const res = await api.post(`/admin/courses/${id}/banner`, fd);
   return res.data.data.banner_url as string;
 }
 export async function uploadCourseSyllabus(id: string, file: File) {
   const fd = new FormData();
   fd.append("file", file);
-  const res = await api.post(`/admin/courses/${id}/syllabus`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+  const res = await api.post(`/admin/courses/${id}/syllabus`, fd);
   return res.data.data.syllabus_pdf_url as string;
 }
 export async function listCourseInstructors(courseId: string) {
@@ -211,7 +211,7 @@ export async function listStudents(params: { page?: number; limit?: number; sear
   const res = await api.get<PaginatedResponse<StudentDTO>>("/admin/users/students", { params });
   return res.data;
 }
-export async function createStudent(payload: { email: string; display_name: string; password: string; phone?: string; city?: string }) {
+export async function createStudent(payload: { email: string; display_name: string; password: string; phone?: string; city?: string; batch_name?: string; instructor_name?: string }) {
   const res = await api.post("/admin/users/students", payload);
   return res.data.data;
 }

@@ -30,7 +30,7 @@ from app.schemas.user import (
     StudentCreate,
     StudentPublic,
 )
-from app.services.email_service import render_welcome_instructor_email, send_email
+from app.services.email_service import render_student_welcome_email, render_welcome_instructor_email, send_email
 
 router = APIRouter(prefix="/users", tags=["admin:users"])
 
@@ -263,6 +263,16 @@ async def create_student(
     db.add(profile)
     await db.commit()
     await db.refresh(user)
+
+    subject, html, text = render_student_welcome_email(
+        display_name=payload.display_name,
+        email=email,
+        password=payload.password,
+        login_url=f"{settings.FRONTEND_URL}/login",
+        batch_name=payload.batch_name,
+        instructor_name=payload.instructor_name,
+    )
+    await send_email(email, subject, html, text)
     print(f"[ADMIN] Student created by admin: {email}")
     return {
         "success": True,

@@ -121,9 +121,27 @@ function CreateInstructorModal({
   const [skills, setSkills] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const clearErr = (field: string) => setErrors((prev) => { const n = { ...prev }; delete n[field]; return n; });
+
+  function validate(): boolean {
+    const e: Record<string, string> = {};
+    const emailTrimmed = email.trim();
+    if (!emailTrimmed) {
+      e.email = "Email is required";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed)) {
+      e.email = "Enter a valid email address";
+    }
+    if (!name.trim()) e.display_name = "Display name is required";
+    if (password && password.length < 8) e.password = "Password must be at least 8 characters";
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  }
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!validate()) return;
     setSubmitting(true);
     try {
       const res = await createInstructor({
@@ -135,7 +153,7 @@ function CreateInstructorModal({
       });
       toast.success("Instructor created");
       onCreated({ email: res.email, password: res.temporary_password || password });
-      setEmail(""); setName(""); setBio(""); setSkills(""); setPassword("");
+      setEmail(""); setName(""); setBio(""); setSkills(""); setPassword(""); setErrors({});
     } catch (err) {
       toast.error(extractErrorMessage(err));
     } finally {
@@ -151,11 +169,11 @@ function CreateInstructorModal({
       </>}
     >
       <form onSubmit={submit} className="space-y-3">
-        <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required leftIcon="mail" />
-        <Input label="Display name" value={name} onChange={(e) => setName(e.target.value)} required leftIcon="person" />
-        <Textarea label="Bio" value={bio} onChange={(e) => setBio(e.target.value)} rows={2} />
-        <Input label="Skills (comma-separated)" value={skills} onChange={(e) => setSkills(e.target.value)} placeholder="Python, ML, Data Science" />
-        <Input label="Password (optional — auto-generated if blank)" value={password} onChange={(e) => setPassword(e.target.value)} hint="Min 8 characters" />
+        <Input label="Email" type="email" value={email} onChange={(e) => { setEmail(e.target.value); clearErr("email"); }} leftIcon="mail" error={errors.email} />
+        <Input label="Display name" value={name} onChange={(e) => { setName(e.target.value); clearErr("display_name"); }} leftIcon="person" error={errors.display_name} />
+        <Textarea label="Bio (optional)" value={bio} onChange={(e) => setBio(e.target.value)} rows={2} />
+        <Input label="Skills (optional — comma-separated)" value={skills} onChange={(e) => setSkills(e.target.value)} placeholder="Python, ML, Data Science" />
+        <Input label="Password (optional — auto-generated if blank)" type="password" value={password} onChange={(e) => { setPassword(e.target.value); clearErr("password"); }} hint="Min 8 characters if set" error={errors.password} />
       </form>
     </Modal>
   );

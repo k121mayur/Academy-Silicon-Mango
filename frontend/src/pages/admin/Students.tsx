@@ -98,15 +98,48 @@ function CreateStudentModal({ open, onClose, onCreated }: { open: boolean; onClo
   const [password, setPassword] = useState("");
   const [phone, setPhone] = useState("");
   const [city, setCity] = useState("");
+  const [batchName, setBatchName] = useState("");
+  const [instructorName, setInstructorName] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const clearErr = (field: string) => setErrors((prev) => { const n = { ...prev }; delete n[field]; return n; });
+
+  function validate(): boolean {
+    const e: Record<string, string> = {};
+    const emailTrimmed = email.trim();
+    if (!emailTrimmed) {
+      e.email = "Email is required";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed)) {
+      e.email = "Enter a valid email address";
+    }
+    if (!name.trim()) e.display_name = "Display name is required";
+    if (!password) {
+      e.password = "Password is required";
+    } else if (password.length < 8) {
+      e.password = "Password must be at least 8 characters";
+    }
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  }
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!validate()) return;
     setSubmitting(true);
     try {
-      await createStudent({ email: email.trim(), display_name: name.trim(), password, phone: phone || undefined, city: city || undefined });
-      toast.success("Student created");
-      setEmail(""); setName(""); setPassword(""); setPhone(""); setCity("");
+      await createStudent({
+        email: email.trim(),
+        display_name: name.trim(),
+        password,
+        phone: phone.trim() || undefined,
+        city: city.trim() || undefined,
+        batch_name: batchName.trim() || undefined,
+        instructor_name: instructorName.trim() || undefined,
+      });
+      toast.success("Student created — welcome email sent");
+      setEmail(""); setName(""); setPassword(""); setPhone(""); setCity(""); setBatchName(""); setInstructorName("");
+      setErrors({});
       onCreated();
     } catch (err) {
       toast.error(extractErrorMessage(err));
@@ -119,15 +152,42 @@ function CreateStudentModal({ open, onClose, onCreated }: { open: boolean; onClo
     <Modal open={open} onClose={onClose} title="Add Student" size="md"
       footer={<>
         <Button variant="ghost" onClick={onClose} disabled={submitting}>Cancel</Button>
-        <Button onClick={(e) => submit(e as any)} loading={submitting}>Create</Button>
+        <Button onClick={(e) => submit(e as any)} loading={submitting}>Create & Send Welcome Email</Button>
       </>}
     >
       <form onSubmit={submit} className="space-y-3">
-        <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required leftIcon="mail" />
-        <Input label="Display name" value={name} onChange={(e) => setName(e.target.value)} required leftIcon="person" />
-        <Input label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required hint="Min 8 characters" />
+        <Input
+          label="Email"
+          type="email"
+          value={email}
+          onChange={(e) => { setEmail(e.target.value); clearErr("email"); }}
+          leftIcon="mail"
+          error={errors.email}
+        />
+        <Input
+          label="Display name"
+          value={name}
+          onChange={(e) => { setName(e.target.value); clearErr("display_name"); }}
+          leftIcon="person"
+          error={errors.display_name}
+        />
+        <Input
+          label="Password"
+          type="password"
+          value={password}
+          onChange={(e) => { setPassword(e.target.value); clearErr("password"); }}
+          hint="Min 8 characters"
+          error={errors.password}
+        />
         <Input label="Phone (optional)" value={phone} onChange={(e) => setPhone(e.target.value)} leftIcon="phone" />
         <Input label="City (optional)" value={city} onChange={(e) => setCity(e.target.value)} leftIcon="location_on" />
+        <div className="border-t border-ink-outlineVariant/40 pt-3">
+          <p className="text-label text-ink-outline mb-2">For welcome email (optional)</p>
+          <div className="space-y-3">
+            <Input label="Batch name (optional)" value={batchName} onChange={(e) => setBatchName(e.target.value)} leftIcon="groups" placeholder="e.g. Full-Stack Batch 2025" />
+            <Input label="Instructor name (optional)" value={instructorName} onChange={(e) => setInstructorName(e.target.value)} leftIcon="school" placeholder="e.g. Rahul Sharma" />
+          </div>
+        </div>
       </form>
     </Modal>
   );

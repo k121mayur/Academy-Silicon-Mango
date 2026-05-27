@@ -6,6 +6,13 @@ const api = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
+api.interceptors.request.use((config) => {
+  if (config.data instanceof FormData) {
+    delete config.headers["Content-Type"];
+  }
+  return config;
+});
+
 api.interceptors.response.use(
   (res) => res,
   (err: AxiosError) => {
@@ -29,7 +36,8 @@ export function extractErrorCode(err: unknown): string | null {
 export function extractErrorMessage(err: unknown, fallback = "Something went wrong"): string {
   if (err instanceof AxiosError) {
     const data = err.response?.data as Record<string, unknown> | undefined;
-    return (data?.message as string) ?? (data?.detail as string) ?? fallback;
+    const nested = data?.error as Record<string, unknown> | undefined;
+    return (nested?.message as string) ?? (data?.message as string) ?? (data?.detail as string) ?? fallback;
   }
   if (err instanceof Error) return err.message;
   return fallback;

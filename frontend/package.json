@@ -11,6 +11,11 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.59.0",
+    "@tiptap/extension-placeholder": "^3.23.6",
+    "@tiptap/extension-underline": "^3.23.6",
+    "@tiptap/pm": "^3.23.6",
+    "@tiptap/react": "^3.23.6",
+    "@tiptap/starter-kit": "^3.23.6",
     "axios": "^1.7.7",
     "clsx": "^2.1.1",
     "react": "^18.3.1",

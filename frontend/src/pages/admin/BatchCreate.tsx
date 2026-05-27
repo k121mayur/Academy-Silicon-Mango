@@ -32,6 +32,8 @@ export default function BatchCreate() {
   const [instructorId, setInstructorId] = useState("");
   const [slots, setSlots] = useState<Slot[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const clearErr = (field: string) => setErrors((prev) => { const n = { ...prev }; delete n[field]; return n; });
 
   useEffect(() => {
     listCourses({ limit: 100 }).then((r) => setCourses(r.data)).catch(() => {});
@@ -65,12 +67,25 @@ export default function BatchCreate() {
     setSlots(slots.map((s, j) => (j === i ? { ...s, ...patch } : s)));
   };
 
+  function validate(): boolean {
+    const e: Record<string, string> = {};
+    if (!courseId) e.courseId = "Please select a course";
+    if (!name.trim()) e.name = "Batch name is required";
+    if (!startDate) e.startDate = "Start date is required";
+    if (!endDate) e.endDate = "End date is required";
+    if (startDate && endDate && endDate < startDate) e.endDate = "End date must be after start date";
+    if (deliveryMode === "live") {
+      slots.forEach((s, i) => {
+        if (s.start_time >= s.end_time) e[`slot_${i}`] = `Slot ${i + 1}: end time must be after start time`;
+      });
+    }
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  }
+
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!courseId || !startDate || !endDate) {
-      toast.error("Course, start and end date are required");
-      return;
-    }
+    if (!validate()) return;
     setSubmitting(true);
     try {
       const payload: any = {
@@ -106,12 +121,12 @@ export default function BatchCreate() {
           <Select
             label="Course"
             value={courseId}
-            onChange={(e) => setCourseId(e.target.value)}
+            onChange={(e) => { setCourseId(e.target.value); clearErr("courseId"); }}
             options={[{ value: "", label: "Select a course" }, ...courses.map((c) => ({ value: c.id, label: c.title }))]}
             containerClassName="md:col-span-2"
-            required
+            error={errors.courseId}
           />
-          <Input label="Batch Name" value={name} onChange={(e) => setName(e.target.value)} required containerClassName="md:col-span-2" />
+          <Input label="Batch Name" value={name} onChange={(e) => { setName(e.target.value); clearErr("name"); }} containerClassName="md:col-span-2" error={errors.name} />
           <Select
             label="Delivery Mode"
             value={deliveryMode}
@@ -119,8 +134,8 @@ export default function BatchCreate() {
             options={[{ value: "live", label: "Live" }, { value: "recorded", label: "Recorded" }]}
           />
           <Input label="Capacity (optional)" type="number" min={1} value={capacity} onChange={(e) => setCapacity(e.target.value)} />
-          <Input label="Start date" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} required />
-          <Input label="End date" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} required />
+          <Input label="Start date" type="date" value={startDate} onChange={(e) => { setStartDate(e.target.value); clearErr("startDate"); }} error={errors.startDate} />
+          <Input label="End date" type="date" value={endDate} onChange={(e) => { setEndDate(e.target.value); clearErr("endDate"); }} error={errors.endDate} />
         </CardBody>
       </Card>
 
@@ -149,8 +164,8 @@ export default function BatchCreate() {
                 ) : (
                   <Input label="Date" type="date" value={s.slot_date || ""} onChange={(e) => updateSlot(i, { slot_date: e.target.value })} />
                 )}
-                <Input label="Start time" type="time" value={s.start_time} onChange={(e) => updateSlot(i, { start_time: e.target.value })} />
-                <Input label="End time" type="time" value={s.end_time} onChange={(e) => updateSlot(i, { end_time: e.target.value })} />
+                <Input label="Start time" type="time" value={s.start_time} onChange={(e) => { updateSlot(i, { start_time: e.target.value }); clearErr(`slot_${i}`); }} />
+                <Input label="End time" type="time" value={s.end_time} onChange={(e) => { updateSlot(i, { end_time: e.target.value }); clearErr(`slot_${i}`); }} error={errors[`slot_${i}`]} />
                 <Button type="button" variant="ghost" leftIcon="delete" className="text-danger" onClick={() => setSlots(slots.filter((_, j) => j !== i))}>Remove</Button>
               </div>
             ))}

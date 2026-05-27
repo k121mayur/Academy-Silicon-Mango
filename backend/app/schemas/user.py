@@ -39,6 +39,8 @@ class StudentCreate(BaseModel):
     password: str = Field(min_length=8)
     phone: Optional[str] = None
     city: Optional[str] = None
+    batch_name: Optional[str] = None
+    instructor_name: Optional[str] = None
 
 
 class StudentPublic(BaseModel):

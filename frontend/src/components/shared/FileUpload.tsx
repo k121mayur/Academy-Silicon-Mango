@@ -15,6 +15,7 @@ interface Props {
 
 export function FileUpload({ value, onChange, accept = "image/*", hint, label, preview = true, className, cropAspectRatio }: Props) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(value || null);
+  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [cropSrc, setCropSrc] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -31,6 +32,8 @@ export function FileUpload({ value, onChange, accept = "image/*", hint, label, p
 
     if (preview && file.type.startsWith("image/")) {
       setPreviewUrl(URL.createObjectURL(file));
+    } else {
+      setSelectedFileName(file.name);
     }
     onChange(file);
   };
@@ -52,13 +55,15 @@ export function FileUpload({ value, onChange, accept = "image/*", hint, label, p
           {preview && previewUrl ? (
             <img src={previewUrl} alt="preview" className="w-20 h-20 rounded-lg object-cover" />
           ) : (
-            <div className="w-20 h-20 rounded-lg bg-surface-container grid place-items-center text-ink-outline">
-              <span className="icon text-[24px]">cloud_upload</span>
+            <div className={cn("w-20 h-20 rounded-lg grid place-items-center", selectedFileName ? "bg-primary/10 text-primary" : "bg-surface-container text-ink-outline")}>
+              <span className="icon text-[24px]">{selectedFileName ? "description" : "cloud_upload"}</span>
             </div>
           )}
-          <div className="flex-1">
-            <p className="text-body-sm font-medium text-ink">{previewUrl ? "Change file" : "Click to upload"}</p>
-            <p className="text-label text-ink-outline">{hint || "Drag & drop or click to browse"}</p>
+          <div className="flex-1 min-w-0">
+            <p className="text-body-sm font-medium text-ink truncate">
+              {selectedFileName ?? (previewUrl ? "Change file" : "Click to upload")}
+            </p>
+            <p className="text-label text-ink-outline">{selectedFileName ? "Click to change" : (hint || "Drag & drop or click to browse")}</p>
           </div>
         </div>
         <input ref={inputRef} type="file" accept={accept} onChange={handleChange} className="hidden" />
