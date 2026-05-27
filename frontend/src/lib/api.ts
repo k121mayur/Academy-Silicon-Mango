@@ -1,4 +1,4 @@
-import axios, { AxiosError } from "axios";
+import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 
 const api = axios.create({
   baseURL: `${import.meta.env.VITE_API_BASE_URL || "http://localhost:8085"}/api/v1`,
@@ -13,12 +13,44 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Holds the in-flight refresh promise so concurrent 401s share a single refresh call.
+let refreshingPromise: Promise<void> | null = null;
+
 api.interceptors.response.use(
   (res) => res,
-  (err: AxiosError) => {
-    if (err.response?.status === 401) {
-      window.dispatchEvent(new Event("auth:logout"));
+  async (err: AxiosError) => {
+    const original = err.config as InternalAxiosRequestConfig & { _retry?: boolean };
+
+    // Only attempt refresh on 401, once per request, and never for the refresh endpoint itself.
+    if (
+      err.response?.status === 401 &&
+      !original._retry &&
+      !original.url?.includes("/auth/refresh")
+    ) {
+      original._retry = true;
+
+      if (!refreshingPromise) {
+        refreshingPromise = api
+          .post("/auth/refresh")
+          .then(() => {
+            refreshingPromise = null;
+          })
+          .catch(() => {
+            refreshingPromise = null;
+            // Refresh token expired or invalid — force logout.
+            window.dispatchEvent(new Event("auth:logout"));
+          });
+      }
+
+      try {
+        await refreshingPromise;
+        // Retry the original request with the new access-token cookie.
+        return api(original);
+      } catch {
+        return Promise.reject(err);
+      }
     }
+
     return Promise.reject(err);
   }
 );

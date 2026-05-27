@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 
     # JWT
     SECRET_KEY: str = "change-me-in-production-this-is-a-dev-key-only"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 h in dev; override via .env in production
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     ALGORITHM: str = "HS256"
 
@@ -48,6 +48,9 @@ class Settings(BaseSettings):
 
     # Frontend
     FRONTEND_URL: str = "http://localhost:3000"
+
+    # Certificate
+    CERTIFICATE_NAME_MAX_CHARS: int = 40
 
     # Master Admin
     MASTER_ADMIN_EMAIL: str = "admin@siliconmango.com"

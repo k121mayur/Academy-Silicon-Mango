@@ -40,3 +40,23 @@ async def save_upload(file: UploadFile, subdir: Literal["course_banners", "sylla
 
     print(f"[STORAGE] Saved upload {rel} ({os.path.getsize(abs_path)} bytes)")
     return f"/uploads/{rel}"
+
+
+async def save_bytes(
+    data: bytes,
+    subdir: Literal["course_banners", "syllabus_pdfs", "session_resources", "receipts", "certificate_templates", "certificates"],
+    extension: str = "pdf",
+    filename: str | None = None,
+) -> str:
+    """Save raw bytes under uploads/<subdir>/<filename or uuid>.<ext>. Returns relative URL path."""
+    ensure_dirs()
+    ext = extension.lstrip(".").lower()
+    fname = filename if filename else f"{uuid.uuid4().hex}.{ext}"
+    rel = f"{subdir}/{fname}"
+    abs_path = Path(settings.UPLOAD_DIR) / rel
+
+    async with aiofiles.open(abs_path, "wb") as out:
+        await out.write(data)
+
+    print(f"[STORAGE] Saved bytes {rel} ({len(data)} bytes)")
+    return f"/uploads/{rel}"

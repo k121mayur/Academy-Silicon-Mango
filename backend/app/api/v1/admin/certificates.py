@@ -14,7 +14,8 @@ from app.models.certificate import Certificate, CertificateEmailStatus, Certific
 from app.models.course import Course
 from app.models.user import StudentProfile, User
 from app.schemas.certificate import CertificatePublic, CertificateTemplatePublic
-from app.services.storage_service import save_upload
+from app.services.certificate_render_service import render_certificate
+from app.services.storage_service import save_bytes, save_upload
 
 router = APIRouter(tags=["admin:certificates"])
 
@@ -132,6 +133,17 @@ async def generate_certificates(
     if batch.status != BatchStatus.completed:
         raise APIError(code="CERT_002", message="Batch not yet completed")
 
+    course = await db.get(Course, batch.course_id)
+    tmpl_res = await db.execute(
+        select(CertificateTemplate).where(CertificateTemplate.course_id == batch.course_id)
+    )
+    template = tmpl_res.scalar_one_or_none()
+    if not template or not template.template_url:
+        raise APIError(
+            code="CERT_003",
+            message="No certificate template configured for this course. Upload one before generating.",
+        )
+
     res = await db.execute(
         select(Enrollment).where(
             Enrollment.batch_id == batch.id, Enrollment.status == EnrollmentStatus.active
@@ -140,24 +152,63 @@ async def generate_certificates(
     enrolls = res.scalars().all()
 
     created = 0
+    rendered = 0
+    failed = 0
     for enr in enrolls:
-        existing = await db.execute(
+        existing_res = await db.execute(
             select(Certificate).where(
                 Certificate.batch_id == batch.id, Certificate.student_id == enr.student_id
             )
         )
-        if existing.scalar_one_or_none():
+        cert = existing_res.scalar_one_or_none()
+        is_new = cert is None
+        if is_new:
+            cert = Certificate(
+                batch_id=batch.id,
+                student_id=enr.student_id,
+                email_status=CertificateEmailStatus.pending,
+            )
+            db.add(cert)
+            await db.flush()
+            created += 1
+
+        if cert.pdf_url:
             continue
-        cert = Certificate(
-            batch_id=batch.id,
-            student_id=enr.student_id,
-            email_status=CertificateEmailStatus.pending,
+
+        prof_res = await db.execute(
+            select(StudentProfile, User)
+            .join(User, User.id == StudentProfile.user_id, isouter=True)
+            .where(StudentProfile.user_id == enr.student_id)
         )
-        db.add(cert)
-        created += 1
+        row = prof_res.first()
+        if row:
+            prof, user = row
+            student_name = (prof.display_name if prof and prof.display_name else (user.email if user else "")) or ""
+        else:
+            user = await db.get(User, enr.student_id)
+            student_name = user.email if user else ""
+
+        try:
+            pdf_bytes = render_certificate(
+                template_url=template.template_url,
+                field_config=template.field_config or {},
+                student_name=student_name,
+                course_title=course.title if course else "",
+                end_date=batch.end_date,
+                cert_id=str(cert.id),
+            )
+            pdf_url = await save_bytes(pdf_bytes, "certificates", "pdf", filename=f"{cert.id}.pdf")
+            cert.pdf_url = pdf_url
+            rendered += 1
+        except Exception as exc:
+            failed += 1
+            print(f"[ADMIN] Certificate render failed for student {enr.student_id}: {exc}")
+
     await db.commit()
-    print(f"[ADMIN] Generated {created} certificates for batch {batch.name}")
-    return {"success": True, "data": {"created": created}}
+    print(
+        f"[ADMIN] Batch {batch.name}: created={created}, rendered={rendered}, failed={failed}"
+    )
+    return {"success": True, "data": {"created": created, "rendered": rendered, "failed": failed}}
 
 
 @router.post("/certificates/{cert_id}/resend")

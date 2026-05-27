@@ -268,3 +268,18 @@ export async function generateCertificates(batchId: string) {
 export async function resendCertificate(certId: string) {
   await api.post(`/admin/certificates/${certId}/resend`);
 }
+
+export interface VerifyCertificateResult {
+  valid: boolean;
+  student_name?: string;
+  course_title?: string;
+  batch_name?: string;
+  batch_start?: string;
+  batch_end?: string;
+  issued_at?: string;
+}
+
+export async function verifyCertificate(certId: string) {
+  const res = await api.get(`/public/verify-certificate/${certId}`);
+  return res.data.data as VerifyCertificateResult;
+}

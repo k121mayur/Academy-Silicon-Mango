@@ -71,7 +71,7 @@ def render_otp_email(otp: str, minutes: int = 5) -> tuple[str, str, str]:
     return subject, html, text
 
 
-def render_welcome_student_email(
+def render_student_welcome_email(
     display_name: str,
     email: str,
     password: str,

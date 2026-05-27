@@ -7,6 +7,7 @@ import ProtectedRoute from "@/router/ProtectedRoute";
 import Landing from "@/pages/Landing";
 import Login from "@/pages/auth/Login";
 import Signup from "@/pages/auth/Signup";
+import VerifyCertificate from "@/pages/public/VerifyCertificate";
 
 import AdminDashboard from "@/pages/admin/Dashboard";
 import AdminCourses from "@/pages/admin/Courses";
@@ -37,6 +38,8 @@ export default function App() {
         <Route path="login" element={<Login />} />
         <Route path="signup" element={<Signup />} />
       </Route>
+
+      <Route path="verify/:certId" element={<VerifyCertificate />} />
 
       <Route element={<ProtectedRoute roles={["admin"]} />}>
         <Route path="admin" element={<AdminLayout />}>

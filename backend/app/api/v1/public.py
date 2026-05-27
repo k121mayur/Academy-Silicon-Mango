@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import uuid as uuid_lib
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.models.batch import Batch, BatchStatus, Enrollment, EnrollmentStatus
 from app.models.course import Course
-from app.models.user import User, UserRole
+from app.models.user import StudentProfile, User, UserRole
 from app.models.certificate import Certificate
 
 router = APIRouter(prefix="/public", tags=["public"])
@@ -63,5 +65,44 @@ async def public_stats(db: AsyncSession = Depends(get_db)):
             "instructors": instructors,
             "courses": courses,
             "certificates": certificates,
+        },
+    }
+
+
+@router.get("/verify-certificate/{cert_id}")
+async def verify_certificate(cert_id: str, db: AsyncSession = Depends(get_db)):
+    """Public certificate verification. Returns valid=false rather than 404 so
+    the response shape is uniform whether or not the cert exists."""
+    try:
+        uuid_lib.UUID(cert_id)
+    except (ValueError, TypeError):
+        return {"success": True, "data": {"valid": False}}
+
+    row = (
+        await db.execute(
+            select(Certificate, User, StudentProfile, Batch, Course)
+            .join(User, User.id == Certificate.student_id)
+            .join(StudentProfile, StudentProfile.user_id == User.id, isouter=True)
+            .join(Batch, Batch.id == Certificate.batch_id)
+            .join(Course, Course.id == Batch.course_id)
+            .where(Certificate.id == cert_id)
+        )
+    ).first()
+
+    if not row:
+        return {"success": True, "data": {"valid": False}}
+
+    cert, user, prof, batch, course = row
+    student_name = (prof.display_name if prof and prof.display_name else user.email) or ""
+    return {
+        "success": True,
+        "data": {
+            "valid": True,
+            "student_name": student_name,
+            "course_title": course.title,
+            "batch_name": batch.name,
+            "batch_start": batch.start_date.isoformat() if batch.start_date else None,
+            "batch_end": batch.end_date.isoformat() if batch.end_date else None,
+            "issued_at": cert.issued_at.isoformat() if cert.issued_at else None,
         },
     }
