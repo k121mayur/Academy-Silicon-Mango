@@ -1,0 +1,44 @@
+name: CD
+
+# Only deploy when CI passes on main — runner is self-hosted on the server
+# so no SSH or registry needed; docker compose runs directly on the machine.
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
+
+jobs:
+  deploy:
+    name: Deploy — Rebuild & Restart
+    runs-on: self-hosted
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Build updated images
+        shell: bash
+        run: docker compose build --no-cache backend frontend
+
+      # Rolling restart: leaves postgres and redis untouched
+      - name: Restart application services
+        shell: bash
+        run: docker compose up -d --no-deps backend frontend
+
+      - name: Remove dangling images
+        shell: bash
+        run: docker image prune -f
+
+      - name: Verify services are up
+        shell: bash
+        run: |
+          sleep 8
+          docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+          # Smoke-test the API
+          curl -sf http://localhost:8085/health \
+            && echo "Backend healthy" \
+            || echo "Warning: /health not found — check docker compose logs backend"
