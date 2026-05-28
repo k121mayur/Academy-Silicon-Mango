@@ -11,7 +11,7 @@ from fastapi import UploadFile
 from app.core.config import settings
 
 
-SUBDIRS = ("course_banners", "syllabus_pdfs", "session_resources", "receipts", "certificate_templates", "certificates")
+SUBDIRS = ("course_banners", "syllabus_pdfs", "session_resources", "receipts", "certificate_templates", "certificates", "submissions")
 
 
 def ensure_dirs() -> None:

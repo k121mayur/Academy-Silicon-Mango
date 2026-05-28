@@ -19,6 +19,8 @@ import {
   batchRemoveEnrollment,
   completeBatch,
   listStudents,
+  listInstructors,
+  batchAssignInstructor,
 } from "@/services/admin.service";
 import { formatDate, formatDateTime } from "@/lib/utils";
 
@@ -34,6 +36,10 @@ export default function BatchDetail() {
   const [studentResults, setStudentResults] = useState<any[]>([]);
   const [completeOpen, setCompleteOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [assignInstructorOpen, setAssignInstructorOpen] = useState(false);
+  const [instructorOptions, setInstructorOptions] = useState<any[]>([]);
+  const [instructorSearch, setInstructorSearch] = useState("");
+  const [assigning, setAssigning] = useState(false);
 
   const refresh = async () => {
     if (!id) return;
@@ -97,6 +103,32 @@ export default function BatchDetail() {
       refresh();
     } catch (e) {
       toast.error(extractErrorMessage(e));
+    }
+  };
+
+  const openAssignInstructor = async () => {
+    try {
+      const res = await listInstructors({ limit: 100 });
+      setInstructorOptions(res.data);
+      setInstructorSearch("");
+      setAssignInstructorOpen(true);
+    } catch (e) {
+      toast.error(extractErrorMessage(e));
+    }
+  };
+
+  const assignInstructor = async (instructorUserId: string | null) => {
+    if (!id) return;
+    setAssigning(true);
+    try {
+      await batchAssignInstructor(id, instructorUserId ?? "");
+      toast.success(instructorUserId ? "Instructor assigned" : "Instructor cleared");
+      setAssignInstructorOpen(false);
+      refresh();
+    } catch (e) {
+      toast.error(extractErrorMessage(e));
+    } finally {
+      setAssigning(false);
     }
   };
 
@@ -168,7 +200,17 @@ export default function BatchDetail() {
               <Row label="End date" value={formatDate(batch.end_date)} />
               <Row label="Capacity" value={batch.capacity ?? "Unlimited"} />
               <Row label="Enrolled" value={batch.enrolled_count} />
-              <Row label="Instructor" value={batch.instructor_name || "Unassigned"} />
+              <div className="flex justify-between py-1 border-b border-ink-outlineVariant/30 last:border-0 items-center">
+                <span className="text-ink-variant">Instructor</span>
+                <span className="flex items-center gap-2">
+                  <span className="text-ink font-medium">{batch.instructor_name || "Unassigned"}</span>
+                  {!batch.is_locked && (
+                    <Button size="sm" variant="outline" leftIcon="edit" onClick={openAssignInstructor}>
+                      {batch.instructor_id ? "Change" : "Assign"}
+                    </Button>
+                  )}
+                </span>
+              </div>
             </CardBody>
           </Card>
           <Card>
@@ -280,6 +322,78 @@ export default function BatchDetail() {
         confirmLabel="Complete batch"
         loading={busy}
       />
+
+      <Modal
+        open={assignInstructorOpen}
+        onClose={() => setAssignInstructorOpen(false)}
+        title="Assign instructor to this batch"
+        description="Pick any instructor to assign directly to this batch."
+        size="md"
+      >
+        <div className="space-y-2">
+          <Input
+            placeholder="Search instructors by name or email"
+            value={instructorSearch}
+            onChange={(e) => setInstructorSearch(e.target.value)}
+            leftIcon="search"
+            autoFocus
+          />
+          {batch.instructor_id && (
+            <button
+              onClick={() => assignInstructor(null)}
+              disabled={assigning}
+              className="w-full flex items-center justify-between p-3 rounded-md bg-danger-container/30 hover:bg-danger-container/50 text-left disabled:opacity-50"
+            >
+              <div className="flex items-center gap-2">
+                <span className="icon text-danger">person_remove</span>
+                <span className="text-body-sm font-medium text-danger">Unassign current instructor</span>
+              </div>
+            </button>
+          )}
+          <div className="max-h-72 overflow-y-auto scrollbar-thin space-y-2">
+            {instructorOptions.length === 0 ? (
+              <div className="p-4 bg-surface-containerLow rounded-md text-body-sm text-ink-variant">
+                No instructors found. Create one in Instructors first.
+              </div>
+            ) : (
+              instructorOptions
+                .filter((i) => {
+                  if (!instructorSearch) return true;
+                  const q = instructorSearch.toLowerCase();
+                  return (
+                    i.display_name?.toLowerCase().includes(q) ||
+                    i.email?.toLowerCase().includes(q)
+                  );
+                })
+                .map((i) => {
+                  const isCurrent = batch.instructor_id === i.user_id;
+                  return (
+                    <button
+                      key={i.user_id}
+                      onClick={() => !isCurrent && assignInstructor(i.user_id)}
+                      disabled={assigning || isCurrent}
+                      className={`w-full flex items-center justify-between p-3 rounded-md text-left ${
+                        isCurrent
+                          ? "bg-primary-container/30 cursor-default"
+                          : "bg-surface-containerLow hover:bg-surface-container"
+                      }`}
+                    >
+                      <div>
+                        <p className="text-body-sm font-medium text-ink">{i.display_name}</p>
+                        <p className="text-label text-ink-outline">{i.email}</p>
+                      </div>
+                      {isCurrent ? (
+                        <Badge tone="success">Current</Badge>
+                      ) : (
+                        <span className="icon text-primary">add</span>
+                      )}
+                    </button>
+                  );
+                })
+            )}
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

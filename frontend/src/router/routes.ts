@@ -14,7 +14,6 @@ export const ROUTES = {
     instructors: "/admin/users/instructors",
     students: "/admin/users/students",
     studentDetail: (id: string) => `/admin/users/students/${id}`,
-    assignInstructors: "/admin/assign-instructors",
     enrollments: "/admin/enrollments",
     batchOps: "/admin/batch-ops",
     certificates: "/admin/certificates",

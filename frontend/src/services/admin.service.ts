@@ -139,17 +139,6 @@ export async function uploadCourseSyllabus(id: string, file: File) {
   const res = await api.post(`/admin/courses/${id}/syllabus`, fd);
   return res.data.data.syllabus_pdf_url as string;
 }
-export async function listCourseInstructors(courseId: string) {
-  const res = await api.get(`/admin/courses/${courseId}/instructors`);
-  return res.data.data as Array<{ id: string; user_id: string; email: string; display_name: string; avatar_url?: string }>;
-}
-export async function assignCourseInstructor(courseId: string, instructorId: string) {
-  await api.post(`/admin/courses/${courseId}/instructors`, { instructor_id: instructorId });
-}
-export async function removeCourseInstructor(courseId: string, instructorId: string) {
-  await api.delete(`/admin/courses/${courseId}/instructors/${instructorId}`);
-}
-
 // ---- Batches ----
 export async function listBatches(params: { page?: number; limit?: number; course_id?: string; status?: string; mode?: string; search?: string } = {}) {
   const res = await api.get<PaginatedResponse<BatchDTO>>("/admin/batches", { params });

@@ -15,7 +15,6 @@ from app.core.security import hash_password
 from app.db.session import get_db
 from app.dependencies.auth import require_admin
 from app.models.batch import Enrollment
-from app.models.course import CourseInstructor
 from app.models.user import (
     AuthProvider,
     InstructorProfile,

@@ -22,7 +22,7 @@ from app.models.batch import (
     EnrollmentStatus,
     SlotType,
 )
-from app.models.course import Course, CourseInstructor
+from app.models.course import Course
 from app.models.user import InstructorProfile, StudentProfile, User, UserRole
 from app.schemas.batch import (
     BatchCreate,
@@ -148,18 +148,9 @@ async def create_batch(
 
     instructor_id = None
     if payload.instructor_id:
-        # Validate instructor is assigned to course
-        ci = await db.execute(
-            select(CourseInstructor).where(
-                CourseInstructor.course_id == course.id,
-                CourseInstructor.instructor_id == payload.instructor_id,
-            )
-        )
-        if not ci.scalar_one_or_none():
-            raise APIError(
-                code="BATCH_004",
-                message="Instructor is not assigned to this course. Assign them first.",
-            )
+        target = await db.get(User, payload.instructor_id)
+        if not target or target.role != UserRole.instructor:
+            raise APIError(code="USER_002", message="Instructor user not found", status_code=404)
         instructor_id = payload.instructor_id
 
     batch = Batch(
@@ -243,21 +234,22 @@ async def assign_instructor(
     batch = await db.get(Batch, batch_id)
     if not batch:
         raise APIError(code="NOT_FOUND", message="Batch not found", status_code=404)
+    if batch.is_locked:
+        raise APIError(code="BATCH_003", message="Batch is locked")
+
+    # null/empty/"unassigned" means: clear the instructor.
     instructor_id = payload.get("instructor_id")
     if not instructor_id:
-        raise APIError(code="VALIDATION", message="instructor_id is required")
+        batch.instructor_id = None
+        await db.commit()
+        await db.refresh(batch)
+        return await _enriched_batch(db, batch)
 
-    ci = await db.execute(
-        select(CourseInstructor).where(
-            CourseInstructor.course_id == batch.course_id,
-            CourseInstructor.instructor_id == instructor_id,
-        )
-    )
-    if not ci.scalar_one_or_none():
-        raise APIError(
-            code="BATCH_004",
-            message="Instructor is not assigned to this course. Assign them first.",
-        )
+    # Validate the user actually exists and is an instructor.
+    target = await db.get(User, instructor_id)
+    if not target or target.role != UserRole.instructor:
+        raise APIError(code="USER_002", message="Instructor user not found", status_code=404)
+
     batch.instructor_id = instructor_id
     await db.commit()
     await db.refresh(batch)

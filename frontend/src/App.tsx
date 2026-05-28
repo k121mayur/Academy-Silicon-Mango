@@ -2,12 +2,14 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import PublicLayout from "@/components/layout/PublicLayout";
 import AdminLayout from "@/components/layout/AdminLayout";
+import InstructorLayout from "@/components/layout/InstructorLayout";
 import ProtectedRoute from "@/router/ProtectedRoute";
 
 import Landing from "@/pages/Landing";
 import Login from "@/pages/auth/Login";
 import Signup from "@/pages/auth/Signup";
 import VerifyCertificate from "@/pages/public/VerifyCertificate";
+import ChangePasswordPage from "@/pages/account/ChangePassword";
 
 import AdminDashboard from "@/pages/admin/Dashboard";
 import AdminCourses from "@/pages/admin/Courses";
@@ -19,7 +21,6 @@ import BatchDetail from "@/pages/admin/BatchDetail";
 import AdminInstructors from "@/pages/admin/Instructors";
 import AdminStudents from "@/pages/admin/Students";
 import StudentDetail from "@/pages/admin/StudentDetail";
-import AssignInstructors from "@/pages/admin/AssignInstructors";
 import AdminEnrollments from "@/pages/admin/Enrollments";
 import BatchOps from "@/pages/admin/BatchOps";
 import AdminCertificates from "@/pages/admin/Certificates";
@@ -29,6 +30,13 @@ import AdminCatalogue from "@/pages/admin/Catalogue";
 
 import StudentDashboard from "@/pages/student/Dashboard";
 import InstructorDashboard from "@/pages/instructor/Dashboard";
+import AssignedBatches from "@/pages/instructor/AssignedBatches";
+import CoursePlan from "@/pages/instructor/CoursePlan";
+import SessionsResources from "@/pages/instructor/SessionsResources";
+import CreateAssignmentPage from "@/pages/instructor/CreateAssignment";
+import AttendancePage from "@/pages/instructor/Attendance";
+import GradingPage from "@/pages/instructor/Grading";
+import CompletionPage from "@/pages/instructor/Completion";
 
 export default function App() {
   return (
@@ -54,7 +62,6 @@ export default function App() {
           <Route path="users/instructors" element={<AdminInstructors />} />
           <Route path="users/students" element={<AdminStudents />} />
           <Route path="users/students/:id" element={<StudentDetail />} />
-          <Route path="assign-instructors" element={<AssignInstructors />} />
           <Route path="enrollments" element={<AdminEnrollments />} />
           <Route path="batch-ops" element={<BatchOps />} />
           <Route path="certificates" element={<AdminCertificates />} />
@@ -65,7 +72,21 @@ export default function App() {
       </Route>
 
       <Route element={<ProtectedRoute roles={["instructor"]} />}>
-        <Route path="instructor/dashboard" element={<InstructorDashboard />} />
+        <Route path="instructor" element={<InstructorLayout />}>
+          <Route index element={<Navigate to="/instructor/dashboard" replace />} />
+          <Route path="dashboard" element={<InstructorDashboard />} />
+          <Route path="batches" element={<AssignedBatches />} />
+          <Route path="plan" element={<CoursePlan />} />
+          <Route path="sessions" element={<SessionsResources />} />
+          <Route path="assignments/new" element={<CreateAssignmentPage />} />
+          <Route path="attendance" element={<AttendancePage />} />
+          <Route path="grading" element={<GradingPage />} />
+          <Route path="completion" element={<CompletionPage />} />
+        </Route>
+      </Route>
+
+      <Route element={<ProtectedRoute />}>
+        <Route path="account/change-password" element={<ChangePasswordPage />} />
       </Route>
 
       <Route element={<ProtectedRoute roles={["student"]} />}>

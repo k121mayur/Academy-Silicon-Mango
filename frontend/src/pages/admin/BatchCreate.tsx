@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { extractErrorMessage } from "@/lib/api";
-import { createBatch, listCourseInstructors, listCourses } from "@/services/admin.service";
+import { createBatch, listCourses, listInstructors } from "@/services/admin.service";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -37,20 +37,17 @@ export default function BatchCreate() {
 
   useEffect(() => {
     listCourses({ limit: 100 }).then((r) => setCourses(r.data)).catch(() => {});
+    listInstructors({ limit: 100 }).then((r) => setInstructors(r.data)).catch(() => setInstructors([]));
   }, []);
 
   useEffect(() => {
     if (!courseId) {
       setCourse(null);
-      setInstructors([]);
       return;
     }
     const c = courses.find((x) => x.id === courseId);
     setCourse(c);
     if (!name) setName(`${c?.title} — Batch ${new Date().getFullYear()}`);
-    listCourseInstructors(courseId)
-      .then((rows) => setInstructors(rows))
-      .catch(() => setInstructors([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseId, courses]);
 
@@ -176,16 +173,14 @@ export default function BatchCreate() {
       <Card>
         <CardHeader><p className="text-title-md font-semibold">Step 3 — Instructor</p></CardHeader>
         <CardBody>
-          {!courseId ? (
-            <p className="text-body-sm text-ink-outline">Select a course first</p>
-          ) : instructors.length === 0 ? (
-            <p className="text-body-sm text-danger">No instructors assigned to this course. Assign one from the Assign Instructors page first.</p>
+          {instructors.length === 0 ? (
+            <p className="text-body-sm text-danger">No instructors exist yet. Create one from the Instructors page first.</p>
           ) : (
             <Select
-              label="Instructor"
+              label="Instructor (optional — can be assigned later)"
               value={instructorId}
               onChange={(e) => setInstructorId(e.target.value)}
-              options={[{ value: "", label: "Unassigned" }, ...instructors.map((i) => ({ value: i.user_id, label: i.display_name }))]}
+              options={[{ value: "", label: "Unassigned" }, ...instructors.map((i) => ({ value: i.user_id, label: `${i.display_name} (${i.email})` }))]}
             />
           )}
         </CardBody>

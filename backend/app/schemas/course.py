@@ -81,5 +81,3 @@ class CoursePublic(BaseModel):
     created_at: Optional[datetime] = None
 
 
-class CourseInstructorAssign(BaseModel):
-    instructor_id: str

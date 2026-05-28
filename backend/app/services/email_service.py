@@ -1,21 +1,37 @@
 from __future__ import annotations
 
 from email.message import EmailMessage
-from typing import Optional
+from typing import Iterable, Optional
 
 import aiosmtplib
 
 from app.core.config import settings
 
 
-async def send_email(to_email: str, subject: str, html_body: str, text_body: Optional[str] = None) -> bool:
+Attachment = tuple[str, bytes, str]  # (filename, data, mime_type)
+
+
+async def send_email(
+    to_email: str,
+    subject: str,
+    html_body: str,
+    text_body: Optional[str] = None,
+    attachments: Optional[Iterable[Attachment]] = None,
+) -> bool:
     """Send email via SMTP. If SMTP is not configured, logs email content to console.
-    Returns True if sent (or logged to console as fallback)."""
+    Returns True if sent (or logged to console as fallback).
+
+    `attachments` is an iterable of (filename, bytes, mime_type) tuples. mime_type
+    should be like "application/pdf" — the maintype/subtype split is automatic.
+    """
 
     if not settings.smtp_enabled:
         print("=" * 60)
         print(f"[EMAIL][CONSOLE FALLBACK] To: {to_email}")
         print(f"[EMAIL][CONSOLE FALLBACK] Subject: {subject}")
+        if attachments:
+            for fname, data, mime in attachments:
+                print(f"[EMAIL][CONSOLE FALLBACK] Attachment: {fname} ({mime}, {len(data)} bytes)")
         print(f"[EMAIL][CONSOLE FALLBACK] Body:")
         print(text_body or html_body)
         print("=" * 60)
@@ -27,6 +43,14 @@ async def send_email(to_email: str, subject: str, html_body: str, text_body: Opt
     msg["Subject"] = subject
     msg.set_content(text_body or "Please view this email in HTML format.")
     msg.add_alternative(html_body, subtype="html")
+
+    if attachments:
+        for fname, data, mime in attachments:
+            if "/" in mime:
+                maintype, subtype = mime.split("/", 1)
+            else:
+                maintype, subtype = "application", "octet-stream"
+            msg.add_attachment(data, maintype=maintype, subtype=subtype, filename=fname)
 
     try:
         use_implicit_tls = settings.SMTP_PORT == 465
@@ -113,6 +137,66 @@ def render_student_welcome_email(
         </div>
         <a href="{login_url}" style="display:inline-block;background:#7c5800;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Sign In Now</a>
         <p style="color:#837560;font-size:13px;margin-top:20px;">Please change your password after your first login to keep your account secure.</p>
+      </div>
+    </body></html>
+    """
+    return subject, html, text
+
+
+def render_session_changed_email(
+    student_name: str,
+    batch_name: str,
+    session_title: str,
+    instructor_name: str,
+    changes_summary: str,
+) -> tuple[str, str, str]:
+    subject = f"Session updated: {session_title} — {batch_name}"
+    text = (
+        f"Hi {student_name},\n\n"
+        f"Your instructor {instructor_name} has updated a session in {batch_name}.\n\n"
+        f"Session: {session_title}\n"
+        f"What changed:\n{changes_summary}\n\n"
+        "Please check the latest details in your portal.\n\n"
+        "— Silicon Mango Academy"
+    )
+    html = f"""
+    <!doctype html><html><body style="font-family:Inter,sans-serif;background:#f8f9fa;padding:32px;">
+      <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;">
+        <h2 style="font-family:Manrope,sans-serif;color:#7c5800;margin:0 0 8px;">Session updated</h2>
+        <p style="color:#514532;line-height:1.5;">Hi {student_name}, your instructor <strong>{instructor_name}</strong> has updated a session in <strong>{batch_name}</strong>.</p>
+        <div style="background:#f3f4f5;border-radius:12px;padding:16px;margin:20px 0;">
+          <p style="margin:0 0 8px;font-weight:600;color:#191c1d;">{session_title}</p>
+          <pre style="margin:0;color:#514532;font-family:inherit;white-space:pre-wrap;">{changes_summary}</pre>
+        </div>
+        <p style="color:#837560;font-size:13px;">Open the student portal to see the latest schedule.</p>
+      </div>
+    </body></html>
+    """
+    return subject, html, text
+
+
+def render_certificate_issued_email(
+    student_name: str,
+    course_title: str,
+    batch_name: str,
+    verify_url: str,
+) -> tuple[str, str, str]:
+    subject = f"Your certificate is ready — {course_title}"
+    text = (
+        f"Hi {student_name},\n\n"
+        f"Congratulations on completing {course_title} ({batch_name}).\n\n"
+        f"Your certificate is attached to this email as a PDF.\n\n"
+        f"Verify it any time at: {verify_url}\n\n"
+        "— Silicon Mango Academy"
+    )
+    html = f"""
+    <!doctype html><html><body style="font-family:Inter,sans-serif;background:#f8f9fa;padding:32px;">
+      <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;">
+        <h2 style="font-family:Manrope,sans-serif;color:#7c5800;margin:0 0 8px;">Congratulations, {student_name}!</h2>
+        <p style="color:#514532;line-height:1.5;">You have successfully completed <strong>{course_title}</strong> ({batch_name}).</p>
+        <p style="color:#514532;line-height:1.5;">Your certificate is attached as a PDF.</p>
+        <a href="{verify_url}" style="display:inline-block;background:#7c5800;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Verify Certificate</a>
+        <p style="color:#837560;font-size:13px;margin-top:20px;">Anyone scanning the QR code on the certificate can verify it via the link above.</p>
       </div>
     </body></html>
     """

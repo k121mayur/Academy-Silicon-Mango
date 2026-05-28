@@ -26,7 +26,9 @@ from app.core.security import (
     create_access_token,
     create_refresh_token,
     decode_token,
+    hash_password,
     set_auth_cookies,
+    verify_password,
 )
 from app.db.session import get_db
 from app.dependencies.auth import get_current_user
@@ -179,6 +181,46 @@ async def logout(
 
     clear_auth_cookies(response)
     return MessageResponse(message="Logged out")
+
+
+from pydantic import BaseModel, Field as _PField
+
+
+class ChangePasswordPayload(BaseModel):
+    current_password: str = _PField(min_length=1)
+    new_password: str = _PField(min_length=8, max_length=128)
+
+
+@router.post("/change-password", response_model=MessageResponse)
+async def change_password(
+    payload: ChangePasswordPayload,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not user.hashed_password:
+        raise APIError(
+            code="VALIDATION",
+            message="This account uses a social login and has no password to change.",
+        )
+    if not verify_password(payload.current_password, user.hashed_password):
+        raise APIError(code="AUTH_BAD_PASSWORD", message="Current password is incorrect")
+    if payload.new_password == payload.current_password:
+        raise APIError(
+            code="VALIDATION",
+            message="New password must be different from the current one",
+        )
+    # Basic strength: at least 1 letter and 1 digit
+    if not any(c.isalpha() for c in payload.new_password) or not any(
+        c.isdigit() for c in payload.new_password
+    ):
+        raise APIError(
+            code="VALIDATION",
+            message="Password must contain at least one letter and one digit",
+        )
+
+    user.hashed_password = hash_password(payload.new_password)
+    await db.commit()
+    return MessageResponse(message="Password changed")
 
 
 @router.get("/me", response_model=MeResponse)

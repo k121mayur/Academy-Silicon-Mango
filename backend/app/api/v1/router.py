@@ -12,6 +12,8 @@ from app.api.v1.admin import (
     payments as admin_payments,
     users as admin_users,
 )
+from app.api.v1.instructor import router as instructor_router
+from app.api.v1.student import router as student_router
 from app.api.v1 import public as public_router
 
 api_router = APIRouter()
@@ -27,3 +29,6 @@ admin_router.include_router(admin_enrollments.router)
 admin_router.include_router(admin_certificates.router)
 admin_router.include_router(admin_payments.router)
 api_router.include_router(admin_router)
+
+api_router.include_router(instructor_router.router)
+api_router.include_router(student_router.router)

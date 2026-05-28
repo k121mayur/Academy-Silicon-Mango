@@ -13,11 +13,10 @@ from app.core.utils import slugify
 from app.db.session import get_db
 from app.dependencies.auth import require_admin
 from app.models.batch import Batch
-from app.models.course import Course, CourseInstructor, CourseType, DurationUnit
-from app.models.user import InstructorProfile, User, UserRole
+from app.models.course import Course, CourseType, DurationUnit
+from app.models.user import User
 from app.schemas.course import (
     CourseCreate,
-    CourseInstructorAssign,
     CoursePublic,
     CourseUpdate,
 )
@@ -253,76 +252,3 @@ async def upload_syllabus(
     return {"success": True, "data": {"syllabus_pdf_url": url}}
 
 
-# ---- Course-instructor assignment ----
-
-@router.get("/{course_id}/instructors")
-async def list_course_instructors(
-    course_id: str, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)
-):
-    course = await db.get(Course, course_id)
-    if not course:
-        raise APIError(code="NOT_FOUND", message="Course not found", status_code=404)
-    res = await db.execute(
-        select(CourseInstructor, InstructorProfile, User)
-        .join(User, User.id == CourseInstructor.instructor_id)
-        .join(InstructorProfile, InstructorProfile.user_id == User.id, isouter=True)
-        .where(CourseInstructor.course_id == course.id)
-    )
-    items = []
-    for ci, prof, user in res.all():
-        items.append(
-            {
-                "id": str(ci.id),
-                "user_id": str(user.id),
-                "email": user.email,
-                "display_name": prof.display_name if prof else user.email,
-                "avatar_url": prof.avatar_url if prof else None,
-            }
-        )
-    return {"success": True, "data": items}
-
-
-@router.post("/{course_id}/instructors")
-async def assign_course_instructor(
-    course_id: str,
-    payload: CourseInstructorAssign,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
-):
-    course = await db.get(Course, course_id)
-    if not course:
-        raise APIError(code="NOT_FOUND", message="Course not found", status_code=404)
-    user = await db.get(User, payload.instructor_id)
-    if not user or user.role != UserRole.instructor:
-        raise APIError(code="USER_002", message="Instructor not found", status_code=404)
-    existing = await db.execute(
-        select(CourseInstructor).where(
-            CourseInstructor.course_id == course.id, CourseInstructor.instructor_id == user.id
-        )
-    )
-    if existing.scalar_one_or_none():
-        return {"success": True, "message": "Already assigned"}
-    db.add(CourseInstructor(course_id=course.id, instructor_id=user.id))
-    await db.commit()
-    print(f"[ADMIN] Assigned instructor {user.email} to course {course.slug}")
-    return {"success": True, "message": "Assigned"}
-
-
-@router.delete("/{course_id}/instructors/{instructor_id}")
-async def remove_course_instructor(
-    course_id: str,
-    instructor_id: str,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
-):
-    res = await db.execute(
-        select(CourseInstructor).where(
-            CourseInstructor.course_id == course_id, CourseInstructor.instructor_id == instructor_id
-        )
-    )
-    ci = res.scalar_one_or_none()
-    if not ci:
-        raise APIError(code="NOT_FOUND", message="Assignment not found", status_code=404)
-    await db.delete(ci)
-    await db.commit()
-    return {"success": True, "message": "Removed"}
