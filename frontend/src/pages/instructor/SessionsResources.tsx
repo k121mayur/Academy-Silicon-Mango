@@ -8,7 +8,7 @@ import { Select } from "@/components/ui/Select";
 import { Modal } from "@/components/ui/Modal";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { FileUpload } from "@/components/shared/FileUpload";
-import { extractErrorMessage } from "@/lib/api";
+import { absoluteApiUrl, extractErrorMessage } from "@/lib/api";
 import {
   addResource,
   createSession,
@@ -151,7 +151,7 @@ export default function SessionsResources() {
                           <span className="icon text-ink-outline text-[18px]">
                             {r.resource_type === "video" ? "play_circle" : r.resource_type === "link" ? "link" : "description"}
                           </span>
-                          <a href={r.url.startsWith("/") ? `${apiOrigin()}${r.url}` : r.url} target="_blank" rel="noreferrer" className="truncate text-primary hover:underline">
+                          <a href={absoluteApiUrl(r.url)} target="_blank" rel="noreferrer" className="truncate text-primary hover:underline">
                             {r.title}
                           </a>
                         </div>
@@ -486,7 +486,3 @@ function toLocalInput(iso: string): string {
   }
 }
 
-function apiOrigin(): string {
-  const base = (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:8085";
-  return base.replace(/\/api\/v1$/, "");
-}

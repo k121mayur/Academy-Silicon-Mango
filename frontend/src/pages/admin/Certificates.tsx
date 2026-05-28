@@ -5,7 +5,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
 import { FileUpload } from "@/components/shared/FileUpload";
-import { extractErrorMessage } from "@/lib/api";
+import { absoluteApiUrl, extractErrorMessage } from "@/lib/api";
 import {
   batchEnrollments,
   generateCertificates,
@@ -147,7 +147,7 @@ export default function AdminCertificates() {
       // via a fetch-then-upload roundtrip.
       let toUpload: File | null = file;
       if (!toUpload && template?.template_url) {
-        const blob = await fetch(absoluteUrl(template.template_url)).then((r) => r.blob());
+        const blob = await fetch(absoluteApiUrl(template.template_url)).then((r) => r.blob());
         const ext = template.template_url.split(".").pop() || "bin";
         toUpload = new File([blob], `template.${ext}`, { type: blob.type });
       }
@@ -272,7 +272,7 @@ export default function AdminCertificates() {
                 />
                 {template?.template_url && !file && (
                   <a
-                    href={absoluteUrl(template.template_url)}
+                    href={absoluteApiUrl(template.template_url)}
                     target="_blank"
                     rel="noreferrer"
                     className="text-body-sm text-primary hover:underline"
@@ -476,19 +476,6 @@ function mergeConfig(base: CertificateFieldConfig, override: Partial<Certificate
 
 function guessTemplateType(url: string): "pdf" | "image" {
   return url.toLowerCase().endsWith(".pdf") ? "pdf" : "image";
-}
-
-function absoluteUrl(url: string): string {
-  if (
-    url.startsWith("http://") ||
-    url.startsWith("https://") ||
-    url.startsWith("blob:") ||
-    url.startsWith("data:")
-  ) {
-    return url;
-  }
-  const apiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:8085";
-  return apiBase.replace(/\/api\/v1$/, "") + url;
 }
 
 function formatDate(iso: string): string {

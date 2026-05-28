@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { FileUpload } from "@/components/shared/FileUpload";
-import { extractErrorMessage } from "@/lib/api";
+import { absoluteApiUrl, extractErrorMessage } from "@/lib/api";
 import {
   fetchBatchAssignments,
   fetchBatchSessions,
@@ -253,7 +253,7 @@ export default function StudentDashboard() {
                     <p className="text-label text-ink-outline">{c.batch_name} · issued {c.issued_at?.slice(0, 10)}</p>
                   </div>
                   {c.pdf_url && (
-                    <a href={c.pdf_url.startsWith("/") ? `${apiOrigin()}${c.pdf_url}` : c.pdf_url} target="_blank" rel="noreferrer">
+                    <a href={absoluteApiUrl(c.pdf_url)} target="_blank" rel="noreferrer">
                       <Button size="sm" leftIcon="download">Download PDF</Button>
                     </a>
                   )}
@@ -360,7 +360,3 @@ function SubmitModal({
   );
 }
 
-function apiOrigin(): string {
-  const base = (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:8085";
-  return base.replace(/\/api\/v1$/, "");
-}

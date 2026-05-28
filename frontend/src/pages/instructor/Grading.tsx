@@ -6,7 +6,7 @@ import { Select } from "@/components/ui/Select";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
-import { extractErrorMessage } from "@/lib/api";
+import { absoluteApiUrl, extractErrorMessage } from "@/lib/api";
 import {
   fetchSubmissions,
   gradeSubmission,
@@ -114,7 +114,7 @@ export default function GradingPage() {
                 </p>
                 {s.content && <p className="text-body-sm text-ink-variant truncate mt-1">{s.content}</p>}
                 {s.file_url && (
-                  <a href={s.file_url.startsWith("/") ? `${apiOrigin()}${s.file_url}` : s.file_url} target="_blank" rel="noreferrer" className="text-body-sm text-primary hover:underline">
+                  <a href={absoluteApiUrl(s.file_url)} target="_blank" rel="noreferrer" className="text-body-sm text-primary hover:underline">
                     Open file ↗
                   </a>
                 )}
@@ -204,7 +204,7 @@ function GradeModal({
           </div>
         )}
         {submission.file_url && (
-          <a href={submission.file_url.startsWith("/") ? `${apiOrigin()}${submission.file_url}` : submission.file_url} target="_blank" rel="noreferrer" className="text-body-sm text-primary hover:underline">
+          <a href={absoluteApiUrl(submission.file_url)} target="_blank" rel="noreferrer" className="text-body-sm text-primary hover:underline">
             Open submitted file ↗
           </a>
         )}
@@ -231,7 +231,3 @@ function GradeModal({
   );
 }
 
-function apiOrigin(): string {
-  const base = (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:8085";
-  return base.replace(/\/api\/v1$/, "");
-}
