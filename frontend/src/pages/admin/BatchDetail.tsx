@@ -136,8 +136,19 @@ export default function BatchDetail() {
     if (!id) return;
     setBusy(true);
     try {
-      await completeBatch(id);
-      toast.success("Batch marked complete and locked");
+      const result = await completeBatch(id);
+      const c = result.certificates;
+      if (c.template_missing) {
+        toast.error("Batch locked but no certificate template — upload one to email certs");
+      } else if (c.emailed > 0 && c.failed === 0) {
+        toast.success(`Batch completed — ${c.emailed} certificate(s) emailed`);
+      } else if (c.emailed > 0 && c.failed > 0) {
+        toast.success(`Batch completed — ${c.emailed} emailed, ${c.failed} failed`);
+      } else if (c.failed > 0) {
+        toast.error(`Batch locked but all ${c.failed} certificate emails failed`);
+      } else {
+        toast.success("Batch marked complete and locked");
+      }
       setCompleteOpen(false);
       refresh();
     } catch (e) {
@@ -317,9 +328,9 @@ export default function BatchDetail() {
         open={completeOpen}
         onClose={() => setCompleteOpen(false)}
         onConfirm={onComplete}
-        title="Mark batch complete?"
-        description="Once completed, the batch is locked. You can still generate certificates from Batch Operations."
-        confirmLabel="Complete batch"
+        title="Mark batch complete and issue certificates?"
+        description="The batch will be locked, and a certificate PDF will be rendered and emailed to every enrolled student. Make sure the certificate template is uploaded first."
+        confirmLabel="Complete & email certificates"
         loading={busy}
       />
 

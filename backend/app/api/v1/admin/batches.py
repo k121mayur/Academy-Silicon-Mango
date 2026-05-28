@@ -33,6 +33,7 @@ from app.schemas.batch import (
     EnrollmentCreate,
     EnrollmentPublic,
 )
+from app.services.certificate_issue_service import issue_and_email_all_for_batch
 from app.services.planning_service import sync_inherited_sessions
 
 router = APIRouter(prefix="/batches", tags=["admin:batches"])
@@ -385,16 +386,48 @@ async def remove_enrollment(
     return {"success": True, "message": "Enrollment removed"}
 
 
-@router.post("/{batch_id}/complete", response_model=BatchPublic)
+@router.post("/{batch_id}/complete")
 async def complete_batch(
     batch_id: str, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)
 ):
     batch = await db.get(Batch, batch_id)
     if not batch:
         raise APIError(code="NOT_FOUND", message="Batch not found", status_code=404)
+
+    enr_res = await db.execute(
+        select(Enrollment).where(
+            Enrollment.batch_id == batch.id,
+            Enrollment.status.in_([EnrollmentStatus.active, EnrollmentStatus.completed]),
+        )
+    )
+    enrollments = list(enr_res.scalars().all())
+
+    summary = await issue_and_email_all_for_batch(db, batch, enrollments)
+
+    for enr in enrollments:
+        enr.status = EnrollmentStatus.completed
+
     batch.status = BatchStatus.completed
     batch.is_locked = True
     await db.commit()
     await db.refresh(batch)
-    print(f"[ADMIN] Batch completed and locked: {batch.name}")
-    return await _enriched_batch(db, batch)
+    print(
+        f"[ADMIN] Batch completed and locked: {batch.name} — "
+        f"certs created={summary.created}, emailed={summary.emailed}, "
+        f"failed={summary.failed}, template_missing={summary.skipped_no_template}"
+    )
+
+    return {
+        "success": True,
+        "data": {
+            "batch": await _enriched_batch(db, batch),
+            "certificates": {
+                "created": summary.created,
+                "rendered": summary.rendered,
+                "emailed": summary.emailed,
+                "failed": summary.failed,
+                "template_missing": summary.skipped_no_template,
+                "errors": summary.errors,
+            },
+        },
+    }

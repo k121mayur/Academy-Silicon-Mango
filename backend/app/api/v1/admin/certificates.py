@@ -10,12 +10,12 @@ from app.core.exceptions import APIError
 from app.db.session import get_db
 from app.dependencies.auth import require_admin
 from app.models.batch import Batch, BatchStatus, Enrollment, EnrollmentStatus
-from app.models.certificate import Certificate, CertificateEmailStatus, CertificateTemplate
+from app.models.certificate import Certificate, CertificateTemplate
 from app.models.course import Course
 from app.models.user import StudentProfile, User
 from app.schemas.certificate import CertificatePublic, CertificateTemplatePublic
-from app.services.certificate_render_service import render_certificate
-from app.services.storage_service import save_bytes, save_upload
+from app.services.certificate_issue_service import issue_and_email_all_for_batch
+from app.services.storage_service import save_upload
 
 router = APIRouter(tags=["admin:certificates"])
 
@@ -133,82 +133,37 @@ async def generate_certificates(
     if batch.status != BatchStatus.completed:
         raise APIError(code="CERT_002", message="Batch not yet completed")
 
-    course = await db.get(Course, batch.course_id)
-    tmpl_res = await db.execute(
-        select(CertificateTemplate).where(CertificateTemplate.course_id == batch.course_id)
+    res = await db.execute(
+        select(Enrollment).where(
+            Enrollment.batch_id == batch.id,
+            Enrollment.status.in_([EnrollmentStatus.active, EnrollmentStatus.completed]),
+        )
     )
-    template = tmpl_res.scalar_one_or_none()
-    if not template or not template.template_url:
+    enrolls = list(res.scalars().all())
+
+    summary = await issue_and_email_all_for_batch(db, batch, enrolls)
+    if summary.skipped_no_template:
+        await db.rollback()
         raise APIError(
             code="CERT_003",
             message="No certificate template configured for this course. Upload one before generating.",
         )
 
-    res = await db.execute(
-        select(Enrollment).where(
-            Enrollment.batch_id == batch.id, Enrollment.status == EnrollmentStatus.active
-        )
-    )
-    enrolls = res.scalars().all()
-
-    created = 0
-    rendered = 0
-    failed = 0
-    for enr in enrolls:
-        existing_res = await db.execute(
-            select(Certificate).where(
-                Certificate.batch_id == batch.id, Certificate.student_id == enr.student_id
-            )
-        )
-        cert = existing_res.scalar_one_or_none()
-        is_new = cert is None
-        if is_new:
-            cert = Certificate(
-                batch_id=batch.id,
-                student_id=enr.student_id,
-                email_status=CertificateEmailStatus.pending,
-            )
-            db.add(cert)
-            await db.flush()
-            created += 1
-
-        if cert.pdf_url:
-            continue
-
-        prof_res = await db.execute(
-            select(StudentProfile, User)
-            .join(User, User.id == StudentProfile.user_id, isouter=True)
-            .where(StudentProfile.user_id == enr.student_id)
-        )
-        row = prof_res.first()
-        if row:
-            prof, user = row
-            student_name = (prof.display_name if prof and prof.display_name else (user.email if user else "")) or ""
-        else:
-            user = await db.get(User, enr.student_id)
-            student_name = user.email if user else ""
-
-        try:
-            pdf_bytes = render_certificate(
-                template_url=template.template_url,
-                field_config=template.field_config or {},
-                student_name=student_name,
-                course_title=course.title if course else "",
-                end_date=batch.end_date,
-                cert_id=str(cert.id),
-            )
-            pdf_url = await save_bytes(pdf_bytes, "certificates", "pdf", filename=f"{cert.id}.pdf")
-            cert.pdf_url = pdf_url
-            rendered += 1
-        except Exception as exc:
-            failed += 1
-            print(f"[ADMIN] Certificate render failed for student {enr.student_id}: {exc}")
-
     await db.commit()
     print(
-        f"[ADMIN] Batch {batch.name}: created={created}, rendered={rendered}, failed={failed}"
+        f"[ADMIN] Batch {batch.name}: created={summary.created}, rendered={summary.rendered}, "
+        f"emailed={summary.emailed}, failed={summary.failed}"
     )
-    return {"success": True, "data": {"created": created, "rendered": rendered, "failed": failed}}
+    return {
+        "success": True,
+        "data": {
+            "created": summary.created,
+            "rendered": summary.rendered,
+            "emailed": summary.emailed,
+            "failed": summary.failed,
+            "errors": summary.errors,
+        },
+    }
 
 
 @router.post("/certificates/{cert_id}/resend")
@@ -220,7 +175,32 @@ async def resend_certificate(
     cert = await db.get(Certificate, cert_id)
     if not cert:
         raise APIError(code="NOT_FOUND", message="Certificate not found", status_code=404)
-    cert.email_status = CertificateEmailStatus.pending
+
+    batch = await db.get(Batch, cert.batch_id)
+    if not batch:
+        raise APIError(code="NOT_FOUND", message="Parent batch not found", status_code=404)
+
+    enr_res = await db.execute(
+        select(Enrollment).where(
+            Enrollment.batch_id == batch.id,
+            Enrollment.student_id == cert.student_id,
+        )
+    )
+    enr = enr_res.scalar_one_or_none()
+    if enr is None:
+        raise APIError(code="NOT_FOUND", message="Enrollment not found", status_code=404)
+
+    summary = await issue_and_email_all_for_batch(db, batch, [enr])
+    if summary.skipped_no_template:
+        await db.rollback()
+        raise APIError(
+            code="CERT_003",
+            message="No certificate template configured for this course.",
+        )
     await db.commit()
-    print(f"[ADMIN] Certificate {cert_id} marked for resend")
-    return {"success": True, "message": "Queued for resend"}
+    print(f"[ADMIN] Certificate {cert_id} resent — emailed={summary.emailed}, failed={summary.failed}")
+    return {
+        "success": True,
+        "message": "Resent" if summary.emailed else "Failed to resend",
+        "data": {"emailed": summary.emailed, "failed": summary.failed, "errors": summary.errors},
+    }

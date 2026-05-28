@@ -37,10 +37,23 @@ export default function BatchOps() {
     if (!batchId) return;
     setBusy(true);
     try {
-      await completeBatch(batchId);
-      toast.success("Batch completed");
+      const result = await completeBatch(batchId);
+      const c = result.certificates;
+      if (c.template_missing) {
+        toast.error("Batch completed but no certificate template — upload one to email certs");
+      } else if (c.emailed > 0 && c.failed === 0) {
+        toast.success(`Batch completed — ${c.emailed} certificate(s) emailed`);
+      } else if (c.emailed > 0 && c.failed > 0) {
+        toast.success(`Batch completed — ${c.emailed} emailed, ${c.failed} failed`);
+      } else if (c.failed > 0) {
+        toast.error(`Batch completed but all ${c.failed} certificate emails failed`);
+      } else {
+        toast.success("Batch completed (no enrollments to certify)");
+      }
       const refreshed = await listBatches({ limit: 100 });
       setBatches(refreshed.data);
+      const list = await listCertificates(batchId);
+      setCerts(list);
       setConfirmComplete(false);
     } catch (e) {
       toast.error(extractErrorMessage(e));
@@ -54,7 +67,11 @@ export default function BatchOps() {
     setBusy(true);
     try {
       const res = await generateCertificates(batchId);
-      toast.success(`Created ${res.created} certificates`);
+      if (res.failed > 0) {
+        toast.success(`Emailed ${res.emailed} certificate(s), ${res.failed} failed`);
+      } else {
+        toast.success(`Emailed ${res.emailed} certificate(s)`);
+      }
       const list = await listCertificates(batchId);
       setCerts(list);
     } catch (e) {
@@ -107,7 +124,7 @@ export default function BatchOps() {
             <CardHeader className="flex items-center justify-between">
               <p className="text-title-md font-semibold">Certificates</p>
               <Button size="sm" leftIcon="workspace_premium" onClick={onGenerate} loading={busy} disabled={selected.status !== "completed"}>
-                Generate for all
+                Generate & email all
               </Button>
             </CardHeader>
             <CardBody className="p-0">
@@ -142,9 +159,9 @@ export default function BatchOps() {
         open={confirmComplete}
         onClose={() => setConfirmComplete(false)}
         onConfirm={onComplete}
-        title="Complete and lock batch?"
-        description="Once locked, edits and enrollments are disabled. You can still generate certificates."
-        confirmLabel="Complete batch"
+        title="Complete batch and email certificates?"
+        description="The batch will be locked, and certificates will be rendered + emailed immediately to every enrolled student. A certificate template must be uploaded for this course."
+        confirmLabel="Complete & email"
         loading={busy}
       />
     </div>

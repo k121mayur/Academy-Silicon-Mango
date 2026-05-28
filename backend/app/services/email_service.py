@@ -180,23 +180,30 @@ def render_certificate_issued_email(
     course_title: str,
     batch_name: str,
     verify_url: str,
+    instructor_name: Optional[str] = None,
 ) -> tuple[str, str, str]:
     subject = f"Your certificate is ready — {course_title}"
+    with_instructor = f" under {instructor_name}" if instructor_name else ""
     text = (
         f"Hi {student_name},\n\n"
-        f"Congratulations on completing {course_title} ({batch_name}).\n\n"
+        f"Congratulations! You have successfully completed {course_title} ({batch_name}){with_instructor}.\n\n"
         f"Your certificate is attached to this email as a PDF.\n\n"
         f"Verify it any time at: {verify_url}\n\n"
+        "Keep learning, keep growing.\n\n"
         "— Silicon Mango Academy"
+    )
+    instructor_html = (
+        f' under <strong>{instructor_name}</strong>' if instructor_name else ""
     )
     html = f"""
     <!doctype html><html><body style="font-family:Inter,sans-serif;background:#f8f9fa;padding:32px;">
       <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;">
-        <h2 style="font-family:Manrope,sans-serif;color:#7c5800;margin:0 0 8px;">Congratulations, {student_name}!</h2>
-        <p style="color:#514532;line-height:1.5;">You have successfully completed <strong>{course_title}</strong> ({batch_name}).</p>
-        <p style="color:#514532;line-height:1.5;">Your certificate is attached as a PDF.</p>
+        <h2 style="font-family:Manrope,sans-serif;color:#7c5800;margin:0 0 8px;">Congratulations, {student_name}! 🎉</h2>
+        <p style="color:#514532;line-height:1.5;">You have successfully completed <strong>{course_title}</strong> ({batch_name}){instructor_html}.</p>
+        <p style="color:#514532;line-height:1.5;">Your certificate is attached as a PDF. Save it, share it, and wear it with pride.</p>
         <a href="{verify_url}" style="display:inline-block;background:#7c5800;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Verify Certificate</a>
         <p style="color:#837560;font-size:13px;margin-top:20px;">Anyone scanning the QR code on the certificate can verify it via the link above.</p>
+        <p style="color:#837560;font-size:13px;margin-top:12px;">Keep learning, keep growing.<br/>— Silicon Mango Academy</p>
       </div>
     </body></html>
     """

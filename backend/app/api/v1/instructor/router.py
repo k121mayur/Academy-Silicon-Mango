@@ -25,7 +25,7 @@ from app.models.batch import (
     Enrollment,
     EnrollmentStatus,
 )
-from app.models.certificate import Certificate, CertificateEmailStatus, CertificateTemplate
+from app.models.certificate import Certificate
 from app.models.course import Course
 from app.models.session import (
     ResourceType,
@@ -36,13 +36,12 @@ from app.models.session import (
     SessionType,
 )
 from app.models.user import InstructorProfile, StudentProfile, User, UserRole
-from app.services.certificate_render_service import render_certificate
+from app.services.certificate_issue_service import issue_and_email_all_for_batch
 from app.services.email_service import (
-    render_certificate_issued_email,
     render_session_changed_email,
     send_email,
 )
-from app.services.storage_service import save_bytes, save_upload
+from app.services.storage_service import save_upload
 
 router = APIRouter(prefix="/instructor", tags=["instructor"])
 
@@ -992,68 +991,6 @@ class CompletePayload(BaseModel):
     student_ids: list[str]
 
 
-async def _generate_and_send_cert(
-    db: AsyncSession,
-    batch: Batch,
-    course: Optional[Course],
-    student: User,
-    student_name: str,
-    template: CertificateTemplate,
-) -> tuple[bool, Optional[str]]:
-    """Generate + email a cert for one student. Returns (ok, error_msg)."""
-    try:
-        # Reuse existing or create
-        cert_res = await db.execute(
-            select(Certificate).where(
-                Certificate.batch_id == batch.id, Certificate.student_id == student.id
-            )
-        )
-        cert = cert_res.scalar_one_or_none()
-        if not cert:
-            cert = Certificate(
-                batch_id=batch.id,
-                student_id=student.id,
-                email_status=CertificateEmailStatus.pending,
-            )
-            db.add(cert)
-            await db.flush()
-
-        pdf_bytes = render_certificate(
-            template_url=template.template_url,
-            field_config=template.field_config or {},
-            student_name=student_name,
-            course_title=course.title if course else "",
-            end_date=batch.end_date,
-            cert_id=str(cert.id),
-        )
-        pdf_url = await save_bytes(pdf_bytes, "certificates", "pdf", filename=f"{cert.id}.pdf")
-        cert.pdf_url = pdf_url
-
-        # Email
-        from app.core.config import settings as _s
-
-        verify_url = f"{_s.FRONTEND_URL.rstrip('/')}/verify/{cert.id}"
-        subj, html, text = render_certificate_issued_email(
-            student_name=student_name,
-            course_title=course.title if course else "",
-            batch_name=batch.name,
-            verify_url=verify_url,
-        )
-        sent = await send_email(
-            student.email,
-            subj,
-            html,
-            text,
-            attachments=[(f"certificate-{batch.name}.pdf", pdf_bytes, "application/pdf")],
-        )
-        cert.email_status = CertificateEmailStatus.sent if sent else CertificateEmailStatus.failed
-        if sent:
-            cert.emailed_at = datetime.utcnow()
-        return True, None
-    except Exception as exc:
-        return False, str(exc)
-
-
 @router.post("/batches/{batch_id}/complete-students")
 async def complete_students(
     batch_id: str,
@@ -1065,41 +1002,25 @@ async def complete_students(
     if not payload.student_ids:
         raise APIError(code="VALIDATION", message="Select at least one student")
 
-    course = await db.get(Course, batch.course_id)
-    tmpl_res = await db.execute(
-        select(CertificateTemplate).where(CertificateTemplate.course_id == batch.course_id)
+    enr_res = await db.execute(
+        select(Enrollment).where(
+            Enrollment.batch_id == batch.id,
+            Enrollment.student_id.in_(payload.student_ids),
+        )
     )
-    template = tmpl_res.scalar_one_or_none()
-    if not template or not template.template_url:
+    enrollments = list(enr_res.scalars().all())
+
+    summary = await issue_and_email_all_for_batch(db, batch, enrollments)
+    if summary.skipped_no_template:
+        await db.rollback()
         raise APIError(
             code="CERT_003",
             message="No certificate template configured for this course. Ask the admin to upload one in /admin/certificates.",
         )
 
-    enr_res = await db.execute(
-        select(Enrollment, User, StudentProfile)
-        .join(User, User.id == Enrollment.student_id)
-        .join(StudentProfile, StudentProfile.user_id == User.id, isouter=True)
-        .where(
-            Enrollment.batch_id == batch.id,
-            Enrollment.student_id.in_(payload.student_ids),
-        )
-    )
-    completed = 0
-    failed = 0
-    errors: list[str] = []
-    for enr, user, prof in enr_res.all():
-        student_name = (prof.display_name if prof and prof.display_name else user.email) or user.email
+    for enr in enrollments:
         enr.status = EnrollmentStatus.completed
-        ok, err = await _generate_and_send_cert(db, batch, course, user, student_name, template)
-        if ok:
-            completed += 1
-        else:
-            failed += 1
-            errors.append(f"{user.email}: {err}")
 
-    # If all enrolled students are now completed (or there are no remaining active),
-    # mark the batch itself as completed.
     remaining = (
         await db.execute(
             select(func.count(Enrollment.id)).where(
@@ -1114,9 +1035,9 @@ async def complete_students(
     return {
         "success": True,
         "data": {
-            "completed": completed,
-            "failed": failed,
-            "errors": errors,
+            "completed": summary.emailed,
+            "failed": summary.failed,
+            "errors": summary.errors,
             "batch_status": batch.status.value,
         },
     }
@@ -1133,31 +1054,19 @@ async def resend_certificates(
     if not payload.student_ids:
         raise APIError(code="VALIDATION", message="Select at least one student")
 
-    course = await db.get(Course, batch.course_id)
-    tmpl_res = await db.execute(
-        select(CertificateTemplate).where(CertificateTemplate.course_id == batch.course_id)
-    )
-    template = tmpl_res.scalar_one_or_none()
-    if not template or not template.template_url:
-        raise APIError(code="CERT_003", message="No certificate template configured")
-
-    cert_res = await db.execute(
-        select(Certificate, User, StudentProfile)
-        .join(User, User.id == Certificate.student_id)
-        .join(StudentProfile, StudentProfile.user_id == User.id, isouter=True)
-        .where(
-            Certificate.batch_id == batch.id,
-            Certificate.student_id.in_(payload.student_ids),
+    enr_res = await db.execute(
+        select(Enrollment).where(
+            Enrollment.batch_id == batch.id,
+            Enrollment.student_id.in_(payload.student_ids),
         )
     )
-    resent = 0
-    failed = 0
-    for cert, user, prof in cert_res.all():
-        student_name = (prof.display_name if prof and prof.display_name else user.email) or user.email
-        ok, _ = await _generate_and_send_cert(db, batch, course, user, student_name, template)
-        if ok:
-            resent += 1
-        else:
-            failed += 1
+    enrollments = list(enr_res.scalars().all())
+
+    summary = await issue_and_email_all_for_batch(db, batch, enrollments)
+    if summary.skipped_no_template:
+        await db.rollback()
+        raise APIError(code="CERT_003", message="No certificate template configured")
+    resent = summary.emailed
+    failed = summary.failed
     await db.commit()
     return {"success": True, "data": {"resent": resent, "failed": failed}}

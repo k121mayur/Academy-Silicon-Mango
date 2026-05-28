@@ -182,9 +182,20 @@ export async function batchEnroll(id: string, studentId: string) {
 export async function batchRemoveEnrollment(batchId: string, enrollmentId: string) {
   await api.delete(`/admin/batches/${batchId}/enrollments/${enrollmentId}`);
 }
+export interface BatchCompletionResult {
+  batch: BatchDTO;
+  certificates: {
+    created: number;
+    rendered: number;
+    emailed: number;
+    failed: number;
+    template_missing: boolean;
+    errors: string[];
+  };
+}
 export async function completeBatch(id: string) {
   const res = await api.post(`/admin/batches/${id}/complete`);
-  return res.data as BatchDTO;
+  return res.data.data as BatchCompletionResult;
 }
 
 // ---- Users ----
@@ -252,7 +263,7 @@ export async function listCertificates(batchId?: string) {
 }
 export async function generateCertificates(batchId: string) {
   const res = await api.post("/admin/certificates/generate", { batch_id: batchId });
-  return res.data.data as { created: number };
+  return res.data.data as { created: number; rendered: number; emailed: number; failed: number; errors: string[] };
 }
 export async function resendCertificate(certId: string) {
   await api.post(`/admin/certificates/${certId}/resend`);
