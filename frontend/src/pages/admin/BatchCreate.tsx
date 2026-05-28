@@ -68,15 +68,27 @@ export default function BatchCreate() {
     const e: Record<string, string> = {};
     if (!courseId) e.courseId = "Please select a course";
     if (!name.trim()) e.name = "Batch name is required";
+    if (!deliveryMode) e.deliveryMode = "Delivery mode is required";
+    if (!capacity) {
+      e.capacity = "Capacity is required";
+    } else {
+      const capNum = parseInt(capacity);
+      if (isNaN(capNum) || capNum < 1) e.capacity = "Capacity must be a positive number";
+    }
     if (!startDate) e.startDate = "Start date is required";
     if (!endDate) e.endDate = "End date is required";
     if (startDate && endDate && endDate < startDate) e.endDate = "End date must be after start date";
+    if (!instructorId) e.instructorId = "Instructor is required";
     if (deliveryMode === "live") {
       slots.forEach((s, i) => {
         if (s.start_time >= s.end_time) e[`slot_${i}`] = `Slot ${i + 1}: end time must be after start time`;
       });
     }
     setErrors(e);
+    if (Object.keys(e).length > 0) {
+      const first = Object.values(e)[0];
+      toast.error(first);
+    }
     return Object.keys(e).length === 0;
   }
 
@@ -127,10 +139,11 @@ export default function BatchCreate() {
           <Select
             label="Delivery Mode"
             value={deliveryMode}
-            onChange={(e) => setDeliveryMode(e.target.value)}
+            onChange={(e) => { setDeliveryMode(e.target.value); clearErr("deliveryMode"); }}
             options={[{ value: "live", label: "Live" }, { value: "recorded", label: "Recorded" }]}
+            error={errors.deliveryMode}
           />
-          <Input label="Capacity (optional)" type="number" min={1} value={capacity} onChange={(e) => setCapacity(e.target.value)} />
+          <Input label="Capacity" type="number" min={1} value={capacity} onChange={(e) => { setCapacity(e.target.value); clearErr("capacity"); }} error={errors.capacity} />
           <Input label="Start date" type="date" value={startDate} onChange={(e) => { setStartDate(e.target.value); clearErr("startDate"); }} error={errors.startDate} />
           <Input label="End date" type="date" value={endDate} onChange={(e) => { setEndDate(e.target.value); clearErr("endDate"); }} error={errors.endDate} />
         </CardBody>
@@ -177,10 +190,11 @@ export default function BatchCreate() {
             <p className="text-body-sm text-danger">No instructors exist yet. Create one from the Instructors page first.</p>
           ) : (
             <Select
-              label="Instructor (optional — can be assigned later)"
+              label="Instructor"
               value={instructorId}
-              onChange={(e) => setInstructorId(e.target.value)}
-              options={[{ value: "", label: "Unassigned" }, ...instructors.map((i) => ({ value: i.user_id, label: `${i.display_name} (${i.email})` }))]}
+              onChange={(e) => { setInstructorId(e.target.value); clearErr("instructorId"); }}
+              options={[{ value: "", label: "Select an instructor" }, ...instructors.map((i) => ({ value: i.user_id, label: `${i.display_name} (${i.email})` }))]}
+              error={errors.instructorId}
             />
           )}
         </CardBody>

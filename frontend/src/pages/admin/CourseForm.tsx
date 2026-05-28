@@ -54,22 +54,60 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
     setTagInput("");
   };
 
+  function stripHtml(html: string): string {
+    return html.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim();
+  }
+
   function validate(): boolean {
     const e: Record<string, string> = {};
     if (!title.trim()) e.title = "Title is required";
     if (!category.trim()) e.category = "Category is required";
-    const priceVal = parseFloat(price);
-    if (price !== "" && isNaN(priceVal)) e.price = "Price must be a valid number";
-    syllabus.forEach((s, i) => {
-      if (!s.title.trim()) e[`syllabus_${i}`] = `Module ${i + 1}: title is required`;
-    });
+    if (!courseType) e.courseType = "Course type is required";
+    if (!description || !stripHtml(description)) e.description = "Description is required";
+    if (!durationUnit) e.durationUnit = "Duration unit is required";
+    if (!durationValue || durationValue < 1) e.durationValue = "Duration must be at least 1";
+
+    if (price === "" || price === null || price === undefined) {
+      e.price = "Price is required";
+    } else {
+      const priceVal = parseFloat(price);
+      if (isNaN(priceVal) || priceVal < 0) e.price = "Price must be a valid non-negative number";
+    }
+    if (discount === "" || discount === null || discount === undefined) {
+      e.discount = "Discount is required (use 0 for no discount)";
+    } else {
+      const discountVal = parseFloat(discount);
+      if (isNaN(discountVal) || discountVal < 0 || discountVal > 100) {
+        e.discount = "Discount must be between 0 and 100";
+      }
+    }
+
+    if (!bannerFile && !bannerUrl) e.banner = "Banner image is required";
+    if (!syllabusFile && !initial?.syllabus_pdf_url) e.syllabusPdf = "Syllabus PDF is required";
+
+    if (tags.length === 0) e.tags = "At least one tag is required";
+
+    if (syllabus.length === 0) {
+      e.syllabusItems = "At least one syllabus item is required";
+    } else {
+      syllabus.forEach((s, i) => {
+        if (!s.title.trim()) e[`syllabus_${i}`] = `Module ${i + 1}: title is required`;
+      });
+    }
+
+    if (criteria.length === 0) {
+      e.criteriaList = "At least one certification criterion is required";
+    } else {
+      criteria.forEach((c, i) => {
+        if (!c.text.trim()) e[`crit_${i}`] = `Criterion ${i + 1}: text is required`;
+      });
+    }
+
     faqs.forEach((f, i) => {
       if (!f.question.trim()) e[`faq_q_${i}`] = `FAQ ${i + 1}: question is required`;
       if (!f.answer.trim()) e[`faq_a_${i}`] = `FAQ ${i + 1}: answer is required`;
     });
-    criteria.forEach((c, i) => {
-      if (!c.text.trim()) e[`crit_${i}`] = `Criterion ${i + 1}: text is required`;
-    });
+
     setErrors(e);
     if (Object.keys(e).length > 0) {
       const first = Object.values(e)[0];
@@ -150,10 +188,14 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
           <Select
             label="Course Type"
             value={courseType}
-            onChange={(e) => setCourseType(e.target.value)}
+            onChange={(e) => { setCourseType(e.target.value); clearErr("courseType"); }}
             options={[{ value: "live", label: "Live cohort" }, { value: "self_paced", label: "Self-paced" }]}
+            error={errors.courseType}
           />
-          <RichTextEditor label="Description" value={description} onChange={setDescription} placeholder="Describe what students will learn in this course…" containerClassName="md:col-span-2" minHeight={160} />
+          <div className="md:col-span-2">
+            <RichTextEditor label="Description" value={description} onChange={(v) => { setDescription(v); clearErr("description"); }} placeholder="Describe what students will learn in this course…" minHeight={160} />
+            {errors.description && <p className="text-label text-danger mt-1">{errors.description}</p>}
+          </div>
         </CardBody>
       </Card>
 
@@ -163,13 +205,14 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
           <Select
             label="Duration Unit"
             value={durationUnit}
-            onChange={(e) => setDurationUnit(e.target.value)}
+            onChange={(e) => { setDurationUnit(e.target.value); clearErr("durationUnit"); }}
             options={[{ value: "weeks", label: "Weeks" }, { value: "days", label: "Days" }]}
+            error={errors.durationUnit}
           />
-          <Input label="Duration" type="number" min={1} max={104} value={durationValue} onChange={(e) => setDurationValue(parseInt(e.target.value) || 1)} />
+          <Input label="Duration" type="number" min={1} max={104} value={durationValue} onChange={(e) => { setDurationValue(parseInt(e.target.value) || 0); clearErr("durationValue"); }} error={errors.durationValue} />
           <div />
           <Input label="Price (INR)" type="number" min={0} value={price} onChange={(e) => { setPrice(e.target.value); clearErr("price"); }} leftIcon="currency_rupee" error={errors.price} />
-          <Input label="Discount (%)" type="number" min={0} max={100} value={discount} onChange={(e) => setDiscount(e.target.value)} leftIcon="percent" />
+          <Input label="Discount (%)" type="number" min={0} max={100} value={discount} onChange={(e) => { setDiscount(e.target.value); clearErr("discount"); }} leftIcon="percent" error={errors.discount} />
           <div className="flex flex-col justify-end">
             <p className="text-label text-ink-outline">Final price</p>
             <p className="font-display font-bold text-title-lg text-primary">{formatCurrency(finalPrice)}</p>
@@ -180,22 +223,28 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
       <Card>
         <CardHeader><p className="text-title-md font-semibold">Media</p></CardHeader>
         <CardBody className="grid md:grid-cols-2 gap-4">
-          <FileUpload
-            label="Banner image"
-            accept="image/*"
-            value={bannerUrl ? `${bannerUrl}` : null}
-            onChange={(f) => setBannerFile(f)}
-            hint="PNG/JPG · will be cropped to 16:9"
-            cropAspectRatio={16 / 9}
-          />
-          <FileUpload
-            label="Syllabus PDF"
-            accept="application/pdf"
-            value={initial?.syllabus_pdf_url}
-            onChange={(f) => setSyllabusFile(f)}
-            hint="PDF only"
-            preview={false}
-          />
+          <div>
+            <FileUpload
+              label="Banner image"
+              accept="image/*"
+              value={bannerUrl ? `${bannerUrl}` : null}
+              onChange={(f) => { setBannerFile(f); clearErr("banner"); }}
+              hint="PNG/JPG · will be cropped to 16:9"
+              cropAspectRatio={16 / 9}
+            />
+            {errors.banner && <p className="text-label text-danger mt-1">{errors.banner}</p>}
+          </div>
+          <div>
+            <FileUpload
+              label="Syllabus PDF"
+              accept="application/pdf"
+              value={initial?.syllabus_pdf_url}
+              onChange={(f) => { setSyllabusFile(f); clearErr("syllabusPdf"); }}
+              hint="PDF only"
+              preview={false}
+            />
+            {errors.syllabusPdf && <p className="text-label text-danger mt-1">{errors.syllabusPdf}</p>}
+          </div>
         </CardBody>
       </Card>
 
@@ -207,10 +256,10 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
               value={tagInput}
               onChange={(e) => setTagInput(e.target.value)}
               placeholder="Add a tag and press Enter"
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); clearErr("tags"); } }}
               containerClassName="flex-1"
             />
-            <Button type="button" onClick={addTag} variant="outline">Add</Button>
+            <Button type="button" onClick={() => { addTag(); clearErr("tags"); }} variant="outline">Add</Button>
           </div>
           <div className="flex flex-wrap gap-2">
             {tags.map((t, i) => (
@@ -223,18 +272,20 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
             ))}
             {tags.length === 0 && <span className="text-label text-ink-outline">No tags yet</span>}
           </div>
+          {errors.tags && <p className="text-label text-danger">{errors.tags}</p>}
         </CardBody>
       </Card>
 
       <Card>
         <CardHeader className="flex items-center justify-between">
           <p className="text-title-md font-semibold">Syllabus</p>
-          <Button type="button" size="sm" variant="outline" leftIcon="add" onClick={() => setSyllabus([...syllabus, { title: "", description: "" }])}>
+          <Button type="button" size="sm" variant="outline" leftIcon="add" onClick={() => { setSyllabus([...syllabus, { title: "", description: "" }]); clearErr("syllabusItems"); }}>
             Add item
           </Button>
         </CardHeader>
         <CardBody className="space-y-3">
           {syllabus.length === 0 && <p className="text-body-sm text-ink-outline">No items yet — add modules / lessons</p>}
+          {errors.syllabusItems && <p className="text-label text-danger">{errors.syllabusItems}</p>}
           {syllabus.map((s, i) => (
             <div key={i} className="bg-surface-containerLow rounded-xl p-3 space-y-2">
               <div className="flex gap-2 items-center">
@@ -283,15 +334,17 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
       <Card>
         <CardHeader className="flex items-center justify-between">
           <p className="text-title-md font-semibold">Certification Criteria</p>
-          <Button type="button" size="sm" variant="outline" leftIcon="add" onClick={() => setCriteria([...criteria, { text: "" }])}>
+          <Button type="button" size="sm" variant="outline" leftIcon="add" onClick={() => { setCriteria([...criteria, { text: "" }]); clearErr("criteriaList"); }}>
             Add criterion
           </Button>
         </CardHeader>
         <CardBody className="space-y-2">
+          {criteria.length === 0 && <p className="text-body-sm text-ink-outline">No criteria yet — add at least one</p>}
+          {errors.criteriaList && <p className="text-label text-danger">{errors.criteriaList}</p>}
           {criteria.map((c, i) => (
             <div key={i} className="flex gap-2">
               <span className="text-label text-ink-outline pt-3">{i + 1}.</span>
-              <Input value={c.text} onChange={(e) => setCriteria(criteria.map((x, j) => j === i ? { ...x, text: e.target.value } : x))} placeholder="Criterion text" containerClassName="flex-1" />
+              <Input value={c.text} onChange={(e) => { setCriteria(criteria.map((x, j) => j === i ? { ...x, text: e.target.value } : x)); clearErr(`crit_${i}`); }} placeholder="Criterion text" containerClassName="flex-1" error={errors[`crit_${i}`]} />
               <Button type="button" variant="ghost" leftIcon="delete" onClick={() => setCriteria(criteria.filter((_, j) => j !== i))} className="text-danger" />
             </div>
           ))}

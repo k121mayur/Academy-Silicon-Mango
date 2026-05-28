@@ -134,8 +134,18 @@ function CreateInstructorModal({
       e.email = "Enter a valid email address";
     }
     if (!name.trim()) e.display_name = "Display name is required";
-    if (password && password.length < 8) e.password = "Password must be at least 8 characters";
+    const skillsList = skills.split(",").map((s) => s.trim()).filter(Boolean);
+    if (skillsList.length === 0) e.skills = "At least one skill is required";
+    if (!password) {
+      e.password = "Password is required";
+    } else if (password.length < 8) {
+      e.password = "Password must be at least 8 characters";
+    }
     setErrors(e);
+    if (Object.keys(e).length > 0) {
+      const first = Object.values(e)[0];
+      toast.error(first);
+    }
     return Object.keys(e).length === 0;
   }
 
@@ -149,7 +159,7 @@ function CreateInstructorModal({
         display_name: name.trim(),
         bio,
         skills: skills.split(",").map((s) => s.trim()).filter(Boolean),
-        password: password || undefined,
+        password,
       });
       toast.success("Instructor created");
       onCreated({ email: res.email, password: res.temporary_password || password });
@@ -172,8 +182,8 @@ function CreateInstructorModal({
         <Input label="Email" type="email" value={email} onChange={(e) => { setEmail(e.target.value); clearErr("email"); }} leftIcon="mail" error={errors.email} />
         <Input label="Display name" value={name} onChange={(e) => { setName(e.target.value); clearErr("display_name"); }} leftIcon="person" error={errors.display_name} />
         <Textarea label="Bio (optional)" value={bio} onChange={(e) => setBio(e.target.value)} rows={2} />
-        <Input label="Skills (optional — comma-separated)" value={skills} onChange={(e) => setSkills(e.target.value)} placeholder="Python, ML, Data Science" />
-        <Input label="Password (optional — auto-generated if blank)" type="password" value={password} onChange={(e) => { setPassword(e.target.value); clearErr("password"); }} hint="Min 8 characters if set" error={errors.password} />
+        <Input label="Skills (comma-separated)" value={skills} onChange={(e) => { setSkills(e.target.value); clearErr("skills"); }} placeholder="Python, ML, Data Science" error={errors.skills} />
+        <Input label="Password" type="password" value={password} onChange={(e) => { setPassword(e.target.value); clearErr("password"); }} hint="Min 8 characters" error={errors.password} />
       </form>
     </Modal>
   );

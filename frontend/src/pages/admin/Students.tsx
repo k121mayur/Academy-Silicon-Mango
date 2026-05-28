@@ -119,7 +119,20 @@ function CreateStudentModal({ open, onClose, onCreated }: { open: boolean; onClo
     } else if (password.length < 8) {
       e.password = "Password must be at least 8 characters";
     }
+    const phoneTrimmed = phone.trim();
+    if (!phoneTrimmed) {
+      e.phone = "Phone number is required";
+    } else if (!/^[0-9+\-\s()]{7,20}$/.test(phoneTrimmed)) {
+      e.phone = "Enter a valid phone number";
+    }
+    if (!city.trim()) e.city = "City is required";
+    if (!batchName.trim()) e.batchName = "Batch name is required";
+    if (!instructorName.trim()) e.instructorName = "Instructor name is required";
     setErrors(e);
+    if (Object.keys(e).length > 0) {
+      const first = Object.values(e)[0];
+      toast.error(first);
+    }
     return Object.keys(e).length === 0;
   }
 
@@ -132,10 +145,10 @@ function CreateStudentModal({ open, onClose, onCreated }: { open: boolean; onClo
         email: email.trim(),
         display_name: name.trim(),
         password,
-        phone: phone.trim() || undefined,
-        city: city.trim() || undefined,
-        batch_name: batchName.trim() || undefined,
-        instructor_name: instructorName.trim() || undefined,
+        phone: phone.trim(),
+        city: city.trim(),
+        batch_name: batchName.trim(),
+        instructor_name: instructorName.trim(),
       });
       toast.success("Student created — welcome email sent");
       setEmail(""); setName(""); setPassword(""); setPhone(""); setCity(""); setBatchName(""); setInstructorName("");
@@ -179,13 +192,13 @@ function CreateStudentModal({ open, onClose, onCreated }: { open: boolean; onClo
           hint="Min 8 characters"
           error={errors.password}
         />
-        <Input label="Phone (optional)" value={phone} onChange={(e) => setPhone(e.target.value)} leftIcon="phone" />
-        <Input label="City (optional)" value={city} onChange={(e) => setCity(e.target.value)} leftIcon="location_on" />
+        <Input label="Phone" value={phone} onChange={(e) => { setPhone(e.target.value); clearErr("phone"); }} leftIcon="phone" error={errors.phone} />
+        <Input label="City" value={city} onChange={(e) => { setCity(e.target.value); clearErr("city"); }} leftIcon="location_on" error={errors.city} />
         <div className="border-t border-ink-outlineVariant/40 pt-3">
-          <p className="text-label text-ink-outline mb-2">For welcome email (optional)</p>
+          <p className="text-label text-ink-outline mb-2">For welcome email</p>
           <div className="space-y-3">
-            <Input label="Batch name (optional)" value={batchName} onChange={(e) => setBatchName(e.target.value)} leftIcon="groups" placeholder="e.g. Full-Stack Batch 2025" />
-            <Input label="Instructor name (optional)" value={instructorName} onChange={(e) => setInstructorName(e.target.value)} leftIcon="school" placeholder="e.g. Rahul Sharma" />
+            <Input label="Batch name" value={batchName} onChange={(e) => { setBatchName(e.target.value); clearErr("batchName"); }} leftIcon="groups" placeholder="e.g. Full-Stack Batch 2025" error={errors.batchName} />
+            <Input label="Instructor name" value={instructorName} onChange={(e) => { setInstructorName(e.target.value); clearErr("instructorName"); }} leftIcon="school" placeholder="e.g. Rahul Sharma" error={errors.instructorName} />
           </div>
         </div>
       </form>
