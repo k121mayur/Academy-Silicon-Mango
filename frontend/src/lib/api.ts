@@ -1,7 +1,29 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 
+export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
+export const API_V1_BASE_URL = API_BASE_URL.endsWith("/api/v1")
+  ? API_BASE_URL
+  : `${API_BASE_URL}/api/v1`;
+export const API_ORIGIN = API_BASE_URL.replace(/\/api\/v1$/, "");
+
+export function apiUrl(path: string): string {
+  return `${API_V1_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+export function absoluteApiUrl(url: string): string {
+  if (
+    url.startsWith("http://") ||
+    url.startsWith("https://") ||
+    url.startsWith("blob:") ||
+    url.startsWith("data:")
+  ) {
+    return url;
+  }
+  return `${API_ORIGIN}${url.startsWith("/") ? url : `/${url}`}`;
+}
+
 const api = axios.create({
-  baseURL: `${import.meta.env.VITE_API_BASE_URL || "http://localhost:8085"}/api/v1`,
+  baseURL: API_V1_BASE_URL,
   withCredentials: true,
   headers: { "Content-Type": "application/json" },
 });

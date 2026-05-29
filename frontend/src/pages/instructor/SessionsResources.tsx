@@ -8,7 +8,7 @@ import { Select } from "@/components/ui/Select";
 import { Modal } from "@/components/ui/Modal";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { FileUpload } from "@/components/shared/FileUpload";
-import { extractErrorMessage } from "@/lib/api";
+import { absoluteApiUrl, extractErrorMessage } from "@/lib/api";
 import {
   addResource,
   createSession,
@@ -173,7 +173,7 @@ export default function SessionsResources() {
                               {videoStatus === "missing" && <Badge tone="danger">Missing</Badge>}
                             </div>
                           ) : (
-                            <a href={r.url.startsWith("/") ? `${apiOrigin()}${r.url}` : r.url} target="_blank" rel="noreferrer" className="truncate text-primary hover:underline">
+                            <a href={absoluteApiUrl(r.url)} target="_blank" rel="noreferrer" className="truncate text-primary hover:underline">
                               {r.title}
                             </a>
                           )}
@@ -544,7 +544,3 @@ function toLocalInput(iso: string): string {
   }
 }
 
-function apiOrigin(): string {
-  const base = (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:8085";
-  return base.replace(/\/api\/v1$/, "");
-}

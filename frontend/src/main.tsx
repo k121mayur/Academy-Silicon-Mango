@@ -5,6 +5,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "react-hot-toast";
 
 import "./index.css";
+import { API_BASE_URL } from "@/lib/api";
 import { queryClient } from "@/lib/queryClient";
 import { useAuthStore } from "@/features/auth/stores/authStore";
 import App from "./App";
@@ -37,7 +38,7 @@ function Root() {
 }
 
 console.log("[BOOT] Silicon Mango Academy frontend booting…");
-console.log(`[BOOT] API base: ${import.meta.env.VITE_API_BASE_URL || "http://localhost:8085"}`);
+console.log(`[BOOT] API base: ${API_BASE_URL || "same-origin"}`);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

@@ -4,11 +4,9 @@ import toast from "react-hot-toast";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Card } from "@/components/ui/Card";
-import { extractErrorCode, extractErrorMessage } from "@/lib/api";
+import { apiUrl, extractErrorCode, extractErrorMessage } from "@/lib/api";
 import { useAuthStore } from "@/features/auth/stores/authStore";
 import { login as loginApi } from "@/services/auth.service";
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8085";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -106,7 +104,7 @@ export default function Login() {
             <div className="flex-1 h-px bg-ink-outlineVariant/40" />
           </div>
 
-          <a href={`${API_BASE}/api/v1/auth/google/authorize`}>
+          <a href={apiUrl("/auth/google/authorize")}>
             <Button type="button" variant="outline" fullWidth size="lg">
               <svg width="18" height="18" viewBox="0 0 18 18" className="mr-1">
                 <g>

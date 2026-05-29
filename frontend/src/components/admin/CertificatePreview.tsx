@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { absoluteApiUrl } from "@/lib/api";
 
 export type FieldKey = "name" | "course" | "date" | "qr";
 
@@ -79,7 +80,7 @@ export function CertificatePreview({
         ).default;
         (pdfjs as unknown as { GlobalWorkerOptions: { workerSrc: string } }).GlobalWorkerOptions.workerSrc = workerUrl;
 
-        const fullUrl = absoluteUrl(templateUrl);
+        const fullUrl = absoluteApiUrl(templateUrl);
         const doc = await pdfjs.getDocument(fullUrl).promise;
         const page = await doc.getPage(1);
         const viewport = page.getViewport({ scale: 1 });
@@ -233,7 +234,7 @@ export function CertificatePreview({
     );
   };
 
-  const imgSrc = templateType === "image" ? absoluteUrl(templateUrl) : pdfDataUrl;
+  const imgSrc = templateType === "image" ? absoluteApiUrl(templateUrl) : pdfDataUrl;
 
   return (
     <div ref={containerRef} className="w-full">
@@ -289,15 +290,3 @@ function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
 }
 
-function absoluteUrl(url: string): string {
-  if (
-    url.startsWith("http://") ||
-    url.startsWith("https://") ||
-    url.startsWith("blob:") ||
-    url.startsWith("data:")
-  ) {
-    return url;
-  }
-  const apiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:8085";
-  return apiBase.replace(/\/api\/v1$/, "") + url;
-}

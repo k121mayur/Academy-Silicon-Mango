@@ -9,9 +9,12 @@ export function formatCurrency(amount: number, currency = "INR"): string {
   return new Intl.NumberFormat("en-IN", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
 }
 
-export function formatDate(value: string | Date): string {
+export function formatDate(value: string | Date, options?: Intl.DateTimeFormatOptions): string {
   const d = typeof value === "string" ? new Date(value) : value;
-  return new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric" }).format(d);
+  return new Intl.DateTimeFormat(
+    "en-IN",
+    options ?? { day: "2-digit", month: "short", year: "numeric" }
+  ).format(d);
 }
 
 export function formatDateTime(value: string | Date): string {
@@ -33,8 +36,8 @@ export function relativeTime(value: string | Date): string {
   return formatDate(d);
 }
 
-export function initials(name: string): string {
-  return name
+export function initials(name?: string | null): string {
+  return (name?.trim() || "User")
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
