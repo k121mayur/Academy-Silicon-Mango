@@ -1,3 +1,11 @@
+# ---- Project runtime data (DO NOT commit) ----
+# Encoded video output (HLS segments + playlists, can be hundreds of files per video)
+backend/media/
+# User uploads (banners, syllabus PDFs, certificates, submissions, etc.)
+backend/uploads/
+# But keep the folder structure so the bind mount works after a fresh clone
+!backend/uploads/.gitkeep
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

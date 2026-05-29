@@ -14,6 +14,23 @@ export interface StudentBatch {
   enrollment_status: "active" | "dropped" | "completed";
 }
 
+export type StudentResource =
+  | {
+      id: string;
+      title: string;
+      resource_type: "file" | "link";
+      url: string;
+    }
+  | {
+      id: string;
+      title: string;
+      resource_type: "video";
+      video_id: string;
+      status: "uploaded" | "queued" | "processing" | "ready" | "failed" | "missing";
+      duration_seconds: number | null;
+      playback_url: string | null;
+    };
+
 export interface StudentSession {
   id: string;
   title: string;
@@ -24,7 +41,7 @@ export interface StudentSession {
   duration_mins: number;
   meeting_link: string | null;
   recording_url: string | null;
-  resources: { id: string; title: string; resource_type: string; url: string }[];
+  resources: StudentResource[];
 }
 
 export interface StudentAssignment {

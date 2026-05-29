@@ -28,7 +28,7 @@ export function Avatar({ name, src, size = "md", className }: Props) {
         className
       )}
     >
-      {initials(name)}
+      {initials(name || "")}
     </div>
   );
 }

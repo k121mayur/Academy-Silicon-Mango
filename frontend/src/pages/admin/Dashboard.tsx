@@ -90,7 +90,7 @@ export default function AdminDashboard() {
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chart}>
                   <CartesianGrid stroke="#edeeef" strokeDasharray="3 3" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#837560" }} tickFormatter={(v) => formatDate(v, { day: "2-digit", month: "short" })} />
+                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#837560" }} tickFormatter={(v) => formatDate(v)} />
                   <YAxis tick={{ fontSize: 11, fill: "#837560" }} />
                   <Tooltip
                     contentStyle={{ borderRadius: 8, border: "1px solid #d5c4ab", fontSize: 12 }}

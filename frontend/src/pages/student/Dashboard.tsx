@@ -119,31 +119,46 @@ export default function StudentDashboard() {
 
         {batches.length > 0 && (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {batches.map((b) => (
-              <button
-                key={b.id}
-                onClick={() => setActiveBatchId(b.id)}
-                className={`text-left p-4 rounded-xl transition-all ${
-                  b.id === activeBatchId
-                    ? "bg-primary-container/30 ring-2 ring-primary"
-                    : "bg-surface-lowest hover:bg-surface-containerLow border border-ink-outlineVariant/40"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <p className="font-semibold text-ink truncate">{b.course_title}</p>
-                  <Badge tone={b.enrollment_status === "completed" ? "success" : "primary"}>
-                    {b.enrollment_status}
-                  </Badge>
-                </div>
-                <p className="text-label text-ink-outline">{b.name}</p>
-                <p className="text-label text-ink-outline mt-1">
-                  {b.start_date} → {b.end_date} · {b.delivery_mode}
-                </p>
-                {b.instructor_name && (
-                  <p className="text-label text-ink-outline mt-1">Instructor: {b.instructor_name}</p>
-                )}
-              </button>
-            ))}
+            {batches.map((b) => {
+              const isSelfPaced = b.delivery_mode === "recorded";
+              return (
+                <button
+                  key={b.id}
+                  onClick={() => {
+                    if (isSelfPaced) {
+                      navigate(`/portal/courses/${b.id}`);
+                    } else {
+                      setActiveBatchId(b.id);
+                    }
+                  }}
+                  className={`text-left p-4 rounded-xl transition-all ${
+                    !isSelfPaced && b.id === activeBatchId
+                      ? "bg-primary-container/30 ring-2 ring-primary"
+                      : "bg-surface-lowest hover:bg-surface-containerLow border border-ink-outlineVariant/40"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-semibold text-ink truncate">{b.course_title}</p>
+                    <Badge tone={b.enrollment_status === "completed" ? "success" : "primary"}>
+                      {b.enrollment_status}
+                    </Badge>
+                  </div>
+                  <p className="text-label text-ink-outline">{b.name}</p>
+                  <p className="text-label text-ink-outline mt-1">
+                    {b.start_date} → {b.end_date} · {b.delivery_mode}
+                  </p>
+                  {b.instructor_name && (
+                    <p className="text-label text-ink-outline mt-1">Instructor: {b.instructor_name}</p>
+                  )}
+                  {isSelfPaced && (
+                    <p className="mt-2 inline-flex items-center gap-1 text-label text-primary">
+                      <span className="icon text-[14px]">play_circle</span>
+                      Open lessons
+                    </p>
+                  )}
+                </button>
+              );
+            })}
           </div>
         )}
 

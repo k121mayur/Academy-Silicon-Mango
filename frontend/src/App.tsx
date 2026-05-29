@@ -29,6 +29,7 @@ import PaymentSettings from "@/pages/admin/PaymentSettings";
 import AdminCatalogue from "@/pages/admin/Catalogue";
 
 import StudentDashboard from "@/pages/student/Dashboard";
+import SelfPacedCourse from "@/pages/student/SelfPacedCourse";
 import InstructorDashboard from "@/pages/instructor/Dashboard";
 import AssignedBatches from "@/pages/instructor/AssignedBatches";
 import CoursePlan from "@/pages/instructor/CoursePlan";
@@ -92,6 +93,7 @@ export default function App() {
       <Route element={<ProtectedRoute roles={["student"]} />}>
         <Route path="portal/dashboard" element={<StudentDashboard />} />
         <Route path="portal/profile" element={<StudentDashboard />} />
+        <Route path="portal/courses/:batchId" element={<SelfPacedCourse />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

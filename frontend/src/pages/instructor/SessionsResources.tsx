@@ -14,10 +14,13 @@ import {
   createSession,
   deleteResource,
   deleteSession,
+  fetchBatches,
   fetchSessions,
   updateSession,
+  type InstructorBatch,
   type InstructorSession,
 } from "@/services/instructor.service";
+import { VideoUpload } from "@/components/shared/VideoUpload";
 import { useSelectedBatch } from "@/features/instructor/selectedBatchStore";
 import { NoBatchSelected } from "./_NoBatch";
 
@@ -41,6 +44,7 @@ const RESOURCE_TYPE_OPTS = [
 export default function SessionsResources() {
   const { selectedBatchId } = useSelectedBatch();
   const [sessions, setSessions] = useState<InstructorSession[]>([]);
+  const [batch, setBatch] = useState<InstructorBatch | null>(null);
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState<InstructorSession | null>(null);
   const [creating, setCreating] = useState(false);
@@ -51,8 +55,9 @@ export default function SessionsResources() {
     if (!selectedBatchId) return;
     setLoading(true);
     try {
-      const data = await fetchSessions(selectedBatchId);
+      const [data, batches] = await Promise.all([fetchSessions(selectedBatchId), fetchBatches()]);
       setSessions(data);
+      setBatch(batches.find((b) => b.id === selectedBatchId) || null);
     } catch (e) {
       toast.error(extractErrorMessage(e));
     } finally {
@@ -64,6 +69,8 @@ export default function SessionsResources() {
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBatchId]);
+
+  const isSelfPaced = batch?.delivery_mode === "recorded";
 
   if (!selectedBatchId) return <NoBatchSelected />;
 
@@ -145,15 +152,31 @@ export default function SessionsResources() {
                 <div>
                   <p className="text-label uppercase tracking-wide text-ink-outline mb-1">Resources</p>
                   <ul className="space-y-1">
-                    {s.resources.map((r) => (
+                    {s.resources.map((r) => {
+                      const isVideo = r.resource_type === "video";
+                      const videoStatus = r.status;
+                      return (
                       <li key={r.id} className="flex items-center justify-between gap-3 p-2 bg-surface-containerLow rounded-md">
-                        <div className="min-w-0 flex items-center gap-2">
+                        <div className="min-w-0 flex items-center gap-2 flex-1">
                           <span className="icon text-ink-outline text-[18px]">
-                            {r.resource_type === "video" ? "play_circle" : r.resource_type === "link" ? "link" : "description"}
+                            {isVideo ? "play_circle" : r.resource_type === "link" ? "link" : "description"}
                           </span>
-                          <a href={r.url.startsWith("/") ? `${apiOrigin()}${r.url}` : r.url} target="_blank" rel="noreferrer" className="truncate text-primary hover:underline">
-                            {r.title}
-                          </a>
+                          {isVideo ? (
+                            <div className="min-w-0 flex items-center gap-2 flex-wrap">
+                              <span className="truncate text-ink font-medium">{r.title}</span>
+                              {videoStatus === "ready" && <Badge tone="success">Ready</Badge>}
+                              {(videoStatus === "uploaded" || videoStatus === "queued") && (
+                                <Badge tone="warning">Pending optimization</Badge>
+                              )}
+                              {videoStatus === "processing" && <Badge tone="primary">Optimizing…</Badge>}
+                              {videoStatus === "failed" && <Badge tone="danger">Failed</Badge>}
+                              {videoStatus === "missing" && <Badge tone="danger">Missing</Badge>}
+                            </div>
+                          ) : (
+                            <a href={r.url.startsWith("/") ? `${apiOrigin()}${r.url}` : r.url} target="_blank" rel="noreferrer" className="truncate text-primary hover:underline">
+                              {r.title}
+                            </a>
+                          )}
                         </div>
                         <button
                           onClick={async () => {
@@ -172,7 +195,8 @@ export default function SessionsResources() {
                           close
                         </button>
                       </li>
-                    ))}
+                      );
+                    })}
                   </ul>
                 </div>
               )}
@@ -218,6 +242,7 @@ export default function SessionsResources() {
       {resourceModalFor && (
         <AddResourceModal
           session={resourceModalFor}
+          isSelfPaced={isSelfPaced}
           onClose={() => setResourceModalFor(null)}
           onAdded={() => {
             setResourceModalFor(null);
@@ -414,20 +439,28 @@ function CreateSessionModal({
 
 function AddResourceModal({
   session,
+  isSelfPaced,
   onClose,
   onAdded,
 }: {
   session: InstructorSession;
+  isSelfPaced: boolean;
   onClose: () => void;
   onAdded: () => void;
 }) {
   const [title, setTitle] = useState("");
-  const [resourceType, setResourceType] = useState<"file" | "link" | "video">("file");
+  // For self-paced batches, default to video; for live batches, default to file.
+  const [resourceType, setResourceType] = useState<"file" | "link" | "video">(
+    isSelfPaced ? "video" : "file"
+  );
   const [url, setUrl] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
 
   const submit = async () => {
+    if (resourceType === "video") {
+      return; // VideoUpload component handles its own submit
+    }
     if (!title.trim()) return toast.error("Title is required");
     if (resourceType === "file") {
       if (!file) return toast.error("Pick a file");
@@ -450,6 +483,16 @@ function AddResourceModal({
     }
   };
 
+  // For self-paced batches, restrict type options — videos go through the dedicated endpoint.
+  // For live batches, keep all three options but rely on backend bounce-error to reject MP4-as-file.
+  const typeOptions = isSelfPaced
+    ? [
+        { value: "video", label: "Video lesson (HLS)" },
+        { value: "file", label: "Supplementary file (≤ 2 MB)" },
+        { value: "link", label: "External link" },
+      ]
+    : RESOURCE_TYPE_OPTS;
+
   return (
     <Modal
       open
@@ -457,19 +500,34 @@ function AddResourceModal({
       title={`Add resource to "${session.title}"`}
       size="md"
       footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button onClick={submit} loading={saving}>Add</Button>
-        </>
+        resourceType === "video" ? (
+          <Button variant="ghost" onClick={onClose}>Close</Button>
+        ) : (
+          <>
+            <Button variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button onClick={submit} loading={saving}>Add</Button>
+          </>
+        )
       }
     >
       <div className="space-y-3">
-        <Input label="Title *" value={title} onChange={(e) => setTitle(e.target.value)} />
-        <Select label="Type" value={resourceType} onChange={(e) => setResourceType(e.target.value as any)} options={RESOURCE_TYPE_OPTS} />
-        {resourceType === "file" ? (
-          <FileUpload onChange={(f) => setFile(f)} preview={false} hint="Slides, PDF, video, etc." />
+        <Select label="Type" value={resourceType} onChange={(e) => setResourceType(e.target.value as any)} options={typeOptions} />
+
+        {resourceType === "video" ? (
+          <VideoUpload sessionId={session.id} onUploaded={onAdded} />
         ) : (
-          <Input label="URL *" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://..." />
+          <>
+            <Input label="Title *" value={title} onChange={(e) => setTitle(e.target.value)} />
+            {resourceType === "file" ? (
+              <FileUpload
+                onChange={(f) => setFile(f)}
+                preview={false}
+                hint="Slides, PDF, etc. — max 2 MB"
+              />
+            ) : (
+              <Input label="URL *" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://..." />
+            )}
+          </>
         )}
       </div>
     </Modal>

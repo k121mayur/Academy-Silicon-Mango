@@ -30,6 +30,7 @@ from app.models.user import (
     User,
     UserRole,
 )
+from app.models.video import Video, VideoRendition, VideoStatus
 
 __all__ = [
     "Assignment",
@@ -72,4 +73,7 @@ __all__ = [
     "SubmissionStatus",
     "User",
     "UserRole",
+    "Video",
+    "VideoRendition",
+    "VideoStatus",
 ]

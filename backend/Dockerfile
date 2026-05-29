@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
     curl \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -19,7 +20,10 @@ RUN mkdir -p /app/uploads/course_banners \
     /app/uploads/session_resources \
     /app/uploads/receipts \
     /app/uploads/certificate_templates \
-    /app/uploads/certificates
+    /app/uploads/certificates \
+    /app/uploads/submissions \
+    /app/media/originals \
+    /app/media/videos
 
 EXPOSE 8085
 

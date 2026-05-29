@@ -78,6 +78,12 @@ export interface InstructorResource {
   resource_type: "file" | "link" | "video";
   url: string;
   uploaded_at: string | null;
+  // Populated by backend when resource_type === "video" (url is "video://<id>")
+  video_id?: string;
+  status?: "uploaded" | "queued" | "processing" | "ready" | "failed" | "missing";
+  error_message?: string | null;
+  duration_seconds?: number | null;
+  original_size_bytes?: number | null;
 }
 
 export interface InstructorSession {

@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -11,7 +9,11 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      # External port chosen by the home-server admin to avoid host port conflicts.
+      # If you need to test locally and 5435 is free on your machine, this Just Works.
+      # To override locally without editing this file, set DB_HOST_PORT in your shell
+      # and edit ports to "${DB_HOST_PORT:-5435}:5432" (currently kept simple).
+      - "5435:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U sm_user -d silicon_mango"]
       interval: 10s
@@ -25,7 +27,7 @@ services:
     container_name: sm_redis
     command: redis-server --requirepass ${REDIS_PASSWORD:-sm_redis_pass_2024}
     ports:
-      - "6379:6379"
+      - "6381:6379"
     volumes:
       - redisdata:/data
     healthcheck:
@@ -48,12 +50,62 @@ services:
         condition: service_started
     env_file: ./backend/.env
     environment:
+      # Inside Docker, connect to the `postgres` service above (NOT host machine).
+      # User/password here MUST match POSTGRES_USER/POSTGRES_PASSWORD of postgres service.
       DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD:-sm_secure_pass_2024}@postgres:5432/silicon_mango
       REDIS_URL: redis://:${REDIS_PASSWORD:-sm_redis_pass_2024}@redis:6379/0
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-sm_redis_pass_2024}@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-sm_redis_pass_2024}@redis:6379/2
     ports:
-      - "8085:8085"
+      - "8090:8085"
     volumes:
       - ./backend/uploads:/app/uploads
+      - ./backend/media:/app/media
+      - ./backend/app:/app/app
+    networks:
+      - sm_network
+
+  # ─── Celery worker — encodes pending videos to HLS at midnight ───
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sm_worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD:-sm_secure_pass_2024}@postgres:5432/silicon_mango
+      REDIS_URL: redis://:${REDIS_PASSWORD:-sm_redis_pass_2024}@redis:6379/0
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-sm_redis_pass_2024}@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-sm_redis_pass_2024}@redis:6379/2
+    command: celery -A app.celery_app.celery worker -Q encoding --concurrency=1 --loglevel=info
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/media:/app/media
+      - ./backend/app:/app/app
+    networks:
+      - sm_network
+
+  # ─── Celery beat — cron scheduler that fires the nightly encoding task ───
+  beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sm_beat
+    depends_on:
+      - redis
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD:-sm_secure_pass_2024}@postgres:5432/silicon_mango
+      REDIS_URL: redis://:${REDIS_PASSWORD:-sm_redis_pass_2024}@redis:6379/0
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-sm_redis_pass_2024}@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-sm_redis_pass_2024}@redis:6379/2
+    command: celery -A app.celery_app.celery beat --loglevel=info
+    volumes:
       - ./backend/app:/app/app
     networks:
       - sm_network
@@ -64,7 +116,7 @@ services:
       dockerfile: Dockerfile
     container_name: sm_frontend
     ports:
-      - "5174:80"
+      - "5185:80"
     depends_on:
       - backend
     networks:

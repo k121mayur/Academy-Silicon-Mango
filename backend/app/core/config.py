@@ -45,6 +45,22 @@ class Settings(BaseSettings):
 
     # Storage
     UPLOAD_DIR: str = "./uploads"
+    MEDIA_DIR: str = "/app/media"
+
+    # Upload size caps (per file)
+    MAX_VIDEO_MB: int = 500
+    MAX_DOC_MB: int = 2
+
+    # Video streaming
+    VIDEO_STREAM_SECRET: str = ""
+    STREAM_TOKEN_TTL_SECONDS: int = 120
+    SEGMENT_TOKEN_TTL_SECONDS: int = 30
+    HLS_SEGMENT_SECONDS: int = 6
+    ENABLE_GPU: bool = False
+
+    # Celery
+    CELERY_BROKER_URL: str = "redis://:sm_redis_pass_2024@localhost:6379/1"
+    CELERY_RESULT_BACKEND: str = "redis://:sm_redis_pass_2024@localhost:6379/2"
 
     # Frontend
     FRONTEND_URL: str = "http://localhost:3000"

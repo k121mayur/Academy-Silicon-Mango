@@ -381,8 +381,21 @@ async def remove_enrollment(
     enr = await db.get(Enrollment, enrollment_id)
     if not enr or str(enr.batch_id) != batch_id:
         raise APIError(code="NOT_FOUND", message="Enrollment not found", status_code=404)
+    student_id = str(enr.student_id)
     await db.delete(enr)
     await db.commit()
+
+    # Revoke any in-flight video streaming tokens for this student in this batch.
+    # The student-video manifest endpoint checks this Redis key on every refresh
+    # (~120s), so active streams will stop within that window.
+    try:
+        from app.core.redis import get_redis
+        r = await get_redis()
+        await r.set(f"stream:revoked:{student_id}:{batch_id}", "1", ex=86400)
+    except Exception as exc:
+        # Non-fatal — the DB delete is the authoritative action.
+        print(f"[ADMIN] Failed to set stream revoke key for {student_id}/{batch_id}: {exc}")
+
     return {"success": True, "message": "Enrollment removed"}
 
 

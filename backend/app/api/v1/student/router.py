@@ -17,6 +17,7 @@ from app.models.certificate import Certificate
 from app.models.course import Course
 from app.models.session import Session as ClassSession, SessionResource
 from app.models.user import InstructorProfile, User
+from app.models.video import Video
 from app.services.storage_service import save_upload
 
 router = APIRouter(prefix="/student", tags=["student"])
@@ -85,6 +86,36 @@ async def my_batch_sessions(
         rres = await db.execute(select(SessionResource).where(SessionResource.session_id.in_(sess_ids)))
         for r in rres.scalars().all():
             resources_by_session.setdefault(r.session_id, []).append(r)
+
+    # Resolve any 'video://<id>' sentinel URLs to live Video rows (single batched query)
+    video_ids: list[str] = []
+    for rs in resources_by_session.values():
+        for r in rs:
+            if r.url and r.url.startswith("video://"):
+                vid = r.url.removeprefix("video://")
+                video_ids.append(vid)
+    video_by_id: dict[str, Video] = {}
+    if video_ids:
+        vres = await db.execute(select(Video).where(Video.id.in_(video_ids)))
+        for v in vres.scalars().all():
+            video_by_id[str(v.id)] = v
+
+    def _serialize_resource(r: SessionResource) -> dict:
+        if r.url and r.url.startswith("video://"):
+            vid = r.url.removeprefix("video://")
+            v = video_by_id.get(vid)
+            return {
+                "id": str(r.id),
+                "title": r.title,
+                "resource_type": "video",
+                "video_id": vid,
+                "status": v.status.value if v else "missing",
+                "duration_seconds": v.duration_seconds if v else None,
+                # No raw URL leaked. Frontend calls /student/videos/{id}/playback-info instead.
+                "playback_url": f"/api/v1/student/videos/{vid}/playback-info" if v else None,
+            }
+        return {"id": str(r.id), "title": r.title, "resource_type": r.resource_type.value, "url": r.url}
+
     items = []
     for s in sessions:
         items.append(
@@ -98,10 +129,7 @@ async def my_batch_sessions(
                 "duration_mins": s.duration_mins,
                 "meeting_link": s.meeting_link,
                 "recording_url": s.recording_url,
-                "resources": [
-                    {"id": str(r.id), "title": r.title, "resource_type": r.resource_type.value, "url": r.url}
-                    for r in resources_by_session.get(s.id, [])
-                ],
+                "resources": [_serialize_resource(r) for r in resources_by_session.get(s.id, [])],
             }
         )
     return {"success": True, "data": items}

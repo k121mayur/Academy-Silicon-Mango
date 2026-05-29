@@ -346,10 +346,34 @@ async def get_plan(
 # ---------------------------------------------------------------------
 
 
-def _session_to_dict(s: ClassSession, resources: Optional[list] = None) -> dict:
+def _session_to_dict(s: ClassSession, resources: Optional[list] = None, videos_by_id: Optional[dict] = None) -> dict:
     """Serialize a session. Pass `resources` separately rather than mutating s.resources,
-    which would trigger SQLAlchemy lazy-load semantics in async mode."""
+    which would trigger SQLAlchemy lazy-load semantics in async mode.
+
+    `videos_by_id` (optional) maps str(video_id) -> Video so we can decorate
+    `video://` resources with their optimization status.
+    """
     res_list = resources if resources is not None else []
+    videos_by_id = videos_by_id or {}
+
+    def _resource_dict(r) -> dict:
+        base = {
+            "id": str(r.id),
+            "title": r.title,
+            "resource_type": r.resource_type.value,
+            "url": r.url,
+            "uploaded_at": r.uploaded_at.isoformat() if r.uploaded_at else None,
+        }
+        if r.url and r.url.startswith("video://"):
+            vid = r.url.removeprefix("video://")
+            v = videos_by_id.get(vid)
+            base["video_id"] = vid
+            base["status"] = v.status.value if v else "missing"
+            base["error_message"] = v.error_message if v else None
+            base["duration_seconds"] = v.duration_seconds if v else None
+            base["original_size_bytes"] = v.original_size_bytes if v else None
+        return base
+
     return {
         "id": str(s.id),
         "batch_id": str(s.batch_id),
@@ -363,16 +387,7 @@ def _session_to_dict(s: ClassSession, resources: Optional[list] = None) -> dict:
         "recording_url": s.recording_url,
         "scheduled_at": s.scheduled_at.isoformat() if s.scheduled_at else None,
         "duration_mins": s.duration_mins,
-        "resources": [
-            {
-                "id": str(r.id),
-                "title": r.title,
-                "resource_type": r.resource_type.value,
-                "url": r.url,
-                "uploaded_at": r.uploaded_at.isoformat() if r.uploaded_at else None,
-            }
-            for r in res_list
-        ],
+        "resources": [_resource_dict(r) for r in res_list],
     }
 
 
@@ -395,7 +410,21 @@ async def list_sessions(
         )
         for r in rres.scalars().all():
             resources_by_session.setdefault(r.session_id, []).append(r)
-    items = [_session_to_dict(s, resources_by_session.get(s.id, [])) for s in rows]
+
+    # Resolve any 'video://<id>' resource URLs to their Video rows for status decoration
+    from app.models.video import Video as _Video
+    video_ids: list[str] = []
+    for rs in resources_by_session.values():
+        for r in rs:
+            if r.url and r.url.startswith("video://"):
+                video_ids.append(r.url.removeprefix("video://"))
+    videos_by_id: dict = {}
+    if video_ids:
+        vres = await db.execute(select(_Video).where(_Video.id.in_(video_ids)))
+        for v in vres.scalars().all():
+            videos_by_id[str(v.id)] = v
+
+    items = [_session_to_dict(s, resources_by_session.get(s.id, []), videos_by_id) for s in rows]
     return {"success": True, "data": items}
 
 

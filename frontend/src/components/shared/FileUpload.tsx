@@ -1,6 +1,9 @@
 import { ChangeEvent, useRef, useState } from "react";
+import toast from "react-hot-toast";
 import { cn } from "@/lib/utils";
 import { ImageCropModal } from "./ImageCropModal";
+
+const DEFAULT_MAX_BYTES = 2 * 1024 * 1024; // 2 MB — matches backend MAX_DOC_MB
 
 interface Props {
   value?: string | null;
@@ -11,9 +14,11 @@ interface Props {
   preview?: boolean;
   className?: string;
   cropAspectRatio?: number;
+  /** Max bytes the user can pick. Defaults to 2 MB to match backend doc cap. */
+  maxBytes?: number;
 }
 
-export function FileUpload({ value, onChange, accept = "image/*", hint, label, preview = true, className, cropAspectRatio }: Props) {
+export function FileUpload({ value, onChange, accept = "image/*", hint, label, preview = true, className, cropAspectRatio, maxBytes = DEFAULT_MAX_BYTES }: Props) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(value || null);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [cropSrc, setCropSrc] = useState<string | null>(null);
@@ -24,6 +29,12 @@ export function FileUpload({ value, onChange, accept = "image/*", hint, label, p
     if (!file) return;
     // Reset so the same file can be re-selected after cancelling crop
     e.target.value = "";
+
+    if (file.size > maxBytes) {
+      const capMb = Math.max(1, Math.floor(maxBytes / (1024 * 1024)));
+      toast.error(`File is too large — max ${capMb} MB.`);
+      return;
+    }
 
     if (cropAspectRatio && file.type.startsWith("image/")) {
       setCropSrc(URL.createObjectURL(file));
@@ -63,7 +74,11 @@ export function FileUpload({ value, onChange, accept = "image/*", hint, label, p
             <p className="text-body-sm font-medium text-ink truncate">
               {selectedFileName ?? (previewUrl ? "Change file" : "Click to upload")}
             </p>
-            <p className="text-label text-ink-outline">{selectedFileName ? "Click to change" : (hint || "Drag & drop or click to browse")}</p>
+            <p className="text-label text-ink-outline">
+              {selectedFileName
+                ? "Click to change"
+                : (hint || `Drag & drop or click to browse · max ${Math.max(1, Math.floor(maxBytes / (1024 * 1024)))} MB`)}
+            </p>
           </div>
         </div>
         <input ref={inputRef} type="file" accept={accept} onChange={handleChange} className="hidden" />
