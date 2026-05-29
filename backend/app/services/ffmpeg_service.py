@@ -15,14 +15,20 @@ from app.core.config import settings
 class Rendition:
     name: str        # "480p" | "720p" | "1080p"
     height: int
-    bitrate_kbps: int
+    bitrate_kbps: int      # used as the MAX bitrate cap (-maxrate), not a fixed target
     audio_kbps: int
+    crf: int               # quality target: lower = better quality + bigger; 23 ≈ visually lossless
 
 
+# CRF-based ladder. CRF makes the encoder spend only as many bits as the content
+# needs to hit the target quality, then -maxrate caps the peak so a high-bitrate
+# source can't blow past the rung. Net effect:
+#   - Already-small / low-bitrate sources stay SMALL (no wasteful upscaling of bits).
+#   - Large / high-bitrate sources get compressed down to the cap.
 RENDITION_LADDER: list[Rendition] = [
-    Rendition(name="480p", height=480, bitrate_kbps=800, audio_kbps=64),
-    Rendition(name="720p", height=720, bitrate_kbps=2500, audio_kbps=96),
-    Rendition(name="1080p", height=1080, bitrate_kbps=5000, audio_kbps=128),
+    Rendition(name="480p", height=480, bitrate_kbps=1400, audio_kbps=64, crf=24),
+    Rendition(name="720p", height=720, bitrate_kbps=2800, audio_kbps=96, crf=23),
+    Rendition(name="1080p", height=1080, bitrate_kbps=5000, audio_kbps=128, crf=23),
 ]
 
 
@@ -134,24 +140,24 @@ def build_hls_command(source: str, out_dir: str, renditions: list[Rendition], us
 
     var_stream_parts: list[str] = []
     for i, r in enumerate(renditions):
-        cmd += [
-            "-map", f"[v{i}o]",
-            f"-c:v:{i}", codec,
-            f"-preset:v:{i}" if use_nvenc else "-preset", preset if not use_nvenc else "p4",
-        ]
-        # NVENC vs libx264 quality controls
+        cmd += ["-map", f"[v{i}o]", f"-c:v:{i}", codec]
         if use_nvenc:
+            # NVENC: constant-quality (-cq) mode, capped by maxrate. -cq mirrors CRF.
             cmd += [
+                f"-preset:v:{i}", "p4",
                 f"-rc:v:{i}", "vbr",
-                f"-b:v:{i}", f"{r.bitrate_kbps}k",
-                f"-maxrate:v:{i}", f"{int(r.bitrate_kbps * 1.07)}k",
-                f"-bufsize:v:{i}", f"{int(r.bitrate_kbps * 1.5)}k",
+                f"-cq:v:{i}", str(r.crf),
+                f"-b:v:{i}", "0",
+                f"-maxrate:v:{i}", f"{r.bitrate_kbps}k",
+                f"-bufsize:v:{i}", f"{int(r.bitrate_kbps * 2)}k",
             ]
         else:
+            # libx264: CRF quality target, capped by maxrate so we never exceed the rung.
             cmd += [
-                f"-b:v:{i}", f"{r.bitrate_kbps}k",
-                f"-maxrate:v:{i}", f"{int(r.bitrate_kbps * 1.07)}k",
-                f"-bufsize:v:{i}", f"{int(r.bitrate_kbps * 1.5)}k",
+                f"-preset:v:{i}", "veryfast",
+                f"-crf:v:{i}", str(r.crf),
+                f"-maxrate:v:{i}", f"{r.bitrate_kbps}k",
+                f"-bufsize:v:{i}", f"{int(r.bitrate_kbps * 2)}k",
             ]
         var_stream_parts.append(f"v:{i},a:{i},name:{r.name}")
 
