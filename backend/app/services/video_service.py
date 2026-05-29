@@ -41,8 +41,11 @@ async def save_video_upload(file: UploadFile, uploader: User) -> tuple[str, int,
     if not ext:
         ext = ".mp4"
 
+    # Namespace raw uploads per instructor so each owner's files are grouped together.
+    originals_dir = media / "originals" / str(uploader.id)
+    originals_dir.mkdir(parents=True, exist_ok=True)
     fname = f"{uuid.uuid4().hex}{ext}"
-    abs_path = media / "originals" / fname
+    abs_path = originals_dir / fname
 
     total = 0
     try:
@@ -177,5 +180,6 @@ async def reset_for_retry(db: AsyncSession, video: Video) -> Video:
     return video
 
 
-def hls_root_for(video_id: str) -> Path:
-    return _media_root() / "videos" / str(video_id)
+def hls_root_for(instructor_id: str, video_id: str) -> Path:
+    """HLS output dir, namespaced per instructor: media/videos/<instructor_id>/<video_id>."""
+    return _media_root() / "videos" / str(instructor_id) / str(video_id)

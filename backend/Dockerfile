@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     curl \
     ffmpeg \
+    procps \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -27,4 +28,8 @@ RUN mkdir -p /app/uploads/course_banners \
 
 EXPOSE 8085
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8085 --reload"]
+# Production: gunicorn manages N async uvicorn workers (no --reload, no file
+# watcher). DB migrations run in the dedicated one-shot `migrate` compose
+# service, NOT here, so multiple workers never race `alembic upgrade`.
+# Worker count is tuned for 2 vCPU (override with GUNICORN_WORKERS).
+CMD ["sh", "-c", "gunicorn app.main:app -k uvicorn.workers.UvicornWorker -w ${GUNICORN_WORKERS:-3} --bind 0.0.0.0:8085 --timeout 120 --graceful-timeout 30 --max-requests 2000 --max-requests-jitter 200 --access-logfile - --error-logfile -"]

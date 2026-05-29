@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { extractErrorMessage } from "@/lib/api";
+import { absoluteApiUrl, extractErrorMessage } from "@/lib/api";
 import { fetchPlaybackInfo, type PlaybackInfo, type PendingPlayback } from "@/services/video.service";
 import { cn } from "@/lib/utils";
-
-const API_BASE = `${import.meta.env.VITE_API_BASE_URL || "http://localhost:8085"}`;
 
 interface Props {
   videoId: string;
@@ -20,17 +18,6 @@ type LoadState =
   | { kind: "playing"; info: PlaybackInfo }
   | { kind: "error"; message: string };
 
-interface QualityLevel {
-  index: number;       // hls.js level index (-1 = auto)
-  height: number;
-  label: string;       // "1080p", "720p", etc.
-}
-
-function absolutize(url: string): string {
-  if (/^https?:\/\//i.test(url)) return url;
-  return `${API_BASE}${url}`;
-}
-
 export function SecureVideoPlayer({
   videoId,
   watermarkOverride,
@@ -41,45 +28,43 @@ export function SecureVideoPlayer({
   const hlsRef = useRef<any>(null);
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const retryCountRef = useRef(0);
-
-  // Quality selector state
-  const [levels, setLevels] = useState<QualityLevel[]>([]);
-  const [currentLevel, setCurrentLevel] = useState<number>(-1); // -1 = Auto
-  const [activeHeight, setActiveHeight] = useState<number | null>(null); // which rendition is actually playing
-  const [menuOpen, setMenuOpen] = useState(false);
+  // Monotonic "generation" of the active load. Each effect run bumps it; the
+  // cleanup bumps it again to invalidate any in-flight async work. attachHls and
+  // its async error handler capture their generation and bail the moment it no
+  // longer matches — so they never setState after unmount or touch a destroyed
+  // hls.js instance (the stale-closure race).
+  const loadIdRef = useRef(0);
 
   useEffect(() => {
-    let cancelled = false;
+    const myId = ++loadIdRef.current;
+    const isCurrent = () => loadIdRef.current === myId;
     setState({ kind: "loading" });
-    setLevels([]);
-    setCurrentLevel(-1);
-    setActiveHeight(null);
     retryCountRef.current = 0;
 
     const load = async () => {
       try {
         const info = await fetchPlaybackInfo(videoId);
-        if (cancelled) return;
+        if (!isCurrent()) return;
         if ((info as PendingPlayback).status && (info as PendingPlayback).status !== "ready") {
           const pending = info as PendingPlayback;
           setState({
             kind: "pending",
-            message: pending.message || "Video is still being optimized — try again tomorrow.",
+            message: pending.message || "Video is still being optimized — try again shortly.",
           });
           return;
         }
         const playback = info as PlaybackInfo;
         setState({ kind: "playing", info: playback });
-        await attachHls(playback);
+        await attachHls(playback, myId);
       } catch (e) {
-        if (!cancelled) setState({ kind: "error", message: extractErrorMessage(e, "Failed to load video") });
+        if (isCurrent()) setState({ kind: "error", message: extractErrorMessage(e, "Failed to load video") });
       }
     };
 
     load();
 
     return () => {
-      cancelled = true;
+      loadIdRef.current++; // invalidate this load generation
       if (hlsRef.current) {
         try {
           hlsRef.current.destroy();
@@ -92,33 +77,30 @@ export function SecureVideoPlayer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoId]);
 
-  async function attachHls(info: PlaybackInfo) {
+  async function attachHls(info: PlaybackInfo, loadId: number) {
+    const isCurrent = () => loadIdRef.current === loadId;
     const el = videoRef.current;
-    if (!el) return;
-    const manifestUrl = absolutize(info.manifest_url);
+    if (!el || !isCurrent()) return;
+    const manifestUrl = absoluteApiUrl(info.manifest_url);
 
-    // Native HLS (Safari, iOS) — the OS handles ABR; no custom level menu there.
+    // Native HLS (Safari, iOS) — the OS plays the stream directly.
     if (el.canPlayType("application/vnd.apple.mpegurl")) {
       el.src = manifestUrl;
       return;
     }
 
     const Hls = (await import("hls.js")).default;
+    if (!isCurrent()) return; // unmounted/changed during the dynamic import
     if (!Hls.isSupported()) {
-      setState({ kind: "error", message: "HLS playback is not supported by this browser." });
+      if (isCurrent()) setState({ kind: "error", message: "HLS playback is not supported by this browser." });
       return;
     }
 
-    // Tuned for smooth playback on POOR networks:
-    //  - startLevel -1: let ABR pick a safe starting quality from measured bandwidth
-    //  - maxBufferLength 60s: buffer ahead aggressively so brief drops don't stall
-    //  - capLevelToPlayerSize: don't waste bandwidth on a resolution bigger than the player
-    //  - fragLoadingMaxRetry / manifestLoadingMaxRetry: survive transient network errors
+    // Every video is a single 720p rendition, so there is no quality ladder to manage.
+    // Buffer settings are tuned to keep playback smooth on poor networks.
     const hls = new Hls({
       enableWorker: true,
       lowLatencyMode: false,
-      startLevel: -1,
-      capLevelToPlayerSize: true,
       maxBufferLength: 60,
       maxMaxBufferLength: 120,
       backBufferLength: 30,
@@ -127,44 +109,43 @@ export function SecureVideoPlayer({
       manifestLoadingMaxRetry: 4,
       levelLoadingMaxRetry: 4,
       xhrSetup: (xhr: XMLHttpRequest) => {
+        // Same-origin cookie auth for the playlist gate (segments are signed).
         xhr.withCredentials = true;
       },
     });
+    if (!isCurrent()) {
+      // The effect was cleaned up while we awaited the import — don't leak.
+      try {
+        hls.destroy();
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
     hlsRef.current = hls;
     hls.loadSource(manifestUrl);
     hls.attachMedia(el);
 
-    hls.on(Hls.Events.MANIFEST_PARSED, (_e: unknown, data: any) => {
-      // Build the quality menu from the available renditions, highest first.
-      const lv: QualityLevel[] = (data.levels || [])
-        .map((l: any, i: number) => ({
-          index: i,
-          height: l.height || 0,
-          label: l.height ? `${l.height}p` : `Level ${i + 1}`,
-        }))
-        .sort((a: QualityLevel, b: QualityLevel) => b.height - a.height);
-      setLevels(lv);
-    });
-
-    // Reflect which rendition ABR (or the user) is currently playing.
-    hls.on(Hls.Events.LEVEL_SWITCHED, (_e: unknown, data: any) => {
-      const lvl = hls.levels?.[data.level];
-      if (lvl) setActiveHeight(lvl.height || null);
-    });
-
     hls.on(Hls.Events.ERROR, async (_event: unknown, data: any) => {
-      if (!data.fatal) return;
-      // Network error → token likely expired. Re-fetch playback-info and re-attach.
+      // Ignore everything once this load is stale or this isn't the live instance.
+      if (!isCurrent() || hlsRef.current !== hls || !data.fatal) return;
+      // Network error → segment URLs likely rotated/expired. Re-fetch the
+      // playlist (re-authorized) and re-attach with fresh signed URLs.
       if (data.type === Hls.ErrorTypes.NETWORK_ERROR && retryCountRef.current < 3) {
         retryCountRef.current += 1;
         try {
           const fresh = await fetchPlaybackInfo(videoId);
+          if (!isCurrent() || hlsRef.current !== hls) return;
           if ((fresh as PlaybackInfo).manifest_url) {
-            hls.destroy();
+            try {
+              hls.destroy();
+            } catch {
+              /* ignore */
+            }
             hlsRef.current = null;
             const playback = fresh as PlaybackInfo;
             setState({ kind: "playing", info: playback });
-            await attachHls(playback);
+            await attachHls(playback, loadId);
             return;
           }
         } catch {
@@ -181,27 +162,17 @@ export function SecureVideoPlayer({
           /* ignore */
         }
       }
-      setState({ kind: "error", message: "Playback error — refresh the page to try again." });
+      if (isCurrent()) {
+        setState({ kind: "error", message: "Playback error — refresh the page to try again." });
+      }
       try {
         hls.destroy();
       } catch {
         /* ignore */
       }
-      hlsRef.current = null;
+      if (hlsRef.current === hls) hlsRef.current = null;
     });
   }
-
-  const selectQuality = (levelIndex: number) => {
-    const hls = hlsRef.current;
-    if (hls) {
-      // -1 tells hls.js to resume automatic adaptive switching.
-      hls.currentLevel = levelIndex;
-      // For a snappier manual switch, also set the next/load level.
-      if (levelIndex !== -1) hls.loadLevel = levelIndex;
-    }
-    setCurrentLevel(levelIndex);
-    setMenuOpen(false);
-  };
 
   const watermarkText =
     watermarkOverride ||
@@ -209,11 +180,6 @@ export function SecureVideoPlayer({
 
   const cornerClasses =
     watermarkCorner === "bottom-right" ? "bottom-3 right-3" : "top-3 right-3";
-
-  const currentLabel =
-    currentLevel === -1
-      ? `Auto${activeHeight ? ` (${activeHeight}p)` : ""}`
-      : levels.find((l) => l.index === currentLevel)?.label || "Auto";
 
   return (
     <div className={cn("relative w-full bg-black rounded-xl overflow-hidden aspect-video", className)}>
@@ -257,47 +223,6 @@ export function SecureVideoPlayer({
           state.kind === "playing" ? "opacity-100" : "opacity-0 pointer-events-none"
         )}
       />
-
-      {/* Quality selector — only shown when there's more than one rendition */}
-      {state.kind === "playing" && levels.length > 1 && (
-        <div className="absolute bottom-14 right-3 z-10">
-          {menuOpen && (
-            <div className="mb-2 min-w-[120px] rounded-lg bg-black/85 backdrop-blur-sm border border-white/10 overflow-hidden shadow-lg">
-              <button
-                onClick={() => selectQuality(-1)}
-                className={cn(
-                  "w-full text-left px-3 py-2 text-[13px] hover:bg-white/10 transition-colors flex items-center justify-between gap-2",
-                  currentLevel === -1 ? "text-primary font-semibold" : "text-white/90"
-                )}
-              >
-                Auto
-                {currentLevel === -1 && <span className="icon text-[16px]">check</span>}
-              </button>
-              {levels.map((l) => (
-                <button
-                  key={l.index}
-                  onClick={() => selectQuality(l.index)}
-                  className={cn(
-                    "w-full text-left px-3 py-2 text-[13px] hover:bg-white/10 transition-colors flex items-center justify-between gap-2",
-                    currentLevel === l.index ? "text-primary font-semibold" : "text-white/90"
-                  )}
-                >
-                  {l.label}
-                  {currentLevel === l.index && <span className="icon text-[16px]">check</span>}
-                </button>
-              ))}
-            </div>
-          )}
-          <button
-            onClick={() => setMenuOpen((o) => !o)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-black/60 hover:bg-black/80 backdrop-blur-sm text-white text-[12px] font-medium border border-white/10 transition-colors"
-            title="Video quality"
-          >
-            <span className="icon text-[16px]">settings</span>
-            {currentLabel}
-          </button>
-        </div>
-      )}
 
       {/* Watermark overlay — fixed corner, semi-transparent, mix-blend so it stays visible on any frame */}
       {state.kind === "playing" && watermarkText && (

@@ -13,35 +13,39 @@ from app.core.config import settings
 
 @dataclass(frozen=True)
 class Rendition:
-    name: str        # "480p" | "720p" | "1080p"
-    height: int
+    name: str              # always "720p" — the single quality students receive
+    height: int            # actual encoded height (≤ 720; we never upscale)
     bitrate_kbps: int      # used as the MAX bitrate cap (-maxrate), not a fixed target
     audio_kbps: int
     crf: int               # quality target: lower = better quality + bigger; 23 ≈ visually lossless
 
 
-# CRF-based ladder. CRF makes the encoder spend only as many bits as the content
-# needs to hit the target quality, then -maxrate caps the peak so a high-bitrate
-# source can't blow past the rung. Net effect:
-#   - Already-small / low-bitrate sources stay SMALL (no wasteful upscaling of bits).
-#   - Large / high-bitrate sources get compressed down to the cap.
-RENDITION_LADDER: list[Rendition] = [
-    Rendition(name="480p", height=480, bitrate_kbps=1400, audio_kbps=64, crf=24),
-    Rendition(name="720p", height=720, bitrate_kbps=2800, audio_kbps=96, crf=23),
-    Rendition(name="1080p", height=1080, bitrate_kbps=5000, audio_kbps=128, crf=23),
-]
+# Single-quality policy: every upload is normalised to ONE 720p HLS rendition.
+#   - CRF makes the encoder spend only as many bits as the content needs to hit the
+#     target quality, and -maxrate caps the peak so a high-bitrate source can't blow
+#     past the rung (a 1080p/4K upload is compressed down to ~720p bandwidth).
+#   - A source already at/under 720p is re-encoded at its own height. We never upscale
+#     (e.g. a 480p upload stays 480p) because upscaling only inflates file size and
+#     adds zero real detail.
+TARGET_HEIGHT = 720
+VIDEO_MAXRATE_KBPS = 2800
+AUDIO_KBPS = 96
+CRF = 23
 
 
-def renditions_for(source_height: int) -> list[Rendition]:
-    """Pick renditions ≤ source height. Never upscale."""
-    if source_height <= 0:
-        return [RENDITION_LADDER[0]]
-    chosen = [r for r in RENDITION_LADDER if r.height <= source_height]
-    if not chosen:
-        # Source is smaller than the smallest ladder rung — encode at source resolution
-        # using the smallest profile's bitrate.
-        chosen = [RENDITION_LADDER[0]]
-    return chosen
+def rendition_for(source_height: int) -> Rendition:
+    """The single 720p rendition, capped to the source height (never upscale)."""
+    height = TARGET_HEIGHT if source_height <= 0 else min(TARGET_HEIGHT, source_height)
+    height -= height % 2          # libx264 / yuv420p require even dimensions
+    if height <= 0:
+        height = TARGET_HEIGHT
+    return Rendition(
+        name="720p",
+        height=height,
+        bitrate_kbps=VIDEO_MAXRATE_KBPS,
+        audio_kbps=AUDIO_KBPS,
+        crf=CRF,
+    )
 
 
 @lru_cache(maxsize=1)
@@ -119,55 +123,50 @@ def ffprobe(source_path: str) -> ProbeResult:
     )
 
 
-def build_hls_command(source: str, out_dir: str, renditions: list[Rendition], use_nvenc: bool) -> list[str]:
-    """Single ffmpeg invocation producing master.m3u8 + per-rendition variant playlists.
+def build_hls_command(source: str, out_dir: str, rendition: Rendition, use_nvenc: bool, has_audio: bool) -> list[str]:
+    """Single ffmpeg invocation producing master.m3u8 + one 720p variant playlist.
 
-    Uses one decode pass with -filter_complex split to make multiple scaled outputs.
+    One decode pass, one scaled output. The master playlist is kept (with a single
+    entry) so the student streaming path — manifest → variant → segment — stays
+    byte-for-byte identical regardless of how many qualities exist.
     """
-    n = len(renditions)
-    # filter_complex: split into N streams, scale each
-    split = f"[0:v]split={n}" + "".join(f"[v{i}]" for i in range(n))
-    scales = "; ".join(
-        f"[v{i}]scale=-2:{r.height}[v{i}o]" for i, r in enumerate(renditions)
-    )
-    filter_complex = f"{split}; {scales}"
-
     codec = "h264_nvenc" if use_nvenc else "libx264"
-    preset = "p4" if use_nvenc else "veryfast"
 
     cmd: list[str] = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "warning", "-i", source]
-    cmd += ["-filter_complex", filter_complex]
+    cmd += ["-map", "0:v:0"]
+    if has_audio:
+        cmd += ["-map", "0:a:0?"]
 
-    var_stream_parts: list[str] = []
-    for i, r in enumerate(renditions):
-        cmd += ["-map", f"[v{i}o]", f"-c:v:{i}", codec]
-        if use_nvenc:
-            # NVENC: constant-quality (-cq) mode, capped by maxrate. -cq mirrors CRF.
-            cmd += [
-                f"-preset:v:{i}", "p4",
-                f"-rc:v:{i}", "vbr",
-                f"-cq:v:{i}", str(r.crf),
-                f"-b:v:{i}", "0",
-                f"-maxrate:v:{i}", f"{r.bitrate_kbps}k",
-                f"-bufsize:v:{i}", f"{int(r.bitrate_kbps * 2)}k",
-            ]
-        else:
-            # libx264: CRF quality target, capped by maxrate so we never exceed the rung.
-            cmd += [
-                f"-preset:v:{i}", "veryfast",
-                f"-crf:v:{i}", str(r.crf),
-                f"-maxrate:v:{i}", f"{r.bitrate_kbps}k",
-                f"-bufsize:v:{i}", f"{int(r.bitrate_kbps * 2)}k",
-            ]
-        var_stream_parts.append(f"v:{i},a:{i},name:{r.name}")
+    cmd += ["-vf", f"scale=-2:{rendition.height}"]
+    if use_nvenc:
+        # NVENC: constant-quality (-cq mirrors CRF), capped by -maxrate.
+        cmd += [
+            "-c:v", codec,
+            "-preset", "p4",
+            "-rc", "vbr",
+            "-cq", str(rendition.crf),
+            "-b:v", "0",
+            "-maxrate", f"{rendition.bitrate_kbps}k",
+            "-bufsize", f"{rendition.bitrate_kbps * 2}k",
+        ]
+    else:
+        # libx264: CRF quality target, capped by -maxrate so we never exceed the rung.
+        cmd += [
+            "-c:v", codec,
+            "-preset", "veryfast",
+            "-crf", str(rendition.crf),
+            "-maxrate", f"{rendition.bitrate_kbps}k",
+            "-bufsize", f"{rendition.bitrate_kbps * 2}k",
+            # Cap CPU encoder threads so a daytime encode can't grab both cores
+            # and starve the API on a 2 vCPU box.
+            "-threads", str(max(1, settings.FFMPEG_THREADS)),
+        ]
+    cmd += ["-pix_fmt", "yuv420p"]
 
-    # Replicate the audio stream once per rendition so each variant can have its own bitrate
-    for i, r in enumerate(renditions):
-        cmd += ["-map", "a:0?"]
-    for i, r in enumerate(renditions):
-        cmd += [f"-b:a:{i}", f"{r.audio_kbps}k"]
-    cmd += ["-c:a", "aac", "-ac", "2", "-ar", "48000"]
+    if has_audio:
+        cmd += ["-c:a", "aac", "-b:a", f"{rendition.audio_kbps}k", "-ac", "2", "-ar", "48000"]
 
+    var_map = f"v:0,a:0,name:{rendition.name}" if has_audio else f"v:0,name:{rendition.name}"
     seg_seconds = max(2, settings.HLS_SEGMENT_SECONDS)
     cmd += [
         "-f", "hls",
@@ -177,25 +176,49 @@ def build_hls_command(source: str, out_dir: str, renditions: list[Rendition], us
         "-hls_flags", "independent_segments",
         "-hls_segment_filename", os.path.join(out_dir, "%v", "seg_%05d.ts"),
         "-master_pl_name", "master.m3u8",
-        "-var_stream_map", " ".join(var_stream_parts),
+        "-var_stream_map", var_map,
         os.path.join(out_dir, "%v", "index.m3u8"),
     ]
     return cmd
 
 
-def run_encode(source_path: str, out_dir: str, renditions: list[Rendition]) -> None:
-    """Synchronously encode the source into HLS variants under out_dir.
+def _priority_prefix() -> list[str]:
+    """Run the encoder at low CPU + IO priority so it always yields to the API
+    and Postgres. nice/ionice are Linux-only; skip gracefully if unavailable
+    (e.g. local non-Linux dev)."""
+    prefix: list[str] = []
+    if shutil.which("nice"):
+        prefix += ["nice", "-n", "10"]
+    if shutil.which("ionice"):
+        prefix += ["ionice", "-c2", "-n7"]
+    return prefix
 
-    Raises RuntimeError(stderr) on non-zero exit.
+
+def run_encode(source_path: str, out_dir: str, rendition: Rendition, has_audio: bool) -> None:
+    """Synchronously encode the source into a single 720p HLS variant under out_dir.
+
+    Runs the encoder niced/io-throttled and with a hard timeout so a corrupt or
+    huge upload can't pin the worker (and the box) indefinitely.
+
+    Raises RuntimeError(stderr) on non-zero exit or timeout.
     """
-    os.makedirs(out_dir, exist_ok=True)
-    for r in renditions:
-        os.makedirs(os.path.join(out_dir, r.name), exist_ok=True)
+    # makedirs creates out_dir as well as the rendition subfolder ffmpeg writes into.
+    os.makedirs(os.path.join(out_dir, rendition.name), exist_ok=True)
 
     use_nvenc = has_nvenc()
-    cmd = build_hls_command(source_path, out_dir, renditions, use_nvenc)
-    print(f"[FFMPEG] encoder={'NVENC' if use_nvenc else 'libx264'} renditions={[r.name for r in renditions]}")
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    cmd = _priority_prefix() + build_hls_command(source_path, out_dir, rendition, use_nvenc, has_audio)
+    timeout_s = max(60, settings.ENCODE_TIMEOUT_SECONDS)
+    print(
+        f"[FFMPEG] encoder={'NVENC' if use_nvenc else 'libx264'} "
+        f"rendition={rendition.name}@{rendition.height}p audio={has_audio} "
+        f"threads={settings.FFMPEG_THREADS} timeout={timeout_s}s"
+    )
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(
+            f"ffmpeg timed out after {timeout_s}s — source too large/long or stalled"
+        )
     if proc.returncode != 0:
         # Truncate to avoid massive DB strings
         err = (proc.stderr or proc.stdout or "")[-2000:]

@@ -34,6 +34,23 @@ def _make_session_factory():
     return engine, factory
 
 
+def enqueue_encoding() -> None:
+    """Best-effort trigger of the encode task on upload/retry so instructors get
+    same-day playback instead of waiting for midnight.
+
+    Safe to call repeatedly: the task loops over ALL pending videos with
+    `FOR UPDATE SKIP LOCKED`, so a second trigger while one runs is a near no-op.
+    The worker is single-concurrency + niced + thread-capped, so a daytime encode
+    can't overload the box. If the broker publish fails, the nightly Beat
+    schedule remains the guaranteed fallback.
+    """
+    try:
+        celery.send_task("tasks.optimize_pending_videos", queue="encoding")
+        print("[ENCODING] enqueued on-demand encode")
+    except Exception as exc:  # pragma: no cover - broker hiccup is non-fatal
+        print(f"[ENCODING] enqueue failed (will run at nightly batch): {exc}")
+
+
 @celery.task(name="tasks.optimize_pending_videos", bind=True, max_retries=2, default_retry_delay=600)
 def optimize_pending_videos(self) -> dict:
     """Process all pending videos sequentially. Triggered nightly by Celery Beat."""
@@ -108,6 +125,7 @@ async def _encode_one(video_id, Session: async_sessionmaker) -> tuple[bool, Opti
             if not video.source_path or not os.path.isfile(video.source_path):
                 return False, "Source file missing"
             src_path = video.source_path
+            uploader_id = str(video.uploaded_by)
 
         if not ff.ffmpeg_available():
             return False, "ffmpeg/ffprobe not installed in worker"
@@ -119,12 +137,12 @@ async def _encode_one(video_id, Session: async_sessionmaker) -> tuple[bool, Opti
         if not probe.has_video:
             return False, "No video stream in upload"
 
-        renditions = ff.renditions_for(probe.height)
-        out_dir = hls_root_for(str(video_id))
+        rendition = ff.rendition_for(probe.height)
+        out_dir = hls_root_for(uploader_id, str(video_id))
         out_dir.mkdir(parents=True, exist_ok=True)
 
         try:
-            ff.run_encode(src_path, str(out_dir), renditions)
+            ff.run_encode(src_path, str(out_dir), rendition, probe.has_audio)
         except Exception as exc:
             return False, f"ffmpeg failed: {exc}"
 
@@ -136,22 +154,21 @@ async def _encode_one(video_id, Session: async_sessionmaker) -> tuple[bool, Opti
             video = await db.get(Video, video_id)
             if video is None:
                 return False, "Video row vanished after encode"
-            # Load renditions relationship explicitly (avoids lazy-load on async session)
+            # Replace any prior rendition rows (e.g. from a re-encode) with the one 720p row.
             from sqlalchemy import select as sa_select
             from app.models.video import VideoRendition as VR
             existing = (await db.execute(sa_select(VR).where(VR.video_id == video.id))).scalars().all()
             for old in existing:
                 await db.delete(old)
             await db.flush()
-            for r in renditions:
-                db.add(VideoRendition(
-                    id=uuid.uuid4(),
-                    video_id=video.id,
-                    name=r.name,
-                    height=r.height,
-                    bitrate_kbps=r.bitrate_kbps,
-                    playlist_path=f"{r.name}/index.m3u8",
-                ))
+            db.add(VideoRendition(
+                id=uuid.uuid4(),
+                video_id=video.id,
+                name=rendition.name,
+                height=rendition.height,
+                bitrate_kbps=rendition.bitrate_kbps,
+                playlist_path=f"{rendition.name}/index.m3u8",
+            ))
             video.hls_dir = str(out_dir)
             video.duration_seconds = probe.duration_seconds
             video.source_height = probe.height
@@ -166,7 +183,7 @@ async def _encode_one(video_id, Session: async_sessionmaker) -> tuple[bool, Opti
                     print(f"[ENCODING] Failed to delete source {video.source_path}: {exc}")
             await db.commit()
 
-        print(f"[ENCODING] video={video_id} OK — renditions={[r.name for r in renditions]} duration={probe.duration_seconds}s")
+        print(f"[ENCODING] video={video_id} OK — {rendition.name}@{rendition.height}p duration={probe.duration_seconds}s")
         return True, None
     except Exception as exc:
         return False, f"unexpected: {exc}"

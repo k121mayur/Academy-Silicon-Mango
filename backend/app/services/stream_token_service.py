@@ -11,6 +11,48 @@ from app.core.config import settings
 from app.core.exceptions import APIError
 
 
+# ──────────────────────────────────────────────────────────────────────────
+# nginx-compatible secure_link signing for CDN-cacheable HLS segment URLs.
+#
+# The signature is USER-AGNOSTIC (no user/IP) so every concurrent viewer gets
+# the identical URL → Cloudflare caches it. nginx validates it with:
+#     secure_link        $arg_md5,$arg_e;
+#     secure_link_md5    "$uri $arg_e <SECRET>";
+# i.e. md5_raw("<uri> <e> <secret>") base64url-encoded (no padding). We MUST
+# build the exact same string here. Access control lives at the playlist gate
+# (login + enrollment + revocation); the signature only proves the URL was
+# issued by us and bounds its lifetime.
+# ──────────────────────────────────────────────────────────────────────────
+
+def _segment_secret() -> str:
+    key = (settings.SEGMENT_SIGNING_SECRET or "").strip()
+    if not key:
+        raise APIError(
+            code="STREAM_CONFIG",
+            message="Segment signing secret is not configured.",
+            status_code=500,
+        )
+    return key
+
+
+def segment_url_expiry(now: Optional[int] = None) -> int:
+    """Bucketed absolute expiry (Unix seconds). All viewers within one bucket
+    get the same value; the 2-bucket horizon keeps URLs from expiring during a
+    segment so playback stays smooth."""
+    now = now if now is not None else int(time.time())
+    bucket = max(60, settings.SEGMENT_URL_BUCKET_SECONDS)
+    return (now // bucket + 2) * bucket
+
+
+def sign_segment_uri(uri: str, expiry: int) -> str:
+    """Return the `md5` value nginx's secure_link_md5 expects for `uri`+`expiry`.
+
+    `uri` must be the exact request path nginx will see ($uri), e.g.
+    '/media/seg/<inst>/<vid>/720p/seg_00001.ts' (no query string)."""
+    raw = hashlib.md5(f"{uri} {expiry} {_segment_secret()}".encode("utf-8")).digest()
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+
+
 def _b64u(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
 

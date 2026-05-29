@@ -18,8 +18,21 @@ celery.conf.update(
     result_serializer="json",
     timezone="Asia/Kolkata",
     enable_utc=False,
+    # Durability: a job stays on the queue until the worker finishes, so a worker
+    # crash mid-encode re-runs it instead of losing it (pairs with Redis AOF).
     task_acks_late=True,
+    task_reject_on_worker_lost=True,
     worker_prefetch_multiplier=1,
+    # Backpressure / safety on a small box:
+    #  - soft/hard time limits are a backstop for a truly stuck batch (each video
+    #    already has its own ffmpeg timeout in ffmpeg_service.run_encode).
+    #  - result_expires bounds Redis memory used by the result backend.
+    #  - broker_pool_limit caps broker connections from the app/worker.
+    task_soft_time_limit=4 * 60 * 60,
+    task_time_limit=4 * 60 * 60 + 300,
+    result_expires=24 * 60 * 60,
+    broker_pool_limit=10,
+    broker_connection_retry_on_startup=True,
     task_routes={
         "tasks.optimize_pending_videos": {"queue": "encoding"},
     },

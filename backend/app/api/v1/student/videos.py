@@ -32,10 +32,26 @@ def _client_ip(request: Request) -> str:
 
 
 async def _resolve_video_for_student(db: AsyncSession, student: User, video_id: str) -> tuple[Video, str]:
-    """Verify enrollment + return (video, batch_id_str). Raises 403/404 on mismatch."""
+    """Verify enrollment + return (video, batch_id_str). Raises 403/404 on mismatch.
+
+    The enrollment authorization (student → batch) is cached in Redis for 60s to
+    avoid re-running the 3 join lookups on every playlist fetch. This is SAFE for
+    revocation because `_check_not_revoked` is still consulted on every request,
+    so an unenrolled student is blocked immediately regardless of this cache.
+    """
     video = await db.get(Video, video_id)
     if not video:
         raise APIError(code="NOT_FOUND", message="Video not found", status_code=404)
+
+    r = await get_redis()
+    cache_key = f"enroll:{student.id}:{video_id}"
+    try:
+        cached_batch = await r.get(cache_key)
+    except Exception:
+        cached_batch = None
+    if cached_batch:
+        return video, cached_batch
+
     resource = await db.get(SessionResource, video.session_resource_id)
     if not resource:
         raise APIError(code="NOT_FOUND", message="Linked resource missing", status_code=404)
@@ -52,7 +68,12 @@ async def _resolve_video_for_student(db: AsyncSession, student: User, video_id: 
     ).scalar_one_or_none()
     if not enr:
         raise APIError(code="FORBIDDEN", message="Not enrolled in this batch", status_code=403)
-    return video, str(session.batch_id)
+    batch_id = str(session.batch_id)
+    try:
+        await r.set(cache_key, batch_id, ex=60)
+    except Exception:
+        pass
+    return video, batch_id
 
 
 async def _check_not_revoked(student_id: str, batch_id: str) -> None:
@@ -85,8 +106,10 @@ async def playback_info(
     if not video.hls_dir:
         raise APIError(code="VIDEO_NO_HLS", message="No HLS output available", status_code=500)
 
-    ip = _client_ip(request)
-    token, ttl = tok.issue_manifest_token(str(student.id), str(video.id), ip)
+    # The manifest/variant playlists are the single authorization gate — they are
+    # protected by the login cookie + enrollment + revocation check (not a per-IP
+    # token, which is meaningless behind a CDN). Segment URLs inside the variant
+    # are individually signed and short-lived.
 
     # Watermark identity
     prof = (
@@ -101,8 +124,8 @@ async def playback_info(
             "status": video.status.value,
             "video_id": str(video.id),
             "duration_seconds": video.duration_seconds,
-            "manifest_url": f"/api/v1/student/videos/{video.id}/manifest.m3u8?t={token}",
-            "expires_in": ttl,
+            "manifest_url": f"/api/v1/student/videos/{video.id}/manifest.m3u8",
+            "expires_in": settings.SEGMENT_URL_BUCKET_SECONDS,
             "watermark_email": watermark,
             "watermark_name": display_name,
         },
@@ -112,30 +135,46 @@ async def playback_info(
 _URI_LINE_PATTERN = re.compile(r"^([^#].*?\.(?:m3u8|ts))\s*$", re.MULTILINE | re.IGNORECASE)
 
 
-def _rewrite_master(text: str, *, video_id: str, ip: str, user_id: str, request: Request) -> str:
-    """Master playlist references variant playlists like '480p/index.m3u8'.
+def _rewrite_master(text: str, *, video_id: str) -> str:
+    """Master playlist references variant playlists like '720p/index.m3u8'.
 
-    We rewrite each variant playlist line to an authenticated URL that, when hit,
-    will serve the rewritten variant playlist (each segment URI is then rewritten
-    to a tokenized segment URL).
+    Rewrite each to the variant.m3u8 endpoint. No token: the endpoint is gated by
+    the login cookie + enrollment + revocation check.
     """
     def repl(m: re.Match) -> str:
         uri = m.group(1).strip()
-        # Variant playlists are nested: e.g. '480p/index.m3u8'. Encode as a single 'name' so
-        # the GET endpoint can resolve it back to the on-disk path.
-        return f"/api/v1/student/videos/{video_id}/variant.m3u8?name={uri}&t={tok.issue_manifest_token(user_id, video_id, ip)[0]}"
+        return f"/api/v1/student/videos/{video_id}/variant.m3u8?name={uri}"
     return _URI_LINE_PATTERN.sub(repl, text)
 
 
-def _rewrite_variant(text: str, *, video_id: str, rendition: str, ip: str, user_id: str) -> str:
+def _rewrite_variant(text: str, *, video: Video, rendition: str, ip: str, user_id: str) -> str:
     """Variant playlist references segment files like 'seg_00001.ts'.
 
-    Each .ts URI is rewritten to a tokenized segment URL bound to (user, video, rendition, segment).
+    Production: rewrite each .ts to a USER-AGNOSTIC, bucketed, signed URL under
+    /media/seg/... that nginx validates (secure_link) and Cloudflare caches.
+    Dev fallback (SERVE_SEGMENTS_FROM_APP): rewrite to the FastAPI segment
+    endpoint with a per-user IP-bound token (so `uvicorn` alone works locally).
     """
+    if settings.SERVE_SEGMENTS_FROM_APP:
+        vid = str(video.id)
+
+        def repl_dev(m: re.Match) -> str:
+            seg = m.group(1).strip()
+            seg_token = tok.issue_segment_token(user_id, vid, ip, rendition, seg)
+            return f"/api/v1/student/videos/{vid}/seg/{rendition}/{seg}?t={seg_token}"
+
+        return _URI_LINE_PATTERN.sub(repl_dev, text)
+
+    inst = str(video.uploaded_by)
+    vid = str(video.id)
+    exp = tok.segment_url_expiry()  # bucketed → identical for all concurrent viewers
+
     def repl(m: re.Match) -> str:
         seg = m.group(1).strip()
-        seg_token = tok.issue_segment_token(user_id, video_id, ip, rendition, seg)
-        return f"/api/v1/student/videos/{video_id}/seg/{rendition}/{seg}?t={seg_token}"
+        uri = f"/media/seg/{inst}/{vid}/{rendition}/{seg}"
+        sig = tok.sign_segment_uri(uri, exp)
+        return f"{uri}?e={exp}&md5={sig}"
+
     return _URI_LINE_PATTERN.sub(repl, text)
 
 
@@ -143,14 +182,12 @@ def _rewrite_variant(text: str, *, video_id: str, rendition: str, ip: str, user_
 async def get_manifest(
     video_id: str,
     request: Request,
-    t: str = Query(...),
     student: User = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ):
+    # Auth gate: login cookie (require_student) + enrollment + not-revoked.
     video, batch_id = await _resolve_video_for_student(db, student, video_id)
     await _check_not_revoked(str(student.id), batch_id)
-    ip = _client_ip(request)
-    tok.verify(t, video_id, ip, expected_scope="manifest")
 
     if not video.hls_dir:
         raise APIError(code="VIDEO_NO_HLS", message="No HLS output", status_code=404)
@@ -162,9 +199,7 @@ async def get_manifest(
     with open(master_path, "r", encoding="utf-8") as f:
         text = f.read()
 
-    rewritten = _rewrite_master(
-        text, video_id=str(video.id), ip=ip, user_id=str(student.id), request=request
-    )
+    rewritten = _rewrite_master(text, video_id=str(video.id))
     return Response(
         content=rewritten,
         media_type="application/vnd.apple.mpegurl",
@@ -179,15 +214,13 @@ async def get_manifest(
 async def get_variant(
     video_id: str,
     request: Request,
-    name: str = Query(...),  # e.g. '480p/index.m3u8'
-    t: str = Query(...),
+    name: str = Query(...),  # e.g. '720p/index.m3u8'
     student: User = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ):
+    # Auth gate: login cookie (require_student) + enrollment + not-revoked.
     video, batch_id = await _resolve_video_for_student(db, student, video_id)
     await _check_not_revoked(str(student.id), batch_id)
-    ip = _client_ip(request)
-    tok.verify(t, video_id, ip, expected_scope="manifest")
 
     if not video.hls_dir:
         raise APIError(code="VIDEO_NO_HLS", message="No HLS output", status_code=404)
@@ -196,7 +229,7 @@ async def get_variant(
     if not variant_path:
         raise APIError(code="VIDEO_NO_HLS", message="variant playlist missing", status_code=404)
 
-    # Extract rendition folder name from 'name' (e.g. '480p/index.m3u8' -> '480p')
+    # Extract rendition folder name from 'name' (e.g. '720p/index.m3u8' -> '720p')
     parts = name.replace("\\", "/").split("/")
     if len(parts) < 2:
         raise APIError(code="VIDEO_NO_HLS", message="bad variant path", status_code=400)
@@ -206,7 +239,7 @@ async def get_variant(
         text = f.read()
 
     rewritten = _rewrite_variant(
-        text, video_id=str(video.id), rendition=rendition, ip=ip, user_id=str(student.id)
+        text, video=video, rendition=rendition, ip=_client_ip(request), user_id=str(student.id)
     )
     return Response(
         content=rewritten,
@@ -228,6 +261,14 @@ async def get_segment(
     student: User = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ):
+    # In production, segments are served directly by nginx (secure_link) and
+    # cached by the CDN — this endpoint is a LOCAL-DEV fallback only.
+    if not settings.SERVE_SEGMENTS_FROM_APP:
+        raise APIError(
+            code="NOT_FOUND",
+            message="Segments are served by the edge/CDN, not the API.",
+            status_code=404,
+        )
     video, batch_id = await _resolve_video_for_student(db, student, video_id)
     await _check_not_revoked(str(student.id), batch_id)
     ip = _client_ip(request)

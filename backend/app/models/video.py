@@ -62,7 +62,7 @@ class VideoRendition(Base):
     video_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False
     )
-    name: Mapped[str] = mapped_column(String(16), nullable=False)  # '480p' | '720p' | '1080p'
+    name: Mapped[str] = mapped_column(String(16), nullable=False)  # always '720p' (single-quality policy)
     height: Mapped[int] = mapped_column(Integer, nullable=False)
     bitrate_kbps: Mapped[int] = mapped_column(Integer, nullable=False)
     playlist_path: Mapped[str] = mapped_column(String(500), nullable=False)  # relative to hls_dir

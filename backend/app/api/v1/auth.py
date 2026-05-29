@@ -19,8 +19,10 @@ from app.core.redis import (
     blacklist_token,
     is_blacklisted,
     login_rate_limit,
+    otp_ip_rate_limit,
     otp_rate_limit,
 )
+from app.core.utils import get_client_ip
 from app.core.security import (
     clear_auth_cookies,
     create_access_token,
@@ -80,7 +82,7 @@ async def login(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ):
-    ip = request.client.host if request.client else "unknown"
+    ip = get_client_ip(request)
     allowed, reset_in = await login_rate_limit(ip)
     if not allowed:
         raise err_login_rate_limited(reset_in)
@@ -93,10 +95,19 @@ async def login(
 
 
 @router.post("/signup/request", response_model=OTPRequestResponse)
-async def signup_request(payload: SignupRequest, db: AsyncSession = Depends(get_db)):
+async def signup_request(
+    payload: SignupRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    # Limit per-email (email-bombing one address) AND per-IP (OTP enumeration).
     allowed, reset_in = await otp_rate_limit(payload.email)
     if not allowed:
         raise err_otp_rate_limited(reset_in)
+    ip = get_client_ip(request)
+    allowed_ip, reset_ip = await otp_ip_rate_limit(ip)
+    if not allowed_ip:
+        raise err_otp_rate_limited(reset_ip)
 
     expires_in = await request_signup_otp(db, payload.email)
     return OTPRequestResponse(message="OTP sent to your email", expires_in=expires_in)

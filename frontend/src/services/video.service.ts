@@ -1,6 +1,4 @@
-import api from "@/lib/api";
-
-const API_BASE = `${import.meta.env.VITE_API_BASE_URL || "http://localhost:8085"}/api/v1`;
+import api, { API_V1_BASE_URL } from "@/lib/api";
 
 export type VideoStatus = "uploaded" | "queued" | "processing" | "ready" | "failed";
 
@@ -46,7 +44,7 @@ export function uploadVideo(
     form.append("title", title);
     form.append("file", file);
 
-    xhr.open("POST", `${API_BASE}/instructor/sessions/${sessionId}/videos`, true);
+    xhr.open("POST", `${API_V1_BASE_URL}/instructor/sessions/${sessionId}/videos`, true);
     xhr.withCredentials = true;
 
     xhr.upload.onprogress = (e) => {

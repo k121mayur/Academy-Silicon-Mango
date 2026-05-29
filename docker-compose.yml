@@ -1,38 +1,121 @@
+# ============================================================
+#  Silicon Mango Academy — base compose (works locally AND on the server)
+#
+#  Production extras (TLS on 443, Cloudflare origin lock-down, no published
+#  DB/Redis ports) live in docker-compose.prod.yml. On the Oracle VM run:
+#     docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#  Locally (HTTP, for testing) just run:
+#     docker compose up -d --build
+#
+#  Resource limits are sized for a 2 vCPU / 6 GB box (see DEPLOYMENT.md).
+#  The two memory peaks (daytime traffic vs. nightly encode) are time-disjoint,
+#  so the sum of hard limits intentionally exceeds 6 GB — limits are ceilings,
+#  not reservations. Guaranteed reservations total ~1 GB.
+# ============================================================
+
 services:
   postgres:
     image: postgres:16-alpine
     container_name: sm_postgres
+    restart: unless-stopped
     environment:
       POSTGRES_DB: silicon_mango
       POSTGRES_USER: sm_user
       POSTGRES_PASSWORD: ${DB_PASSWORD:-sm_secure_pass_2024}
+    # Tuned for a small shared box. We do NOT use the classic "25% of RAM"
+    # rule because Postgres is only one tenant here.
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=60"
+      - "-c"
+      - "shared_buffers=256MB"
+      - "-c"
+      - "effective_cache_size=1536MB"
+      - "-c"
+      - "work_mem=8MB"
+      - "-c"
+      - "maintenance_work_mem=128MB"
+      - "-c"
+      - "max_worker_processes=2"
+      - "-c"
+      - "max_parallel_workers=2"
+      - "-c"
+      - "max_parallel_workers_per_gather=1"
+      - "-c"
+      - "random_page_cost=1.1"
+      - "-c"
+      - "autovacuum_max_workers=1"
+      - "-c"
+      - "autovacuum_vacuum_cost_delay=10ms"
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      # Postgres listens on 5432 INSIDE the container. Host-exposed on 5435 to avoid
-      # colliding with a host-installed Postgres (home-server admin's setup).
-      - "5435:5432"
+      # Bound to localhost ONLY — reachable from the VM (psql/pg_dump) but never
+      # from the public internet. Host port 5435 avoids colliding with a
+      # host-installed Postgres. (Removed entirely in docker-compose.prod.yml.)
+      - "127.0.0.1:5435:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U sm_user -d silicon_mango"]
       interval: 10s
       timeout: 5s
       retries: 5
+    mem_limit: 768m
+    mem_reservation: 256m
+    cpus: 0.6
     networks:
       - sm_network
 
   redis:
     image: redis:7-alpine
     container_name: sm_redis
-    command: redis-server --requirepass ${REDIS_PASSWORD:-sm_redis_pass_2024}
+    restart: unless-stopped
+    # REDIS_PASSWORD is also placed in the container env so the healthcheck can
+    # authenticate with the SAME password (not just the build-time default).
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-sm_redis_pass_2024}
+    # maxmemory caps RAM; noeviction means a full cache fails writes loudly
+    # rather than silently dropping QUEUED CELERY JOBS (broker lives in db1).
+    # AOF + RDB make the queue survive a reboot. App cache keys (db0) all carry
+    # TTLs so the cache stays self-bounding well under the cap.
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-sm_redis_pass_2024}
+      --maxmemory 256mb
+      --maxmemory-policy noeviction
+      --appendonly yes
+      --appendfsync everysec
+      --save "900 1 300 10 60 10000"
     ports:
-      - "6381:6379"
+      - "127.0.0.1:6381:6379"
     volumes:
       - redisdata:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
+    mem_limit: 320m
+    mem_reservation: 64m
+    cpus: 0.3
+    networks:
+      - sm_network
+
+  # ─── One-shot DB migration — runs once, then exits. Backend/worker/beat wait
+  #     for it to finish so multiple workers never race `alembic upgrade`. ───
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sm_migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD:-sm_secure_pass_2024}@postgres:5432/silicon_mango
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
     networks:
       - sm_network
 
@@ -41,39 +124,59 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: sm_backend
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_started
+      migrate:
+        condition: service_completed_successfully
     env_file: ./backend/.env
     environment:
-      # Inside Docker, connect to the `postgres` service above (NOT host machine).
-      # User/password here MUST match POSTGRES_USER/POSTGRES_PASSWORD of postgres service.
+      # Inside Docker, connect to the `postgres`/`redis` services (NOT host).
       DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD:-sm_secure_pass_2024}@postgres:5432/silicon_mango
       REDIS_URL: redis://:${REDIS_PASSWORD:-sm_redis_pass_2024}@redis:6379/0
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-sm_redis_pass_2024}@redis:6379/1
       CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-sm_redis_pass_2024}@redis:6379/2
+      # Shared HMAC secret for nginx secure_link segment URLs (MUST match the
+      # frontend container's SM_SEGMENT_SECRET below).
+      SEGMENT_SIGNING_SECRET: ${SEGMENT_SIGNING_SECRET:-dev_segment_secret_change_me}
     ports:
-      - "8090:8085"
+      # Loopback-only: reachable on the VM for debugging, never from the public
+      # internet. nginx talks to the backend over the docker network (backend:8085),
+      # not via this published port.
+      - "127.0.0.1:8090:8085"
     volumes:
+      # Data only — code is baked into the image (no --reload in production).
       - ./backend/uploads:/app/uploads
       - ./backend/media:/app/media
-      - ./backend/app:/app/app
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8085/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    mem_limit: 1280m
+    mem_reservation: 512m
+    cpus: 1.5
     networks:
       - sm_network
 
-  # ─── Celery worker — encodes pending videos to HLS at midnight ───
+  # ─── Celery worker — encodes pending videos to HLS (nightly + on upload) ───
   worker:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: sm_worker
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_started
+      migrate:
+        condition: service_completed_successfully
     env_file: ./backend/.env
     environment:
       DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD:-sm_secure_pass_2024}@postgres:5432/silicon_mango
@@ -84,7 +187,17 @@ services:
     volumes:
       - ./backend/uploads:/app/uploads
       - ./backend/media:/app/media
-      - ./backend/app:/app/app
+    healthcheck:
+      # ffmpeg runs INSIDE this container's cgroup, so the limit must cover its
+      # ~0.8–1.5 GB spike. cpus:1.0 + `-threads 1` keep one core free for the API.
+      test: ["CMD-SHELL", "pgrep -f 'celery.*worker' > /dev/null || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    mem_limit: 1792m
+    mem_reservation: 128m
+    cpus: 1.0
     networks:
       - sm_network
 
@@ -94,8 +207,12 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: sm_beat
+    restart: unless-stopped
     depends_on:
-      - redis
+      redis:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
     env_file: ./backend/.env
     environment:
       DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD:-sm_secure_pass_2024}@postgres:5432/silicon_mango
@@ -103,8 +220,15 @@ services:
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-sm_redis_pass_2024}@redis:6379/1
       CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-sm_redis_pass_2024}@redis:6379/2
     command: celery -A app.celery_app.celery beat --loglevel=info
-    volumes:
-      - ./backend/app:/app/app
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'celery.*beat' > /dev/null || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    mem_limit: 128m
+    mem_reservation: 32m
+    cpus: 0.1
     networks:
       - sm_network
 
@@ -113,10 +237,25 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: sm_frontend
-    ports:
-      - "5185:80"
+    restart: unless-stopped
     depends_on:
       - backend
+    environment:
+      # nginx renders /etc/nginx/templates/*.template at boot, substituting ONLY
+      # variables whose names match NGINX_ENVSUBST_FILTER (so nginx runtime vars
+      # like $uri / $arg_e are left intact).
+      NGINX_ENVSUBST_FILTER: "^SM_"
+      SM_SERVER_NAME: ${SERVER_NAME:-_}
+      SM_SEGMENT_SECRET: ${SEGMENT_SIGNING_SECRET:-dev_segment_secret_change_me}
+    ports:
+      - "5185:80"
+    volumes:
+      # Read-only so nginx can sendfile segments/uploads directly (zero Python).
+      - ./backend/media:/app/media:ro
+      - ./backend/uploads:/app/uploads:ro
+    mem_limit: 256m
+    mem_reservation: 64m
+    cpus: 0.3
     networks:
       - sm_network
 

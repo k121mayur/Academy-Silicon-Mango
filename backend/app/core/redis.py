@@ -81,13 +81,21 @@ async def rate_limit_check(key: str, limit: int, window_seconds: int) -> tuple[b
     return True, 0
 
 
-# ---------------- OTP rate limiting (per-email) ----------------
+# ---------------- OTP rate limiting (per-email AND per-IP) ----------------
 
 async def otp_rate_limit(email: str) -> tuple[bool, int]:
-    # Dev-friendly: 1000 OTPs/15min per email. Tighten before production.
-    return await rate_limit_check(f"otp:{email.lower()}", limit=1000, window_seconds=900)
+    """Per-email OTP request cap: 5 per 15 min (allows a couple of resends,
+    blocks email-bombing a single address)."""
+    return await rate_limit_check(f"otp:email:{email.lower()}", limit=5, window_seconds=900)
+
+
+async def otp_ip_rate_limit(ip: str) -> tuple[bool, int]:
+    """Per-IP OTP request cap: 15 per 15 min — stops one host from enumerating
+    OTPs across many email addresses while allowing shared-NAT classrooms."""
+    return await rate_limit_check(f"otp:ip:{ip}", limit=15, window_seconds=900)
 
 
 async def login_rate_limit(ip: str) -> tuple[bool, int]:
-    # Dev-friendly: 1000 logins/15min per IP. Tighten before production.
-    return await rate_limit_check(f"login:{ip}", limit=1000, window_seconds=900)
+    """Per-IP login attempt cap: 20 per 15 min. Generous enough for a shared
+    classroom/office NAT, tight enough to blunt online password guessing."""
+    return await rate_limit_check(f"login:{ip}", limit=20, window_seconds=900)

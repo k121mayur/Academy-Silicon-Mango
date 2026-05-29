@@ -58,6 +58,27 @@ class Settings(BaseSettings):
     HLS_SEGMENT_SECONDS: int = 6
     ENABLE_GPU: bool = False
 
+    # CDN-cacheable segment URLs (nginx secure_link, time-bucketed).
+    # SEGMENT_SIGNING_SECRET MUST match the frontend nginx container's
+    # SM_SEGMENT_SECRET. Segment URL expiry is snapped to a fixed bucket so all
+    # concurrent viewers share one cacheable URL; the leak/revocation residual
+    # is at most one bucket length.
+    SEGMENT_SIGNING_SECRET: str = ""
+    # Expiry is snapped to a fixed bucket and given a 2-bucket horizon, so a
+    # signed URL is valid for 1–2 buckets (10–20 min here). All concurrent
+    # viewers in the same bucket compute the SAME url → one cacheable object.
+    # The 2-bucket horizon means playback never hits a near-expired URL, so it
+    # stays smooth; worst-case leak/revocation residual is ~2 buckets.
+    SEGMENT_URL_BUCKET_SECONDS: int = 600    # 10-min buckets
+    SEGMENT_URL_TTL_SECONDS: int = 1200      # informational: max validity (2 buckets)
+    # When true, FastAPI also serves .ts segments itself (local dev / fallback).
+    # In production segments are served by nginx, so leave this off.
+    SERVE_SEGMENTS_FROM_APP: bool = False
+
+    # FFmpeg / encoding resource controls (small-box safety)
+    FFMPEG_THREADS: int = 1                   # keep one core free for the API
+    ENCODE_TIMEOUT_SECONDS: int = 1800        # 30 min hard cap per video
+
     # Celery
     CELERY_BROKER_URL: str = "redis://:sm_redis_pass_2024@localhost:6379/1"
     CELERY_RESULT_BACKEND: str = "redis://:sm_redis_pass_2024@localhost:6379/2"

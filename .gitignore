@@ -157,6 +157,11 @@ activemq-data/
 # Environments
 .env
 .envrc
+
+# TLS / origin certificates (never commit private keys)
+certs/
+*.pem
+*.key
 .venv
 env/
 venv/

@@ -1,0 +1,37 @@
+# ============================================================
+#  Production overlay — apply ON TOP of docker-compose.yml on the Oracle VM:
+#
+#     docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+#  Adds: public 80/443 on the nginx front door, TLS termination with a
+#  Cloudflare Origin certificate, and Cloudflare-only origin lock-down
+#  (Authenticated Origin Pulls + real client IP + shared-secret header).
+#
+#  Requires (see DEPLOYMENT.md):
+#    - ./certs/origin.pem, ./certs/origin.key         (Cloudflare Origin CA cert)
+#    - ./certs/cloudflare-origin-pull-ca.pem          (downloaded from Cloudflare)
+#    - root .env: SERVER_NAME, SEGMENT_SIGNING_SECRET, ORIGIN_SHARED_SECRET
+#    - Oracle Security List: allow inbound 80 + 443 ONLY (everything else closed)
+# ============================================================
+
+services:
+  frontend:
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      NGINX_ENVSUBST_FILTER: "^SM_"
+      SM_SERVER_NAME: ${SERVER_NAME}
+      SM_SEGMENT_SECRET: ${SEGMENT_SIGNING_SECRET}
+      SM_ORIGIN_SECRET: ${ORIGIN_SHARED_SECRET}
+    volumes:
+      - ./backend/media:/app/media:ro
+      - ./backend/uploads:/app/uploads:ro
+      # Production nginx config (TLS + Cloudflare lock-down) overrides the baked-in
+      # dev template. Rendered by the image's envsubst step at container start.
+      - ./frontend/nginx.prod.conf:/etc/nginx/templates/default.conf.template:ro
+      - ./certs:/etc/nginx/certs:ro
+
+  # In production the app talks to the database over TLS via Cloudflare? No — the
+  # DB stays internal. We simply ensure the backend is not directly reachable; it
+  # already binds 8090 to loopback in the base file, which is fine.

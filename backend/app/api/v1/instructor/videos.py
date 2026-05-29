@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.core.exceptions import APIError
 from app.db.session import get_db
@@ -12,6 +13,7 @@ from app.models.session import Session as ClassSession
 from app.models.user import User
 from app.models.video import Video, VideoStatus
 from app.services import video_service as vs
+from app.tasks.encoding import enqueue_encoding
 
 router = APIRouter(prefix="/instructor", tags=["instructor:videos"])
 
@@ -78,11 +80,13 @@ async def upload_video(
         size_bytes=size_bytes,
         uploader=instructor,
     )
+    # Trigger encoding now (best-effort, throttled); nightly batch is the fallback.
+    await run_in_threadpool(enqueue_encoding)
     return {
         "success": True,
         "data": {
             **_video_dto(video),
-            "message": "Uploaded. Available after tonight's optimization (runs at midnight).",
+            "message": "Uploaded. Optimization has started and the lesson will be playable shortly (it also re-runs nightly).",
         },
     }
 
@@ -155,4 +159,5 @@ async def retry_video(
             status_code=400,
         )
     video = await vs.reset_for_retry(db, video)
+    await run_in_threadpool(enqueue_encoding)
     return {"success": True, "data": _video_dto(video)}
