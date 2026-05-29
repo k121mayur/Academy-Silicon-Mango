@@ -1,524 +1,586 @@
-# Silicon Mango Academy
+# 🥭 Silicon Mango Academy
 
-> Learn. Build. Get Certified.
+A full-stack **online learning platform** where an academy can publish courses, run live or self‑paced (recorded‑video) cohorts, take payments, track attendance and assignments, and issue verifiable certificates — built to run comfortably for **50–70 concurrent users on a single small (2 vCPU / 6 GB) server** behind a free CDN.
 
-A full-stack learning platform with **React 18 + Vite + TailwindCSS** on the frontend and **FastAPI + PostgreSQL + Redis + Alembic** on the backend.
-
-This day delivers a working **public landing page**, a complete **authentication system** (Email + OTP + Google OAuth), and the **full Admin panel** for running an academy end-to-end — courses, instructors, batches, students, enrollments, payments, and certificates.
+This document explains **everything**: what each feature does in plain language, the **step‑by‑step flow for students, instructors and admins**, the **technical details** behind each feature, and **why** each technology and design decision was made.
 
 ---
 
 ## Table of contents
 
-1. [What was built today](#what-was-built-today)
-2. [System architecture](#system-architecture)
-3. [Auth system in detail](#auth-system-in-detail)
-4. [Admin panel — feature by feature](#admin-panel--feature-by-feature)
-5. [Backend foundations](#backend-foundations)
-6. [Frontend foundations](#frontend-foundations)
-7. [How to run the project (for reviewers)](#how-to-run-the-project-for-reviewers)
-8. [Tech stack reference](#tech-stack-reference)
-9. [Useful commands](#useful-commands)
+1. [What is Silicon Mango Academy?](#1-what-is-silicon-mango-academy)
+2. [The three roles at a glance](#2-the-three-roles-at-a-glance)
+3. [Architecture overview](#3-architecture-overview)
+4. [Technology stack (and why each was chosen)](#4-technology-stack-and-why-each-was-chosen)
+5. [Student journey — every feature, step by step](#5-student-journey--every-feature-step-by-step)
+6. [Instructor journey — every feature, step by step](#6-instructor-journey--every-feature-step-by-step)
+7. [Admin journey — every feature, step by step](#7-admin-journey--every-feature-step-by-step)
+8. [Deep dive: Authentication & security](#8-deep-dive-authentication--security)
+9. [Deep dive: The self‑paced video pipeline](#9-deep-dive-the-self-paced-video-pipeline)
+10. [Deep dive: Payments & receipts](#10-deep-dive-payments--receipts)
+11. [Deep dive: Certificates](#11-deep-dive-certificates)
+12. [Deep dive: Load handling & deployment architecture](#12-deep-dive-load-handling--deployment-architecture)
+13. [Data model overview](#13-data-model-overview)
+14. [Project structure](#14-project-structure)
+15. [Configuration (environment variables)](#15-configuration-environment-variables)
+16. [Running the project](#16-running-the-project)
+17. [Useful commands & troubleshooting](#17-useful-commands--troubleshooting)
 
 ---
 
-## What was built today
+## 1. What is Silicon Mango Academy?
 
-A snapshot of every feature shipped, grouped by area:
+Silicon Mango Academy is software for running an online school. It has three sides:
 
-| Area | What landed | Why it exists |
+- A **public website** where anyone can browse published courses and sign up.
+- A **student portal** where learners enroll (and pay), watch recorded lessons or join live classes, submit assignments, see their attendance and progress, and download certificates.
+- An **admin + instructor back office** where the academy creates courses, schedules cohorts ("batches"), manages people, takes payments, grades work, and issues certificates.
+
+The standout capability is a **secure, self‑paced video pipeline**: instructors upload a raw video, the system automatically optimizes it into streaming‑friendly chunks, and students watch it through a player that is access‑controlled, watermarked, and served efficiently through a CDN so the small server is never overwhelmed.
+
+**In one sentence:** it is a Udemy/learning‑management‑style platform, security‑hardened and cost‑optimized to run on a tiny cloud VM.
+
+---
+
+## 2. The three roles at a glance
+
+| Role | Who they are | What they can do |
+|------|--------------|------------------|
+| **Student** | Learners who sign up themselves (email+OTP or Google) | Browse courses, enroll & pay, watch videos / join live classes, submit assignments, view attendance & progress, download certificates, manage their profile |
+| **Instructor** | Teachers created by an admin | See their assigned batches, manage sessions & resources, upload lesson videos, create & grade assignments, mark attendance, issue certificates |
+| **Admin** | The academy operator(s) | Everything: dashboards & revenue, course catalog, provision instructors/students, create batches with auto‑scheduling, manage enrollments, configure & reconcile payments, set up & generate certificates |
+
+Each role has its **own portal and navigation**, and the system **locks routes by role** on both the frontend (route guards) and the backend (every endpoint checks the caller's role).
+
+---
+
+## 3. Architecture overview
+
+```
+                       ┌──────────────────────── Cloudflare (free CDN + HTTPS) ─────────────────────────┐
+   Browser  ──HTTPS──▶ │  • Caches video segments (*.ts) → ~90% of video traffic never hits the server  │
+                       │  • Passes through everything else (pages, API, playlists)                      │
+                       └──────────────────────────────┬──── TLS, Cloudflare‑only origin lock‑down ──────┘
+                                                       │
+   ┌───────────────────────────────────── Single Oracle Cloud VM (2 vCPU / 6 GB) ──────────────────────────┐
+   │  nginx (the "front door", in the frontend container)                                                  │
+   │    ├── /                → serves the React single‑page app (static files)                              │
+   │    ├── /api/            → reverse‑proxies to the FastAPI backend                                       │
+   │    ├── /media/seg/*.ts  → serves signed video chunks straight from disk (no Python) → CDN‑cacheable    │
+   │    └── /uploads/        → serves images / PDFs straight from disk                                      │
+   │                                                                                                        │
+   │  FastAPI backend (gunicorn → 3 async uvicorn workers)                                                  │
+   │    ├── PostgreSQL 16   (all relational data, tuned + connection‑pooled)                                │
+   │    └── Redis 7         (OTP/rate‑limit cache, token blacklist, enrollment cache, Celery broker)        │
+   │                                                                                                        │
+   │  Celery worker  → runs FFmpeg to optimize videos (nightly + on upload, throttled)                      │
+   │  Celery beat    → the scheduler that fires the nightly optimization                                    │
+   │                                                                                                        │
+   │  Resource limits + auto‑restart on every container · 4 GB swap safety net                              │
+   └────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**The core idea:** the heavy work (streaming video bytes) is pushed off Python and off the origin — nginx serves the chunks and Cloudflare caches them — so the small box only ever does light JSON/auth work. Full operational details are in **[DEPLOYMENT.md](DEPLOYMENT.md)**.
+
+---
+
+## 4. Technology stack (and why each was chosen)
+
+### Backend
+
+| Technology | What it is (plain language) | Why we chose it |
 |---|---|---|
-| **Project foundation** | Docker setup, env config, FastAPI app factory, SQLAlchemy async session, Alembic migrations, Redis client, JWT helpers, structured exceptions | The skeleton that every later feature plugs into. Without these, nothing runs. |
-| **Database schema** | 19 tables modeled in SQLAlchemy: users, profiles (student / instructor), courses, course-instructors, batches, batch plans, schedule slots, enrollments, sessions, session resources, OTP records, payments, payment settings, certificates, certificate templates, assignments, submissions, attendance | A complete domain model so admin features have real data shapes to work with from day one, not stubs. |
-| **Auth — Email + OTP** | `/auth/signup/request`, `/auth/signup/verify`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/me`. HttpOnly cookie sessions with rotating refresh tokens. | Lets students self-serve onboarding without an admin needing to provision them. |
-| **Auth — Google OAuth** | `/auth/google/authorize`, `/auth/google/callback` with state-cookie CSRF protection | Frictionless signup. New Google accounts auto-create a student. |
-| **Auth — security** | bcrypt password hashing, 6-digit OTP (5-min TTL, max 5 attempts), Redis-backed token blacklist (logout / refresh rotation), Redis sliding-window rate limits on login + OTP | Prevents brute force, replay of revoked tokens, and OTP spam. |
-| **Public landing page** | Hero, features, courses preview, testimonials, footer | First impression for the marketing site. |
-| **Auth UI** | Multi-step signup (email → OTP → password) with strength meter, resend cooldown, OTP input, Google button. Login page with Google. | The student-facing front door. |
-| **Admin panel** | Dashboard, Courses, Catalogue, Course Form, Instructors, Assign Instructors, Batches, Batch Create, Batch Detail, Batch Ops, Students, Student Detail, Enrollments, Payments, Payment Settings, Certificates | The actual operational tool the academy team uses every day. Detailed below. |
-| **Auto session planning** | Service that auto-generates plan rows (Week 1, Week 2…) and sessions from batch schedule slots when a batch is created | Instead of an admin manually creating 60 calendar entries per batch, they pick days/times once and the system fills in the calendar. |
-| **File storage** | Local filesystem under `backend/uploads/`, served at `/uploads`. Used for course banners, syllabus PDFs, certificate templates. | Real file uploads work without an S3 dependency. Swappable later. |
-| **Email service** | aiosmtplib + Gmail SMTP (port 465 implicit TLS or 587 STARTTLS, auto-detected). Welcome-instructor email and OTP email templates. **Falls back to console** when SMTP isn't configured. | Real emails when you want them, zero-friction dev when you don't. |
-| **Boot-time seeding** | Master admin (`admin@siliconmango.com` / `Admin@12345`) is created on first boot if it doesn't exist | Lets a reviewer log in to the admin panel immediately. |
-| **Error envelope** | Every error returns `{success: false, error: {code, message, details?}}` and CORS headers are attached even on 5xx responses | Consistent client error handling and no CORS-masked 500s in DevTools. |
+| **FastAPI** (Python) | The web framework that answers all API requests | Async by default (one process serves many users at once with little memory), automatic request validation, and very fast to develop with |
+| **SQLAlchemy 2 (async) + asyncpg** | The translator between Python objects and the database | Async driver means database waits don't block other users; the ORM prevents SQL‑injection by always using parameterized queries |
+| **PostgreSQL 16** | The main database (users, courses, payments, etc.) | Rock‑solid, free, handles relational data and JSON columns, and is easy to back up |
+| **Redis 7** | A fast in‑memory store | Used for OTP caching, rate‑limit counters, instant logout (token blacklist), enrollment caching, **and** as the Celery job queue — one tool, several jobs |
+| **Celery + Celery Beat** | A background‑job runner and scheduler | Video encoding is slow and CPU‑heavy; running it in the background (and at night) keeps the website responsive |
+| **FFmpeg** | The industry‑standard video encoder | Converts any uploaded video into streaming‑friendly HLS chunks; the same tool YouTube‑class platforms use |
+| **gunicorn + uvicorn workers** | The production server that runs FastAPI | gunicorn runs **3 worker processes** so the 2 CPU cores are used well and one slow request can't freeze everyone |
+| **Alembic** | Database migration tool | Versions the database schema so upgrades are repeatable and reversible |
+| **bcrypt (via passlib)** | Password hasher | Deliberately slow + salted, so stolen password hashes are extremely hard to crack |
+| **python‑jose (JWT)** | Signs login tokens | Stateless sessions; the server can trust a token without a database lookup |
+| **Razorpay SDK** | Payment gateway | India's de‑facto standard — supports cards/UPI/wallets/netbanking, PCI‑compliant, and verifies payments server‑side |
+| **reportlab + pypdf + Pillow + qrcode** | PDF and image generation | Build branded receipts and certificates (with QR codes) on the server with no browser needed |
+| **aiosmtplib + Jinja2** | Async email + HTML templates | Sends OTPs, welcome mails, receipts and certificates without blocking requests |
+
+### Frontend
+
+| Technology | What it is (plain language) | Why we chose it |
+|---|---|---|
+| **React 18 + TypeScript** | The UI framework | Component‑based, huge ecosystem; TypeScript catches mistakes before users ever see them |
+| **Vite** | The build tool / dev server | Near‑instant startup and fast production builds |
+| **TailwindCSS** | Utility‑first styling | Consistent design via tokens, no giant CSS files, fast to iterate |
+| **TanStack Query (React Query)** | Server‑data manager | Caches API responses, dedupes requests, auto‑refreshes, and survives reloads — fewer spinners, less server load |
+| **Zustand** | Lightweight client state | Holds the logged‑in user/session with almost no boilerplate |
+| **axios** | HTTP client | Central API client with an automatic "refresh token & retry" interceptor |
+| **hls.js** | Plays HLS video in the browser | Lets Chrome/Firefox/Edge play the same adaptive stream Safari plays natively |
+| **Recharts** | Charts | The admin revenue graph |
+| **Tiptap** | Rich‑text editor | Course descriptions / structured content |
+| **pdfjs‑dist** | Renders PDFs in the browser | Live preview of certificate templates and syllabus PDFs |
+| **qrcode.react** | QR codes in the UI | Certificate verification QR preview |
+| **react‑easy‑crop** | Image cropper | Square avatar cropping on profiles |
+| **react‑hot‑toast** | Toast notifications | Friendly success/error messages |
+
+### Infrastructure
+
+| Technology | What it is | Why we chose it |
+|---|---|---|
+| **Docker + Docker Compose** | Containers + orchestration | One command spins up the whole stack identically on any machine; per‑container memory/CPU limits keep the small box safe |
+| **nginx** | Reverse proxy + static/file server | Serves the app, proxies the API, and streams video chunks from disk far more efficiently than Python — the key to handling load |
+| **Cloudflare (free)** | CDN + HTTPS + DDoS protection | Caches video at the edge so ~90% of video bandwidth never touches the origin, gives free TLS, and shields the server's IP |
 
 ---
 
-## System architecture
+## 5. Student journey — every feature, step by step
+
+### 5.1 Sign up & log in
+**Plain language:** A learner creates an account with their email and a one‑time code (OTP), or with one click via Google.
+
+**Flow (email + OTP):**
+1. Go to **Sign up**, enter email, click **Send code**.
+2. Receive a **6‑digit OTP** by email (valid ~5 minutes; in dev it's printed to the server log).
+3. Enter the OTP, choose a password and a display name.
+4. Account is created and you're logged in (secure cookies set).
+
+**Flow (Google):** Click **Continue with Google** → approve on Google → an account is auto‑created (avatar pulled from Google) → you're logged in.
+
+**Technical:** `POST /auth/signup/request` → `POST /auth/signup/verify`; Google via `GET /auth/google/authorize` → `GET /auth/google/callback`. See [§8](#8-deep-dive-authentication--security).
+
+### 5.2 Complete your profile (required gate)
+**Plain language:** Before enrolling, students must fill in basic details so payment prefill and class info work correctly.
+
+**Flow:** If your profile is incomplete you're sent to `/portal/profile`; you add name, phone, city, occupation, education and experience; once saved, the rest of the portal unlocks.
+
+**Why:** Payment forms prefill from this data, and complete profiles reduce support issues. Backend exposes `profile_complete` and the frontend's **Profile Completion Gate** redirects until it's true.
+
+### 5.3 Explore courses
+**Plain language:** Browse the catalog of published courses with banners, price, category and details.
+
+**Flow:** Open **Explore** → see published courses (`GET /api/v1/public/courses`) → open a course to read its description, syllabus, FAQs, duration and price.
+
+**Why:** Only courses an admin has **published** appear, so drafts stay hidden.
+
+### 5.4 Enroll & pay
+**Plain language:** Pick a course, choose an available cohort (batch), and pay securely with Razorpay. Free courses enroll instantly.
+
+**Flow:**
+1. On a course, click **Enroll now** → choose an open/active **batch** (the app checks you aren't already enrolled and the batch isn't full).
+2. Click **Continue to payment**; if the course is free (price − discount ≤ 0) you're enrolled immediately.
+3. Otherwise the **Razorpay** checkout opens, prefilled with your details.
+4. Pay → the server **verifies the payment signature**, creates your enrollment, generates a **PDF receipt**, and emails it to you.
+5. You land in **My Courses** ready to learn.
+
+**Technical:** `POST /student/payment/create-order` → Razorpay modal → `POST /student/payment/verify-signature`. Full detail in [§10](#10-deep-dive-payments--receipts).
+
+### 5.5 Learn — watch recorded lessons (self‑paced)
+**Plain language:** Open a recorded course and watch its video lessons in a secure player with your email watermarked on screen.
+
+**Flow:**
+1. Open the self‑paced course → see the lesson sidebar.
+2. Click a lesson. If the instructor just uploaded it and it isn't optimized yet, you'll see **"Pending optimization."**
+3. When ready, the video plays. Your **email appears as a faint watermark** (so any screen‑recording is traceable).
+4. If you were just unenrolled, playback stops within a couple of minutes.
+
+**Technical:** The player calls `GET /student/videos/{id}/playback-info`, then streams an HLS manifest. Access is checked at the playlist; the actual video chunks are signed, CDN‑cached, and served by nginx. Full detail in [§9](#9-deep-dive-the-self-paced-video-pipeline).
+
+### 5.6 Attend live classes (live courses)
+**Plain language:** For live courses, each session has a scheduled time and a meeting link.
+
+**Flow:** Open the batch → see the session list with dates/times → join via the meeting link → the instructor marks your attendance afterward.
+
+### 5.7 Assignments
+**Plain language:** Submit work for assignments — as text, a file, a PDF, a quiz answer, or a link — and see your grade and feedback.
+
+**Flow:**
+1. Open a batch → **Assignments** → see each assignment's title, type, due date and max points.
+2. Click **Submit** and provide the matching input (textarea, file, PDF, or URL).
+3. If you're past the due date and late submissions aren't allowed, you're blocked; otherwise it's marked **submitted** (or **late**).
+4. After the instructor grades it, you see your **score + feedback**. Resubmitting clears the old grade so it gets re‑reviewed.
+
+**Technical:** `GET /student/batches/{id}/assignments`, `POST /student/assignments/{id}/submit`. Types: `quiz`, `text_upload`, `pdf_upload`, `file_upload`, `link_submission`.
+
+### 5.8 Attendance & progress
+**Plain language:** See which sessions you attended and an overall progress percentage.
+
+**Flow:** Open a batch → **Progress** → see one number (0–100%) plus a breakdown: sessions completed, assignments graded, and attendance present. The overall % is the average of those ratios.
+
+**Technical:** `GET /student/batches/{id}/attendance`, `GET /student/batches/{id}/progress`.
+
+### 5.9 Certificate
+**Plain language:** When a batch finishes and the admin issues certificates, you get a personalized PDF (with a QR code anyone can scan to verify it).
+
+**Flow:** Receive an email with your **certificate PDF attached** and a verification link → optionally visit the public verify page to confirm authenticity.
+
+### 5.10 Profile & account
+**Plain language:** Edit your display name and avatar (crop it square), and change your password.
+
+**Flow:** `/portal/profile` → edit fields / crop avatar / **Change password** (requires your current password).
+
+---
+
+## 6. Instructor journey — every feature, step by step
+
+> Instructors don't self‑register — an **admin provisions** their account and they receive a temporary password by email.
+
+### 6.1 Instructor dashboard
+**Plain language:** A home screen showing your assigned batches, total students, total sessions, and how many submissions are waiting to be graded.
+
+**Technical:** `GET /instructor/dashboard/stats` → assigned batches, distinct students, session count, pending‑grading count; lists active vs completed batches.
+
+### 6.2 Batch & session management
+**Plain language:** See the cohorts assigned to you, their auto‑generated weekly/daily plan, and their scheduled sessions.
+
+**Flow:** Open a batch → see its **plan** (Week 1…N or Day 1…N) and **sessions** (with times for live, or lesson slots for recorded). Edit plan titles/summaries to label the curriculum.
+
+### 6.3 Session resources (PDFs, links, videos)
+**Plain language:** Attach learning materials to a session: a PDF, an external link, or — for recorded courses — a video lesson.
+
+**Flow:** Open a session → **Add resource** → choose type. For self‑paced batches the default is **Video lesson** (see next).
+
+**Technical:** Resources are rows linked to a session; video resources store a **sentinel `video://<uuid>` URL** instead of a real path, so no code can accidentally leak the raw file.
+
+### 6.4 Upload a lesson video
+**Plain language:** Upload a raw video (up to the configured size cap). It uploads with a real progress bar and is optimized automatically.
+
+**Flow:**
+1. In a recorded batch's session, choose **Video lesson** and pick a file (checked in the browser before upload).
+2. It uploads via `XMLHttpRequest` so you see **% progress, speed and ETA**.
+3. The server stores the original privately and replies **"Optimization started — playable shortly (also re‑runs nightly)."**
+4. Encoding runs (now triggered immediately and re‑checked nightly). When done, students can play it.
+
+**Technical:** `POST /instructor/sessions/{id}/videos`; streamed to disk in 1 MB chunks; an encode job is enqueued. Detail in [§9](#9-deep-dive-the-self-paced-video-pipeline). A **Retry** button re‑queues a failed encode.
+
+### 6.5 Create & grade assignments
+**Plain language:** Create assignments for a batch and grade what students submit.
+
+**Flow (create):** **Create Assignment** → pick the week/plan, optional linked session, title, description, type, due date, max points, and whether late submissions are allowed.
+
+**Flow (grade):** Open **Submissions** → see every submission with the student, content/file, and lateness → enter a **score (validated against max points) + feedback** → saving sets status to **graded** automatically.
+
+**Technical:** `POST /instructor/batches/{id}/assignments`, `GET /instructor/batches/{id}/submissions`, `PUT /instructor/submissions/{id}`.
+
+### 6.6 Mark attendance (live sessions)
+**Plain language:** For each live session, mark every enrolled student present / absent / late / excused, with optional notes — all saved in one click.
+
+**Flow:** **Attendance** → pick the batch → pick the session → set each student's status (+ notes) → **Save all** (one bulk save).
+
+**Technical:** `GET/PUT /instructor/sessions/{id}/attendance` (bulk upsert). Records store who marked it, when, and the source (`manual`, or future `zoom`/`google_meet`).
+
+### 6.7 Issue certificates
+**Plain language:** Once a batch is completed and a template exists, generate certificates for all students in one go.
+
+**Flow:** Confirm the batch is **completed** and a template is configured → **Generate for batch** → each enrolled student gets a rendered PDF, stored and emailed. You can **resend** individual ones. Detail in [§11](#11-deep-dive-certificates).
+
+---
+
+## 7. Admin journey — every feature, step by step
+
+### 7.1 Admin dashboard
+**Plain language:** The academy's command center — revenue (and month‑over‑month change), active students, counts of courses/batches/instructors, pending grading, a 30‑day revenue chart, recent transactions, and upcoming sessions.
+
+**Technical:** `GET /admin/dashboard/stats`, `/revenue-chart?days=30`, `/recent-transactions?limit=5`, `/upcoming-sessions?days=7`. The revenue chart **gap‑fills** days with no payments so the graph never breaks; queries are pre‑joined to avoid extra round‑trips.
+
+### 7.2 Course management
+**Plain language:** Create, edit, publish/unpublish, and delete course templates; upload banners and syllabus PDFs; assign which instructors may teach each course.
+
+**Flow:** **Courses** → create with title, description, category, type (live/recorded/hybrid), duration, price, discount, plus flexible **syllabus items, FAQs, certification criteria and tags**. Courses start as **draft**; toggle **Publish** to show them publicly. A unique **slug** is auto‑generated. Deletion is **refused if any batch uses the course** (prevents orphans).
+
+**Technical:** `GET/POST/PUT/DELETE /admin/courses`, `PATCH /courses/{id}/publish`, banner/syllabus uploads, and `GET/POST/DELETE /courses/{id}/instructors`. JSON columns store syllabus/FAQs so no migration is needed to change their shape.
+
+### 7.3 Instructor management
+**Plain language:** Create instructor accounts (no self‑signup), edit their profiles, deactivate them, and assign them to courses.
+
+**Flow:** **Instructors** → **Add instructor** (email + optional password; if omitted a strong 12‑char password is generated, returned in the toast **and** emailed). Edit display name/bio/skills/avatar. **Deactivate** disables login without deleting history.
+
+**Technical:** `GET/POST/PATCH /users/instructors`, plus the course‑instructor assignment endpoints.
+
+### 7.4 Student management
+**Plain language:** List students, search by email, see how many batches each is in and whether their profile is complete; manually create student accounts (e.g. for offline‑paid learners).
+
+**Technical:** `GET/POST /users/students` (eager‑loads the profile; auto‑generates a password if omitted and emails it).
+
+### 7.5 Batch management with **auto session planning**
+**Plain language:** A batch is one running cohort of a course. When you create it, the system **automatically builds the week/day plan and the class sessions** for you.
+
+**Flow:**
+1. **Batches → Create** → choose course, an **assigned instructor** (only instructors assigned to that course appear), delivery mode, start/end dates, and capacity.
+2. For **live** courses, define a schedule: **weekly** (e.g. Mon/Wed 7–9pm) or **date‑based** (specific dates/times).
+3. On save, the system creates **N plan rows** (Week 1…N or Day 1…N, from the course duration) and **N sessions** (from the schedule for live, or one lesson slot per plan for recorded).
+4. In batch detail you can **edit plan titles**, **re‑sync sessions** after changing the schedule, **enroll/unenroll** students, and **Complete** the batch (which locks dates and unlocks certificate generation).
+
+**Technical:** `POST /admin/batches` and the planning service (`ensure_batch_plans`, `sync_inherited_sessions`). Status (upcoming/active/completed) is **auto‑derived from dates**. Completed batches are locked.
+
+### 7.6 Enrollment management
+**Plain language:** See all student–batch enrollments, enroll students manually, or unenroll them.
+
+**Flow:** **Enrollments** → manual enroll **auto‑creates a paid Payment row** (marked `ADMIN_ENROLL`) so admin enrollments still count toward revenue.
+
+### 7.7 Payments & settings
+**Plain language:** Configure Razorpay keys (test/live), and review every transaction for reconciliation.
+
+**Flow:** **Payment Settings** → enter Key ID/Secret and mode; the Key ID is shown **masked**. **Payments** → a filterable, paginated table (paid/pending/failed) with student, batch, amount, Razorpay order ID and date — used to reconcile against the Razorpay dashboard. Detail in [§10](#10-deep-dive-payments--receipts).
+
+### 7.8 Certificate setup & generation
+**Plain language:** Upload a certificate background (image or PDF) per course and position the name/course/date/QR with a live preview; then generate certificates per completed batch.
+
+**Flow:** **Certificates** → pick a course → upload a template → place fields by pixel coordinates (with instant preview) → save. Then pick a completed batch and **Generate for batch**. Detail in [§11](#11-deep-dive-certificates).
+
+---
+
+## 8. Deep dive: Authentication & security
+
+**Plain language:** Logins are token‑based but the tokens live in **secure, JavaScript‑inaccessible cookies**, so even a cross‑site‑scripting bug can't steal them. Sessions refresh silently in the background, and logging out (or refreshing) instantly invalidates old tokens.
+
+**How it works:**
+- **Signup** is email + 6‑digit **OTP** (hashed in the database, ~5‑minute expiry, max attempts) so we confirm the email is real, or **Google OAuth** (with a CSRF `state` cookie) for one‑click signup.
+- **Passwords** are hashed with **bcrypt (12 rounds)** — slow and salted.
+- On login we issue a **15‑minute access token** and a **7‑day refresh token** as `HttpOnly`, `SameSite=Lax`, `Secure` (in production) cookies.
+- **Refresh rotation:** each refresh issues a new pair and **blacklists** the old refresh token's id (`jti`) in Redis, so a stolen refresh token can't be reused.
+- **Logout** blacklists both tokens immediately (no waiting for expiry).
+- The frontend's **axios interceptor** catches a `401`, calls `/auth/refresh` once (shared across concurrent requests), and retries — so users never see a flicker.
+- **Roles** (`student` / `instructor` / `admin`) are encoded in the token; backend dependencies (`require_student`, `require_instructor`, `require_admin`) gate every endpoint, and a frontend **`ProtectedRoute`** guards every page.
+- **Rate limiting (production‑tuned):** OTP requests are capped at **5 per email / 15 min** *and* **15 per IP / 15 min**; logins at **20 per IP / 15 min** — using a Redis sliding window. The **true client IP** is read from `CF‑Connecting‑IP` so rate limits work correctly behind Cloudflare.
+- A **master admin** account is seeded on first boot from environment variables.
+- Streaming uses a **separate secret** (`VIDEO_STREAM_SECRET`) from the login JWT, so rotating video security never logs anyone out.
+
+**Why this design:** HttpOnly cookies beat `localStorage` for token safety; OTP confirms email ownership without a password step; refresh rotation + blacklist gives the security of short sessions with the comfort of long ones; Redis makes revocation and rate‑limiting instant.
+
+Key files: [`backend/app/api/v1/auth.py`](backend/app/api/v1/auth.py), [`app/core/security.py`](backend/app/core/security.py), [`app/core/redis.py`](backend/app/core/redis.py), [`app/dependencies/auth.py`](backend/app/dependencies/auth.py), [`frontend/src/lib/api.ts`](frontend/src/lib/api.ts).
+
+---
+
+## 9. Deep dive: The self‑paced video pipeline
+
+This is the most sophisticated part of the system. It has three stages: **upload → optimize → secure streaming.**
+
+### Stage 1 — Upload (instructor)
+- The instructor uploads a raw video; the browser checks the size first, then uploads via `XMLHttpRequest` for a real progress bar.
+- The server streams it to disk in **1 MB chunks** (never loading it all into memory), saves it under a **private** `media/originals/` folder, creates the `Video` row (`status = uploaded`), and **enqueues an encode job** (it also re‑runs nightly as a safety net).
+
+### Stage 2 — Optimize (background, Celery + FFmpeg)
+- A Celery worker picks pending videos one at a time (`FOR UPDATE SKIP LOCKED` so two workers never grab the same one).
+- FFmpeg probes the source, then encodes a **single 720p HLS rendition** (`libx264`, CRF 23, capped bitrate), split into **6‑second `.ts` chunks** plus playlists (`master.m3u8` + `720p/index.m3u8`).
+- To protect the small server, encoding is **CPU‑throttled** (`-threads 1`), run at **low priority** (`nice`/`ionice`), capped by a **30‑minute timeout**, and scheduled at **midnight** (plus on‑upload).
+- On success the original is **deleted** (HLS is canonical) and `status = ready`; on failure the error is stored and the instructor sees a **Retry** option.
+
+### Stage 3 — Secure streaming (student) — the CDN‑cacheable model
+The challenge: stream video to many people on a tiny server **without** making the files public. The solution splits **authorization** from **delivery**:
+
+1. **`playback-info`** (authenticated by the login cookie) checks **enrollment** (cached in Redis 60 s) and **revocation**, confirms the video is `ready`, and returns the manifest URL + the watermark email.
+2. **The playlists (`manifest.m3u8`, `variant.m3u8`) are the single security gate** — each request re‑checks login + enrollment + not‑revoked. They are never cached.
+3. **The video chunks are user‑agnostic, signed, expiring URLs** of the form `/media/seg/<instructor>/<video>/720p/seg_00001.ts?e=<expiry>&md5=<signature>`. The expiry is **snapped to a 10‑minute bucket**, so **every concurrent viewer gets the identical URL** → Cloudflare caches one copy and serves everyone from the edge.
+4. **nginx serves and validates the chunks** using `secure_link` (an HMAC‑style check) **with zero Python and zero database** — a forged signature returns `403`, an expired one `410`, a valid one streams the file from disk.
+
+**Watermark & anti‑download:** the player overlays the student's email (`mix-blend-mode: difference`, visible on any frame — no per‑student re‑encode), disables right‑click/download/picture‑in‑picture, and sets `no-store` on playlists.
+
+**Revocation:** unenrolling sets a Redis key `stream:revoked:{user}:{batch}`; the student's existing signed chunk URLs stop working within the bucket window, and the playlist gate refuses to issue new ones — so playback dies within minutes.
+
+**The security trade‑off (chosen deliberately):** to let a CDN cache chunks, their URLs must be identical for all viewers, so we don't bind each chunk to a single user/IP. Instead, access is enforced at the (cheap, per‑play) playlist gate, chunks are signed + short‑lived, and the watermark identifies any leaker. This is the standard, correct posture for cacheable HLS on a non‑enterprise CDN.
+
+> A **dev fallback** (`SERVE_SEGMENTS_FROM_APP=true`) keeps the old per‑segment, IP‑bound token path so the app works on a laptop without nginx.
+
+**Why HLS + single 720p:** HLS is the universal streaming standard (chunks + playlist) and degrades gracefully on poor networks; one 720p rendition keeps storage small and encoding fast, which suits the target hardware and content (recorded classes).
+
+Verified end‑to‑end: a live test confirms valid→`200`, forged→`403`, expired→`410`, no‑signature→`403`. Full spec in [VIDEO_PIPELINE.md](VIDEO_PIPELINE.md). Key files: [`app/api/v1/student/videos.py`](backend/app/api/v1/student/videos.py), [`app/services/stream_token_service.py`](backend/app/services/stream_token_service.py), [`app/services/ffmpeg_service.py`](backend/app/services/ffmpeg_service.py), [`app/tasks/encoding.py`](backend/app/tasks/encoding.py), [`frontend/src/components/shared/SecureVideoPlayer.tsx`](frontend/src/components/shared/SecureVideoPlayer.tsx), [`frontend/nginx.conf`](frontend/nginx.conf).
+
+---
+
+## 10. Deep dive: Payments & receipts
+
+**Plain language:** Students pay through **Razorpay**; the server (never the browser) confirms the payment is genuine before enrolling them, then emails a PDF receipt.
+
+**How it works:**
+1. **Create order** (`POST /student/payment/create-order`): the server validates the profile is complete, the batch is open and not full, and the student isn't already enrolled; computes `price − discount`; converts to **paise** in one central helper; and asks Razorpay to create an order. Free courses skip Razorpay entirely.
+2. **Checkout:** the frontend loads Razorpay's `checkout.js`, prefilled with the student's details.
+3. **Verify** (`POST /student/payment/verify-signature`): the server verifies the **HMAC‑SHA256 signature** with the secret key (which the browser never sees), then **atomically** creates the `Enrollment` + `Payment`. It's **idempotent** — a retried/duplicate verify returns the existing enrollment instead of double‑charging or double‑enrolling.
+4. **Receipt:** a branded PDF is generated (reportlab), stored on disk, and **emailed as an attachment** — best‑effort, so a receipt hiccup never undoes a completed payment.
+
+**Capacity rule:** capacity is hard‑checked before payment, but **soft‑overridden after payment succeeds** (a paying customer is never rejected because the last seat filled mid‑checkout; the override is logged).
+
+**Why:** server‑side signature verification is the security gold standard (the client can't forge it); centralizing paise conversion avoids rounding bugs; best‑effort receipts and idempotency prioritize not breaking a paid enrollment.
+
+Key files: [`app/api/v1/student/payments.py`](backend/app/api/v1/student/payments.py), [`app/services/payment_service.py`](backend/app/services/payment_service.py), [`app/services/receipt_service.py`](backend/app/services/receipt_service.py), [`app/api/v1/admin/payments.py`](backend/app/api/v1/admin/payments.py).
+
+---
+
+## 11. Deep dive: Certificates
+
+**Plain language:** Admins design a certificate once per course (upload a background, drag the fields into place), and the system stamps each student's details onto it and emails a verifiable PDF.
+
+**How it works:**
+- **Template:** upload an image or PDF background; configure pixel coordinates + font/size/color/alignment for **name, course, date**, and a **QR code**. A live preview (rendered with `pdfjs-dist` / canvas) shows exactly how it will look — the same coordinate math is used at render time, so preview matches output.
+- **Issue:** when a batch is **completed**, **Generate for batch** renders a PDF for every enrolled student — overlaying the fields onto the template (`pypdf` for PDF backgrounds, `Pillow` for images) and embedding a **QR code** that links to the public verify page. PDFs are stored and **emailed** (attachment + verify link).
+- **Verify (public):** anyone scans the QR or visits `/verify/{cert_id}` → `GET /api/v1/public/verify-certificate/{cert_id}` returns the student/course/dates if valid. The id is an opaque UUID (no enumeration), and a uniform response avoids leaking which ids exist.
+
+**Why:** server‑side rendering guarantees consistent, branded output; storing the PDF avoids regenerating on every view; QR + public verify makes credentials trustworthy to third parties (employers).
+
+Key files: [`app/services/certificate_render_service.py`](backend/app/services/certificate_render_service.py), [`app/services/certificate_issue_service.py`](backend/app/services/certificate_issue_service.py), [`app/api/v1/admin/certificates.py`](backend/app/api/v1/admin/certificates.py).
+
+---
+
+## 12. Deep dive: Load handling & deployment architecture
+
+**The problem:** one small Oracle VM (**2 vCPU / 6 GB**) must serve **50–70 concurrent users**, many streaming 720p video at once — which is ~150–200 Mbps and thousands of requests/minute. A naïve setup would saturate the CPU, exhaust the database, or run out of memory and crash.
+
+**How we made it fit (and stay up):**
+
+- **Video served by nginx + cached by Cloudflare**, not Python (see [§9](#9-deep-dive-the-self-paced-video-pipeline)). This removes ~90% of video bandwidth and almost all per‑chunk work from the origin — the single biggest win.
+- **gunicorn with 3 async workers** instead of a single dev server, sized to 2 vCPU so one slow request can't block everyone.
+- **Right‑sized database pooling:** each worker uses a small pool (`5 + 5`), so total connections (~34) stay well under PostgreSQL's tuned `max_connections=60`. PostgreSQL itself is tuned for a small box (`shared_buffers`, `work_mem`, gentle autovacuum).
+- **Redis is capped** (`maxmemory` + `noeviction`) with **AOF persistence**, so the encode queue is never silently dropped or lost on reboot.
+- **Per‑container memory/CPU limits + `restart: unless-stopped`** on every service, plus a **4 GB swap** safety net, so a video encode (FFmpeg, throttled to 1 core) can never OOM‑kill the database. The two memory peaks (daytime traffic vs nightly encode) are time‑disjoint and both fit in 6 GB with headroom.
+- **Migrations run once** in a dedicated one‑shot container (workers don't race each other).
+- **Security at the edge:** end‑to‑end HTTPS, and the origin only accepts **Cloudflare** traffic (Authenticated Origin Pulls + IP allowlist + a shared secret header). Internal ports (Postgres/Redis) aren't exposed to the internet.
+- **Friendly errors & observability:** every error returns `{ success:false, error:{ code, message, request_id } }` in plain English (e.g. *"The server is handling a lot of requests right now — please try again in a moment."*), and a deep `GET /health/detail` reports DB/Redis/pool health.
+
+**Run it in production** with the step‑by‑step runbook in **[DEPLOYMENT.md](DEPLOYMENT.md)** (swap, secrets, Cloudflare setup, Oracle firewall, deploy command, verification, rollback). Files: [`docker-compose.yml`](docker-compose.yml), [`docker-compose.prod.yml`](docker-compose.prod.yml), [`frontend/nginx.prod.conf`](frontend/nginx.prod.conf), [`backend/Dockerfile`](backend/Dockerfile).
+
+---
+
+## 13. Data model overview
+
+| Table | Purpose |
+|---|---|
+| `users` | One row per account: email, password hash, role, auth provider, active flag |
+| `student_profiles` / `instructor_profiles` | Role‑specific details (name, phone, city, education/experience JSON; bio, skills, avatar) |
+| `otps` | Hashed signup OTP codes with expiry/attempts |
+| `courses` | Course templates: title, slug, description, type, duration, price/discount, syllabus & FAQs (JSON), publish flag |
+| `course_instructors` | Which instructors may teach which course (many‑to‑many) |
+| `batches` | A running cohort: course, instructor, dates, capacity, delivery mode, status |
+| `batch_plans` | Auto‑generated curriculum units (Week/Day 1…N) |
+| `batch_schedule_slots` | Weekly or date‑based class times |
+| `sessions` | Individual classes/lessons (live time or recorded slot), linked to a plan |
+| `session_resources` | Materials on a session (PDF/link/video; video uses a `video://uuid` sentinel) |
+| `videos` / `video_renditions` | Uploaded lesson video metadata + its 720p HLS output location/status |
+| `enrollments` | Student ↔ batch (unique per pair); drives access & revocation |
+| `payments` / `payment_settings` | Razorpay transactions + receipt URLs; gateway credentials/mode |
+| `attendance_records` | Per‑session attendance (status, source, notes, who/when marked) |
+| `assignments` / `submissions` | Assignment definitions and student submissions (content/file, score, feedback, status) |
+| `certificate_templates` / `certificates` | Per‑course template + field layout; issued per‑student PDFs + email status |
+
+The schema is versioned with **Alembic** ([`backend/alembic/versions/`](backend/alembic/versions/)).
+
+---
+
+## 14. Project structure
 
 ```
 Academy-Silicon-Mango/
-├── backend/                      FastAPI app
+├── backend/
 │   ├── app/
-│   │   ├── api/v1/               All API routes
-│   │   │   ├── auth.py            Login/Signup/OTP/Google OAuth/Refresh/Logout
-│   │   │   ├── public.py          Public landing data
-│   │   │   ├── router.py          Wires everything under /api/v1
-│   │   │   └── admin/             Admin endpoints (8 modules)
-│   │   ├── core/                  Config, security, redis, oauth, exceptions, utils
-│   │   ├── db/                    Engine, session factory, master-admin seeder
-│   │   ├── dependencies/          get_current_user, role guards
-│   │   ├── models/                SQLAlchemy models (19 tables)
-│   │   ├── schemas/               Pydantic request/response schemas
-│   │   ├── services/              auth_service, email_service, planning_service, storage_service
-│   │   └── main.py                App factory + middleware + exception handlers
-│   ├── alembic/versions/0001_initial.py   Idempotent enum-aware migration
-│   ├── uploads/                   File storage (banners, syllabi, cert templates)
-│   ├── .env                       Local secrets (gitignored)
-│   ├── Dockerfile
-│   └── requirements.txt
-├── frontend/                     React + Vite app
+│   │   ├── api/v1/           # Route handlers, grouped by role
+│   │   │   ├── auth.py       #   signup / login / oauth / refresh / logout
+│   │   │   ├── public.py     #   public catalog + certificate verify
+│   │   │   ├── admin/        #   dashboard, courses, batches, users, payments, certificates, enrollments
+│   │   │   ├── instructor/   #   batches, sessions, videos, assignments, attendance
+│   │   │   └── student/      #   profile, payments, videos (streaming), assignments
+│   │   ├── core/             # config, security, redis, oauth, exceptions, utils
+│   │   ├── db/               # async engine/session, base, seed
+│   │   ├── dependencies/     # auth dependencies (require_student/instructor/admin)
+│   │   ├── models/           # SQLAlchemy tables
+│   │   ├── schemas/          # Pydantic request/response models
+│   │   ├── services/         # business logic (auth, video, ffmpeg, payments, receipts, certificates, email, storage, planning)
+│   │   ├── tasks/            # Celery tasks (video encoding)
+│   │   ├── celery_app.py     # Celery + beat schedule
+│   │   └── main.py           # FastAPI app, middleware, health, error handlers
+│   ├── alembic/              # DB migrations
+│   └── Dockerfile            # gunicorn + ffmpeg image
+├── frontend/
 │   ├── src/
-│   │   ├── components/ui/         Button, Input, Card, Modal, Table, Spinner, …
-│   │   ├── components/shared/     OTPInput, FileUpload
-│   │   ├── components/layout/     PublicLayout, AdminLayout, AdminChrome
-│   │   ├── features/auth/stores/  Zustand auth store
-│   │   ├── pages/                 Landing + auth + admin + portal placeholders
-│   │   ├── services/              admin.service.ts, auth.service.ts
-│   │   ├── lib/                   axios client, query client, error helpers
-│   │   └── router/                ProtectedRoute, route constants
-│   ├── .env                       VITE_API_BASE_URL
-│   └── vite.config.ts             Proxies /api and /uploads to backend
-└── docker-compose.yml            Postgres + Redis + Backend + Frontend
+│   │   ├── pages/            # public / auth / admin / instructor / student pages
+│   │   ├── components/       # shared + role components (SecureVideoPlayer, VideoUpload, PaymentModal, …)
+│   │   ├── services/         # typed API clients
+│   │   ├── lib/              # axios client + refresh interceptor, helpers
+│   │   ├── store/            # zustand auth store
+│   │   └── hooks/            # e.g. useRazorpay
+│   ├── nginx.conf            # base front door (HTTP, local + origin)
+│   ├── nginx.prod.conf       # production front door (TLS + Cloudflare lock‑down)
+│   └── Dockerfile            # build SPA → serve via nginx
+├── docker-compose.yml        # base stack (works locally and on the server)
+├── docker-compose.prod.yml   # production overlay (TLS, public 80/443, origin lock‑down)
+├── DEPLOYMENT.md             # production runbook (Cloudflare + Oracle + secrets)
+├── VIDEO_PIPELINE.md         # in‑depth video pipeline spec
+└── README.md                 # this file
 ```
 
-**Request flow.** Browser → Vite dev server (5174) → proxies `/api` to FastAPI (8085) → SQLAlchemy async engine → PostgreSQL. Redis sits beside FastAPI for token blacklist, OTP rate limits, and login rate limits. Static uploads are served directly by FastAPI under `/uploads`.
+---
+
+## 15. Configuration (environment variables)
+
+Three env files (copy from the `.env.example` templates; never commit real secrets):
+
+- **Root [`.env`](.env.example)** — used by docker‑compose: `DB_PASSWORD`, `REDIS_PASSWORD`, `SEGMENT_SIGNING_SECRET` (shared with nginx), `SERVER_NAME`, `ORIGIN_SHARED_SECRET` (prod).
+- **[`backend/.env`](backend/.env.example)** — used by FastAPI: `ENVIRONMENT` (`development`/`production`), `SECRET_KEY` (JWT), `VIDEO_STREAM_SECRET`, `SEGMENT_SIGNING_SECRET` (must match root), token TTLs, SMTP creds, Razorpay keys, `FRONTEND_URL`, `MASTER_ADMIN_*`, video/encoding knobs (`SEGMENT_URL_BUCKET_SECONDS`, `FFMPEG_THREADS`, `ENCODE_TIMEOUT_SECONDS`, `SERVE_SEGMENTS_FROM_APP`).
+- **[`frontend/.env`](frontend/.env.example)** — `VITE_API_BASE_URL` (leave **empty** for same‑origin in production), `VITE_GOOGLE_CLIENT_ID`.
+
+Setting `ENVIRONMENT=production` automatically turns on Secure cookies, strict CORS (only `FRONTEND_URL`), and disables the `/docs` page.
 
 ---
 
-## Auth system in detail
+## 16. Running the project
 
-The auth system has three flows and one set of session primitives shared across all of them.
-
-### Session primitives (used by every flow)
-
-- **Access token**: 15-min JWT, set as HttpOnly cookie `access_token`. Carries `sub` (user id), `role`, `email`, `jti`.
-- **Refresh token**: 7-day JWT, set as HttpOnly cookie `refresh_token`. Carries `sub` and `jti` only.
-- **Cookie flags**: `httponly`, `samesite=lax`, `secure` set automatically in production.
-- **Refresh rotation**: every `/auth/refresh` blacklists the incoming refresh `jti` in Redis (TTL = remaining lifetime) and issues a brand new pair. Reuse of a stolen refresh token is detectable.
-- **Logout**: blacklists both `access` and `refresh` `jti`s and clears cookies.
-
-### Flow 1 — Email + OTP signup
-
-1. **`POST /auth/signup/request`** with `{ email }`.
-   - Rate-limited per email via Redis sliding-window (`rate_limit_check` in [redis.py](backend/app/core/redis.py)).
-   - Generates a 6-digit OTP, hashes it with bcrypt, persists an `OTPRecord` (5-min expiry, attempts=0).
-   - Sends the OTP email — or prints to the backend console when SMTP is not configured.
-2. **`POST /auth/signup/verify`** with `{ email, otp, password, display_name }`.
-   - Looks up the latest `OTPRecord` for the email + `signup` purpose.
-   - Rejects expired records, rejects records with ≥5 prior failed attempts.
-   - Verifies the OTP with bcrypt; increments `attempts` on a miss.
-   - On success: creates a `User` (role=student, auth_provider=email) + `StudentProfile`, deletes all OTP records for the email, re-fetches with `selectinload` so relationships are eager-loaded, returns `AuthResponse` and sets session cookies.
-3. **Frontend** at [Signup.tsx](frontend/src/pages/auth/Signup.tsx) walks through three steps: email → OTP (with countdown + 60s resend cooldown) → password (with strength meter + name).
-
-### Flow 2 — Email + Password login
-
-- **`POST /auth/login`** with `{ email, password }`.
-- IP-based rate limit via Redis.
-- `authenticate_user` checks password with bcrypt, rejects accounts on wrong provider (email account trying to log in for a Google-only user, or vice versa) with a clear error code.
-- Issues access + refresh, sets cookies, returns the user.
-
-### Flow 3 — Google OAuth
-
-- **`GET /auth/google/authorize`** generates a CSRF state token, stores it in an HttpOnly `oauth_state` cookie, and redirects to Google.
-- **`GET /auth/google/callback`** validates `state` matches the cookie, exchanges the code for a token, fetches userinfo, then either creates a new student (with avatar) or returns the existing one.
-- Mismatched provider attempts surface as `?error=...` on the frontend `/login` page.
-
-### Profile completion gate
-
-The response from any successful auth call includes `profile_complete: bool`. The frontend uses this to redirect new users to `/portal/profile` instead of `/portal/dashboard` until they fill in name + phone + city.
-
----
-
-## Admin panel — feature by feature
-
-Every admin endpoint is guarded by `require_admin` and is grouped under `/api/v1/admin`. The frontend pages live in [src/pages/admin/](frontend/src/pages/admin/).
-
-### 1. Dashboard — `/admin/dashboard`
-
-Code: [backend/app/api/v1/admin/dashboard.py](backend/app/api/v1/admin/dashboard.py), [Dashboard.tsx](frontend/src/pages/admin/Dashboard.tsx)
-
-- **`GET /dashboard/stats`** — single call returning every KPI on the home screen: total revenue (sum of paid payments), this-month revenue, month-over-month %, active students (distinct active enrollments), total courses, total batches, total instructors, total students.
-- **`GET /dashboard/revenue-chart?days=30`** — daily revenue series for the chart, gap-filled (zero for days with no payments) so the chart never shows broken X-axis days.
-- **`GET /dashboard/recent-transactions?limit=5`** — latest payments with student email + batch name pre-joined.
-- **`GET /dashboard/upcoming-sessions?days=7`** — next 7 days of scheduled sessions across all batches, joined with batch name.
-
-**Why it matters.** Gives the admin a single screen they can open in the morning to see "is the business healthy? what's happening today?".
-
-### 2. Courses — `/admin/courses`
-
-Code: [backend/app/api/v1/admin/courses.py](backend/app/api/v1/admin/courses.py), [Courses.tsx](frontend/src/pages/admin/Courses.tsx), [CourseForm.tsx](frontend/src/pages/admin/CourseForm.tsx)
-
-The catalogue is the spine of everything else — batches, sessions, enrollments, certificates all hang off a course.
-
-- **List** (`GET /courses`) — paginated, with full-text search on title + category, filter by `course_type` (live/recorded/hybrid) and `published` flag. Each row carries a `batches_count` so admins know which courses are actively running.
-- **Create** (`POST /courses`) — generates a unique slug from the title (auto-suffixes `-2`, `-3` if a collision exists), validates enums, persists rich JSON fields (syllabus items, FAQs, certification criteria, tags). Always created as draft (`is_published=False`).
-- **Get / Update** (`GET/PUT /courses/{id}`) — partial update. Title change auto-regenerates slug while keeping uniqueness.
-- **Delete** (`DELETE /courses/{id}`) — guarded: refuses if any batch references the course (`HAS_BATCHES` error), so you can't orphan running cohorts.
-- **Publish toggle** (`PATCH /courses/{id}/publish`) — single endpoint to flip published state, used as a pill on the course list.
-- **Banner upload** (`POST /courses/{id}/banner`) — multipart upload, saved under `uploads/course_banners/`, URL written back on the course row.
-- **Syllabus PDF upload** (`POST /courses/{id}/syllabus`) — same pattern under `uploads/syllabus_pdfs/`.
-- **Course-instructor assignment** (`GET/POST/DELETE /courses/{id}/instructors`) — many-to-many. Used to gate which instructors can be picked when creating a batch for the course.
-
-### 3. Instructors — `/admin/instructors`
-
-Code: [backend/app/api/v1/admin/users.py](backend/app/api/v1/admin/users.py), [Instructors.tsx](frontend/src/pages/admin/Instructors.tsx), [AssignInstructors.tsx](frontend/src/pages/admin/AssignInstructors.tsx)
-
-- **List** (`GET /users/instructors`) — paginated + email search, joined with `InstructorProfile` for display name, bio, skills, avatar.
-- **Create** (`POST /users/instructors`) — admin provisions an instructor account directly. If no password is supplied, a 12-char random password (with a guaranteed digit, uppercase, and symbol suffix) is generated. The temporary password is **returned in the response** AND emailed via the welcome-instructor template, so even if email is broken in dev the admin can still hand it over.
-- **Get / Update** (`GET/PATCH /users/instructors/{id}`) — admin can deactivate an account (`is_active=false`) or edit profile fields.
-- **Course assignment UI** at `/admin/assign-instructors` — pick a course, search an instructor by email, click Assign. This drives the `CourseInstructor` rows that the batch creation form filters against.
-
-### 4. Students — `/admin/students`
-
-- **List** (`GET /users/students`) — paginated + email search. Each row includes `enrollments_count` (so admins can see who's an active learner vs a sign-up that never enrolled), `auth_provider`, and profile completion state.
-- **Create** (`POST /users/students`) — admin can manually create a student account (e.g. for offline-paid students).
-- **Get** (`GET /users/students/{id}`) — full profile including occupation, education history, experience JSON arrays.
-
-### 5. Batches — `/admin/batches`
-
-Code: [backend/app/api/v1/admin/batches.py](backend/app/api/v1/admin/batches.py), [Batches.tsx](frontend/src/pages/admin/Batches.tsx), [BatchCreate.tsx](frontend/src/pages/admin/BatchCreate.tsx), [BatchDetail.tsx](frontend/src/pages/admin/BatchDetail.tsx), [BatchOps.tsx](frontend/src/pages/admin/BatchOps.tsx)
-
-A batch is one running cohort of a course — it has dates, an instructor, capacity, a delivery mode, and (for live batches) a weekly or date-based schedule.
-
-- **List** (`GET /batches`) — filters by course, mode, status, name search. Each row is enriched with course title, instructor display name, and live `enrolled_count`.
-- **Create** (`POST /batches`):
-  - Verifies the chosen instructor is assigned to the course (otherwise → `BATCH_004`).
-  - Auto-derives status: `upcoming` if start is in the future, `active` if today is in range, `completed` if end is past.
-  - For `live` mode, persists schedule slots — either weekly (`weekday + start_time + end_time`) or date-based (`slot_date + start_time + end_time`).
-  - **Auto-creates plans + sessions** via `sync_inherited_sessions` (see below).
-- **Update** (`PUT /batches/{id}`) — refused if the batch is locked.
-- **Assign instructor** (`POST /batches/{id}/assign-instructor`) — same course-membership check.
-- **Plans** (`GET/PUT /batches/{id}/plans`) — admin can edit the auto-generated week/day titles and summaries.
-- **Sync sessions** (`POST /batches/{id}/sync-sessions`) — wipes inherited sessions (preserves manually-added ones) and rebuilds from the current schedule. Useful when an admin changes a slot.
-- **Enrollments inside a batch** (`GET /batches/{id}/enrollments`, `POST /batches/{id}/enroll`, `DELETE /batches/{id}/enrollments/{enrollment_id}`) — capacity is checked but admins can override (logged as a warning).
-- **Complete** (`POST /batches/{id}/complete`) — sets status to `completed` and locks the batch so the dates / capacity can't be changed accidentally. This is a prerequisite for certificate generation.
-
-### 6. Auto session planning — the magic behind batches
-
-Code: [backend/app/services/planning_service.py](backend/app/services/planning_service.py)
-
-When an admin creates a 4-week React course batch with classes Mon/Wed at 7-9pm, they shouldn't have to manually click 8 calendar entries. So this service does:
-
-1. **`ensure_batch_plans`** — creates `BatchPlan` rows numbered 1..N where N = `course.duration_value`. Labels are `Week 1`, `Week 2`… or `Day 1`, `Day 2`… based on `course.duration_unit`.
-2. **`sync_inherited_sessions`** — deletes any `Session` rows where `origin = inherited` (keeps manually-added ones), then re-creates them based on:
-   - **Recorded courses** → one session per plan, scheduled at 10:00 UTC, one day apart from start.
-   - **Live + weekly schedule** → for each plan (week), iterate every weekday slot, compute the actual date inside that week, create a session with the slot's start/end times.
-   - **Live + date-based schedule** → one session per slot, mapped 1:1 to plans in date order.
-
-   Every created session has `origin=inherited` so a re-sync won't duplicate it. Duration is computed from the slot's `end_time - start_time`, floored to a minimum of 30 minutes.
-
-### 7. Enrollments — `/admin/enrollments`
-
-Code: [backend/app/api/v1/admin/enrollments.py](backend/app/api/v1/admin/enrollments.py), [Enrollments.tsx](frontend/src/pages/admin/Enrollments.tsx)
-
-- **List** (`GET /enrollments`) — paginated, joined with student email + name, batch name, course title.
-- **Admin enroll** (`POST /enrollments`) — special path: in addition to creating the `Enrollment`, it auto-creates a paid `Payment` row marked `razorpay_order_id="ADMIN_ENROLL"` so admin-enrolled students count toward revenue and don't appear as "unpaid" in reports.
-
-### 8. Payments — `/admin/payments`
-
-Code: [backend/app/api/v1/admin/payments.py](backend/app/api/v1/admin/payments.py), [Payments.tsx](frontend/src/pages/admin/Payments.tsx), [PaymentSettings.tsx](frontend/src/pages/admin/PaymentSettings.tsx)
-
-- **List payments** (`GET /payments`) — paginated, status filter, joined with student name + batch name + currency.
-- **Get payment settings** (`GET /payment-settings`) — returns `mode` (test/live), `key_id_masked` (only first 8 + last 4 chars), `has_credentials`. Secret is **never returned**.
-- **Update payment settings** (`PUT /payment-settings`) — admin sets Razorpay credentials. Stored in the `payment_settings` table (single row pattern).
-
-### 9. Certificates — `/admin/certificates`
-
-Code: [backend/app/api/v1/admin/certificates.py](backend/app/api/v1/admin/certificates.py), [Certificates.tsx](frontend/src/pages/admin/Certificates.tsx)
-
-- **Templates** (`GET/POST /certificate-templates`) — admin uploads a per-course template (PDF/image) and a JSON `field_config` describing where the student's name and date go.
-- **Bulk generate** (`POST /certificates/generate` with `{ batch_id }`) — only allowed once a batch is `completed`. Iterates every active enrollment and creates a `Certificate` row (idempotent — skips students who already have one). Email status starts as `pending`.
-- **Resend** (`POST /certificates/{id}/resend`) — flips email status back to `pending` for the email worker to pick up.
-
-### 10. Common admin chrome
-
-Code: [AdminChrome.tsx](frontend/src/components/layout/AdminChrome.tsx), [AdminLayout.tsx](frontend/src/components/layout/AdminLayout.tsx)
-
-- Sidebar navigation with active-route highlighting.
-- Top bar with user avatar + logout.
-- TanStack Query for all data fetching — automatic caching, background refetch, mutation invalidation.
-- `react-hot-toast` for ephemeral feedback.
-- Confirm modals for destructive actions.
-
----
-
-## Backend foundations
-
-### Config — [app/core/config.py](backend/app/core/config.py)
-
-`pydantic-settings` reads `.env`, validates types, exposes `settings.DATABASE_URL`, `settings.SECRET_KEY`, etc. `cookie_secure` is auto-derived from `ENVIRONMENT == "production"` so dev cookies work over HTTP.
-
-### Security — [app/core/security.py](backend/app/core/security.py)
-
-Tiny module exposing `hash_password` / `verify_password` (bcrypt), `generate_otp` / `hash_otp` / `verify_otp`, `create_access_token` / `create_refresh_token` / `decode_token`, and the cookie helpers `set_auth_cookies` / `clear_auth_cookies`. JWT `jti` is a UUID4 so each token is uniquely identifiable for blacklisting.
-
-### Redis — [app/core/redis.py](backend/app/core/redis.py)
-
-Single async client shared across the process. Three responsibilities:
-
-- **Token blacklist**: `blacklist:{kind}:{jti}` → expires with the token's TTL so stale entries auto-clean.
-- **Sliding-window rate limits**: ZSET per key, scores = unix timestamps. `ZREMRANGEBYSCORE` drops old entries, `ZCARD` counts the live window. Used by login (per-IP) and OTP (per-email).
-- **Connection lifecycle**: `get_redis()` lazy-initializes, `close_redis()` runs on FastAPI shutdown.
-
-For development, both rate limits are set to **1000 attempts / 15 min** so they don't get in the way during testing.
-
-### Exceptions — [app/core/exceptions.py](backend/app/core/exceptions.py)
-
-`APIError(code, message, status_code=400, details=None)` is the canonical exception. Helper builders (`err_invalid_credentials`, `err_otp_expired`, `err_otp_max_attempts`, `err_email_exists`, etc.) return pre-built ones with stable error codes the frontend can branch on.
-
-### Main app — [app/main.py](backend/app/main.py)
-
-- CORS allows the configured frontend URL plus any `localhost`/`127.0.0.1` port via regex (so Vite on 5174 and standalone tools both work).
-- Lifespan handler boots Redis, runs the master-admin seed, and prints structured `[BOOT]` logs.
-- Static `/uploads` mount.
-- Four exception handlers (APIError, StarletteHTTPException, RequestValidationError, generic Exception) all return the unified `{success, error}` envelope **with CORS headers attached** — critical so a 500 doesn't get masked as a CORS error in DevTools.
-- The generic handler also detects Redis connection failures and returns `503 SERVICE_UNAVAILABLE` with a clear message instead of a raw 500.
-
-### Migrations — [alembic/versions/0001_initial.py](backend/alembic/versions/0001_initial.py)
-
-Single "initial" migration that's idempotent at the DB level. Each enum is created via raw SQL `DO $ ... IF NOT EXISTS ... CREATE TYPE ... $` blocks, and column-level enum references are declared with `create_type=False` so SQLAlchemy doesn't try to create them again. This means the migration is safe to re-run on a partially-migrated database (a real problem we hit and fixed today).
-
-[alembic/env.py](backend/alembic/env.py) escapes `%` → `%%` when injecting the URL into Alembic's ConfigParser, so passwords with `%`-encoded special characters (like `Postgress%400123` for `Postgress@0123`) work in both Alembic and pydantic-settings.
-
----
-
-## Frontend foundations
-
-### State + data
-
-- **Zustand** for the auth store at [features/auth/stores/authStore.ts](frontend/src/features/auth/stores/authStore.ts) — `user`, `setUser`, `clear`. Used for guards and chrome.
-- **TanStack Query** for all server state — every admin page is a `useQuery` + `useMutation` pair. Mutations call `queryClient.invalidateQueries` on success so the list refreshes automatically.
-- **axios** with `withCredentials: true` so HttpOnly cookies travel on every request.
-
-### Routing
-
-- React Router 6 with route constants in [router/routes.ts](frontend/src/router/routes.ts).
-- [ProtectedRoute](frontend/src/router/ProtectedRoute.tsx) checks the auth store and an optional `roles` prop. Calls `/auth/me` on first mount to hydrate the store from cookies.
-- App shell at [App.tsx](frontend/src/App.tsx) declares public, student, instructor, and admin routes.
-
-### UI primitives
-
-`Button`, `Input`, `Card`, `Modal`, `ConfirmModal`, `Table`, `Spinner`, `Avatar`, `Badge`, `EmptyState`, `Select`, `OTPInput`, `FileUpload` — all in [components/ui/](frontend/src/components/ui/). Each accepts standard props and uses Tailwind classes resolved against the design system's tokens (primary, surface-container, ink-variant, etc.).
-
-### Vite proxy
-
-[vite.config.ts](frontend/vite.config.ts) proxies `/api` and `/uploads` to `http://localhost:8085`, so the frontend and backend appear to share an origin in dev — no CORS adventures during normal development.
-
----
-
-## How to run the project (for reviewers)
-
-You have two options. **Option A is the smoothest** if Docker is installed.
-
-### Prerequisites
-
-- Either: Docker Desktop installed and running.
-- Or: Python 3.12+, Node.js 20+, PostgreSQL 16, Redis 7.
-
-### Option A — Docker (one command)
-
-From the repo root:
-
+### Local (one command, HTTP)
 ```bash
-docker compose up --build
-```
-
-This single command:
-1. Spins up PostgreSQL on `5432`
-2. Spins up Redis on `6379`
-3. Builds the backend, runs `alembic upgrade head`, starts FastAPI on `http://localhost:8085`
-4. Builds the frontend (Vite production build), serves it via Nginx on `http://localhost:5174`
-5. Seeds the master admin
-
-Wait for `[BOOT] Startup complete — accepting requests` in the logs.
-
-**Open in your browser:**
-- Frontend: **http://localhost:5174**
-- API docs (Swagger): **http://localhost:8085/docs**
-- Health: **http://localhost:8085/health**
-
-**Master admin login:**
-- Email: `admin@siliconmango.com`
-- Password: `Admin@12345`
-
-To stop: `docker compose down`. To reset everything (wipes DB): `docker compose down -v`.
-
-### Option B — Local development
-
-#### B.1 Create the database
-
-In `psql` or pgAdmin's Query Tool:
-
-```sql
-CREATE USER sm_siddhesh WITH PASSWORD 'Postgress@0123';
-CREATE DATABASE silicon_mango OWNER sm_siddhesh;
-GRANT ALL PRIVILEGES ON DATABASE silicon_mango TO sm_siddhesh;
-```
-
-(If you use different credentials, update `DATABASE_URL` in `backend/.env`. **URL-encode `@` in the password as `%40`** — so `Postgress@0123` becomes `Postgress%400123` in the URL.)
-
-#### B.2 Start Redis
-
-If you don't already have Redis running with the password set in `.env`:
-
-```bash
-docker run -d --name sm_redis -p 6379:6379 redis:7-alpine \
-  redis-server --requirepass sm_redis_pass_2024
-```
-
-Or install Redis natively and `redis-server --requirepass sm_redis_pass_2024`.
-
-#### B.3 Backend
-
-```bash
-cd backend
-
-# Create virtual env
-python -m venv .venv
-
-# Activate (Windows PowerShell)
-.\.venv\Scripts\Activate.ps1
-# or macOS / Linux
-source .venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Apply migrations
-alembic upgrade head
-
-# Start the API
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8085
-```
-
-You should see:
-
-```
-[BOOT] Silicon Mango Academy — Backend starting up
-[REDIS] Connected successfully
-[BOOT] Startup complete — accepting requests
-```
-
-#### B.4 Frontend
-
-In a new terminal:
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Open **http://localhost:5174**.
-
-### Reviewer test plan
-
-Once running, walk through these to exercise everything that was built:
-
-1. **Sign in as admin** → land on `/admin/dashboard` → confirm KPIs load and the revenue chart renders.
-2. **Admin → Courses → Create Course** → fill title / description / duration (e.g. 4 weeks) / price → save.
-3. **Admin → Instructors → Add Instructor** → create one. Note the **temporary password** in the response toast (also logged in the backend console for the welcome email).
-4. **Admin → Assign Instructors** → assign that instructor to the course you created.
-5. **Admin → Batches → Create Batch** → pick the course, instructor, dates, and a couple of weekly time slots. After save, open the batch detail and confirm sessions were auto-generated.
-6. **Sign out → Sign up as a student** at `/signup`:
-   - Enter email → click Send OTP.
-   - **Find the OTP**: if SMTP isn't configured, the OTP is printed in the backend terminal in a `[EMAIL][CONSOLE FALLBACK]` block. If SMTP is configured (it is in this build), it's emailed.
-   - Enter the OTP → set password + name → land on the student portal.
-7. **Sign back in as admin → Enrollments → Enroll Student** → pick the student you just created, pick the batch.
-8. **Admin → Payments** → see the `ADMIN_ENROLL` payment row from step 7.
-9. **Admin → Batches → Complete batch** (only after end date is in the past, or override via SQL for review) **→ Certificates → Generate** → see certificates created.
-
-### Where the OTP shows up in dev
-
-Look in the backend terminal for:
-
-```
-============================================================
-[EMAIL][CONSOLE FALLBACK] To: you@example.com
-[EMAIL][CONSOLE FALLBACK] Subject: Your Silicon Mango Academy verification code
-Your verification code is: 482917
-============================================================
-```
-
-Or, with the included Gmail SMTP credentials in `.env`, it lands in the inbox.
-
-### Troubleshooting
-
-| Symptom | Fix |
-|---|---|
-| `ConnectionRefusedError` on backend boot | Postgres or Redis isn't running. Verify both are up and credentials match `.env`. |
-| `auth_provider_enum already exists` on `alembic upgrade head` | This was fixed today — the migration is idempotent. If you still see it, you have a stale migration; run `docker compose down -v` and retry. |
-| `/auth/login` returns 500 with CORS error in DevTools | Almost always a DB password / DB URL issue. Check the backend terminal for `InvalidPasswordError`. Make sure `@` is `%40`-encoded in `DATABASE_URL`. |
-| OTP says "expired" | Codes are 5 minutes — use the latest one printed/sent. |
-| Login redirects back to `/login` immediately | Cookie domain mismatch. Make sure you're hitting the frontend at `localhost:5174`, not `127.0.0.1:5174`. |
-| Port already in use | Another process owns the port. Stop it, or edit `docker-compose.yml`. |
-
----
-
-## Tech stack reference
-
-| Layer | Tech |
-|---|---|
-| Frontend | React 18, Vite, TypeScript, TailwindCSS, TanStack Query, Zustand, React Router 6, Recharts, react-hot-toast, axios |
-| Backend | FastAPI, SQLAlchemy 2 (async), Alembic, Pydantic 2, asyncpg, aiosmtplib, httpx, passlib[bcrypt], python-jose |
-| Database | PostgreSQL 16 |
-| Cache / Rate limit / Blacklist | Redis 7 |
-| Auth | JWT (HttpOnly cookies, 15-min access, 7-day rolling refresh), bcrypt, Google OAuth 2 |
-| Storage | Local filesystem at `backend/uploads/` (mounted at `/uploads`) |
-| Container | Docker + docker-compose |
-
----
-
-## Useful commands
-
-```bash
-# Docker — start everything
-docker compose up --build
-
-# Docker — start in background
+cp .env.example .env
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env   # keep VITE_API_BASE_URL empty
 docker compose up -d --build
-
-# Docker — view backend logs
-docker compose logs -f backend
-
-# Docker — clean reset (wipes DB)
-docker compose down -v
-
-# Backend — generate a new migration after model changes
-cd backend
-alembic revision --autogenerate -m "describe_change"
-
-# Backend — apply migrations
-alembic upgrade head
-
-# Backend — rollback one migration
-alembic downgrade -1
-
-# Frontend — type check
-cd frontend && npx tsc --noEmit
-
-# Frontend — production build
-cd frontend && npm run build
 ```
+- App: **http://localhost:5185**
+- API (loopback only): http://localhost:8090
+- In dev, OTP codes and emails are printed to the backend logs if SMTP isn't configured.
+
+The stack: PostgreSQL, Redis, a one‑shot **migrate** job, the **backend** (gunicorn ×3), the Celery **worker** + **beat**, and the **frontend** nginx front door.
+
+### Production (Oracle VM behind Cloudflare)
+Follow **[DEPLOYMENT.md](DEPLOYMENT.md)**, then:
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+### Local development without Docker
+Run PostgreSQL + Redis locally, then the backend (`alembic upgrade head` + `uvicorn app.main:app --reload`) and frontend (`npm install && npm run dev`). For local video playback set `SERVE_SEGMENTS_FROM_APP=true` in `backend/.env` so FastAPI serves segments (nginx isn't in the loop).
 
 ---
 
-## Console logging cheat sheet
+## 17. Useful commands & troubleshooting
 
-The codebase logs heavily — both ends. Look for these prefixes when debugging:
+```bash
+# Status of every service (health included)
+docker compose ps
 
-**Backend:**
-- `[BOOT]` startup events
-- `[REDIS]` connection / rate-limit / blacklist
-- `[AUTH]` login / signup / OTP events
-- `[ADMIN]` admin actions (course/batch/enrollment/payment events)
-- `[EMAIL]` emails sent or fallen-back-to-console
-- `[OAUTH]` Google OAuth flow
-- `[PLANNING]` auto-session generation
-- `[STORAGE]` file uploads
-- `[VALIDATION]` Pydantic errors
-- `[ERROR]` unhandled exceptions
+# Live, readable logs (time | level | request-id | message)
+docker compose logs -f backend worker
 
-**Frontend (browser DevTools):**
-- `[BOOT]`, `[API]`, `[AUTH]`, `[GUARD]`, `[LOGIN]`, `[SIGNUP]`, `[DASH]`, `[LANDING]`
+# Find one request across logs by the X-Request-ID shown in an error
+docker compose logs backend | grep <request-id>
+
+# Health checks
+curl http://localhost:8090/health            # liveness
+curl http://localhost:8090/health/detail     # DB + Redis + DB-pool usage
+
+# Trigger video optimization immediately (also runs nightly + on upload)
+docker compose exec worker celery -A app.celery_app.celery call tasks.optimize_pending_videos
+
+# Inspect video statuses
+docker compose exec postgres psql -U sm_user silicon_mango \
+  -c "SELECT original_filename, status, error_message FROM videos ORDER BY created_at DESC LIMIT 10;"
+
+# Create a new DB migration after changing models
+docker compose exec backend alembic revision --autogenerate -m "describe change"
+docker compose exec backend alembic upgrade head   # (normally the migrate service does this)
+
+# Frontend type-check / build
+cd frontend && npx tsc -b && npm run build
+```
+
+**Common issues**
+- *Video says "Pending optimization" forever* → check the `worker`/`beat` logs; FFmpeg may have failed (the instructor sees a Retry option). Encodes run nightly and on upload.
+- *Video won't play in production* → confirm `SEGMENT_SIGNING_SECRET` is **identical** in root `.env` and `backend/.env`, and that the segment Cache Rule + nginx are configured per DEPLOYMENT.md.
+- *Uploads over 100 MB fail through Cloudflare* → Cloudflare's free plan caps request bodies at 100 MB; see DEPLOYMENT.md §8 for the upload workaround.
+- *Everyone is rate‑limited at once* → ensure the real client IP is reaching the app (`CF-Connecting-IP`); behind a misconfigured proxy all users can look like one IP.
+
+---
+
+*Built with FastAPI, React, PostgreSQL, Redis, Celery, FFmpeg, nginx, Docker and Cloudflare — tuned to be secure, smooth, and affordable on modest hardware.*
