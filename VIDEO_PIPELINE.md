@@ -33,7 +33,7 @@ Before this system, instructors could only attach generic files to sessions (PDF
 |---|---|
 | **Upload** | Instructor uploads a raw video (up to 500 MB) |
 | **Store** | Video saved in a private `/app/media` folder, never publicly accessible |
-| **Optimise** | At midnight, a background job converts the video to HLS format (multiple quality levels) |
+| **Optimise** | At midnight, a background job compresses the video to a single **720p** HLS stream (any higher resolution is scaled down; lower-res uploads are re-encoded, never upscaled) |
 | **Stream** | Student gets time-limited, signed URLs — no direct file access |
 | **Protect** | Student's email overlaid as a watermark on the player |
 | **Revoke** | When a student is unenrolled, their stream access is cut off within 2 minutes |
@@ -76,23 +76,16 @@ SELF-PACED course → Sessions with uploaded video lessons — THIS document cov
 HLS is the standard used by YouTube, Netflix, and virtually every major video platform. Instead of one big video file, HLS breaks the video into small chunks and serves a playlist:
 
 ```
-master.m3u8          ← playlist of all available qualities
-  480p/
-    index.m3u8       ← playlist for 480p quality
+master.m3u8          ← playlist with a single 720p entry
+  720p/
+    index.m3u8       ← playlist for the 720p stream
     seg_00000.ts     ← 6-second chunk of video
     seg_00001.ts
     seg_00002.ts
     ...
-  720p/
-    index.m3u8
-    seg_00000.ts
-    ...
-  1080p/
-    index.m3u8
-    ...
 ```
 
-The player automatically picks the best quality based on the user's internet speed (called **Adaptive Bitrate Streaming / ABR**).
+**Single-quality policy.** We deliberately produce **only one 720p rendition** — no 480p, no 1080p, no quality picker. The master playlist is still emitted (with a single entry) so the streaming/token code path is unchanged. The player just plays the one stream. This keeps storage small, encoding fast, and the student UI simple.
 
 ---
 
@@ -116,11 +109,13 @@ docker-compose.yml
 ```
 ./backend/uploads/   → Public files: banners, PDFs, certificates
 ./backend/media/
-    originals/       → Raw uploaded video (DELETED after encoding)
-    videos/          → HLS output (segments + playlists) — permanent
+    originals/<instructor_id>/   → Raw uploaded video (DELETED after encoding)
+    videos/<instructor_id>/<video_id>/   → HLS output (segments + playlists) — permanent
 pgdata               → PostgreSQL data (Docker named volume)
 redisdata            → Redis data
 ```
+
+> **Per-instructor folders:** both raw uploads and encoded HLS output are namespaced by the uploading instructor's user ID, so every owner's videos are grouped under their own folder (`originals/<instructor_id>/…` and `videos/<instructor_id>/<video_id>/…`). The exact `hls_dir` is stored on the `videos` row, so streaming resolves the path from the DB — the folder layout is transparent to playback.
 
 > **Key point:** `./backend/media` is a **bind mount** (a folder on your real hard drive), not a Docker named volume. This means even if you run `docker compose down -v` (which deletes named volumes), your encoded videos survive because they're on your actual disk.
 
@@ -138,23 +133,23 @@ redisdata            → Redis data
 | `original_filename` | string | e.g. `lecture1.mp4` |
 | `original_size_bytes` | bigint | Size of the original upload |
 | `source_path` | string | Where the raw file is on disk (set to NULL after encoding) |
-| `hls_dir` | string | Folder path of the HLS output e.g. `/app/media/videos/<uuid>/` |
+| `hls_dir` | string | Folder path of the HLS output e.g. `/app/media/videos/<instructor_id>/<video_id>/` |
 | `duration_seconds` | int | Detected by ffprobe during encoding |
-| `source_height` | int | e.g. 1080 — determines which renditions to produce |
+| `source_height` | int | e.g. 1080 — the original height; the 720p output is capped to `min(720, source_height)` |
 | `status` | enum | `uploaded → queued → processing → ready / failed` |
 | `error_message` | text | Set when status = `failed`, truncated ffmpeg stderr |
 | `processed_at` | datetime | When encoding completed |
 
 ### `video_renditions` table
 
-One row per quality level produced:
+Exactly one row per video (the single 720p stream):
 
 | Column | Example Value |
 |---|---|
-| `name` | `480p` |
-| `height` | `480` |
-| `bitrate_kbps` | `800` |
-| `playlist_path` | `480p/index.m3u8` |
+| `name` | `720p` |
+| `height` | `720` (or lower if the source was smaller — never upscaled) |
+| `bitrate_kbps` | `2800` |
+| `playlist_path` | `720p/index.m3u8` |
 
 ### Sentinel URL pattern in `session_resources`
 
@@ -287,41 +282,44 @@ This extracts:
 - **height** (e.g. 1080 pixels)
 - Whether there is a video stream and an audio stream
 
-#### Step 3 — Decide which renditions to make
+#### Step 3 — Decide the output height (single 720p rendition)
 
 ```python
-def renditions_for(source_height: int):
-    if source_height >= 1080: return [480p, 720p, 1080p]
-    if source_height >= 720:  return [480p, 720p]
-    return [480p]            # Never upscale below 480p
+TARGET_HEIGHT = 720
+
+def rendition_for(source_height: int) -> Rendition:
+    # Cap at 720p, never upscale. 1080p/4K → 720p; 480p stays 480p.
+    height = TARGET_HEIGHT if source_height <= 0 else min(TARGET_HEIGHT, source_height)
+    height -= height % 2   # libx264/yuv420p need even dimensions
+    return Rendition(name="720p", height=height, bitrate_kbps=2800, audio_kbps=96, crf=23)
 ```
 
-#### Step 4 — Run FFmpeg (single pass, all renditions at once)
+#### Step 4 — Run FFmpeg (one decode pass, one 720p output)
 
 ```bash
 ffmpeg -y -i source.mp4 \
-  -filter_complex "[0:v]split=3[v0][v1][v2]; [v0]scale=-2:480[v0o]; [v1]scale=-2:720[v1o]; [v2]scale=-2:1080[v2o]" \
-  -map [v0o] -c:v:0 libx264 -preset veryfast -b:v:0 800k \
-  -map [v1o] -c:v:1 libx264 -preset veryfast -b:v:1 2500k \
-  -map [v2o] -c:v:2 libx264 -preset veryfast -b:v:2 5000k \
-  -map a:0 -map a:0 -map a:0 -c:a aac \
-  -f hls -hls_time 6 -hls_playlist_type vod \
-  -hls_segment_filename "/app/media/videos/<uuid>/%v/seg_%05d.ts" \
+  -map 0:v:0 -map 0:a:0? \
+  -vf scale=-2:720 \
+  -c:v libx264 -preset veryfast -crf 23 -maxrate 2800k -bufsize 5600k -pix_fmt yuv420p \
+  -c:a aac -b:a 96k -ac 2 -ar 48000 \
+  -f hls -hls_time 6 -hls_playlist_type vod -hls_segment_type mpegts \
+  -hls_flags independent_segments \
+  -hls_segment_filename "/app/media/videos/<instructor_id>/<video_id>/%v/seg_%05d.ts" \
   -master_pl_name master.m3u8 \
-  -var_stream_map "v:0,a:0,name:480p v:1,a:1,name:720p v:2,a:2,name:1080p" \
-  "/app/media/videos/<uuid>/%v/index.m3u8"
+  -var_stream_map "v:0,a:0,name:720p" \
+  "/app/media/videos/<instructor_id>/<video_id>/%v/index.m3u8"
 ```
 
-**Why one command for all renditions?**
-FFmpeg decodes the source video only once. The `-filter_complex split` instruction copies the decoded frames to 3 separate encoding pipelines. This is 3× more efficient than running FFmpeg three times.
+The audio map/codec/`a:0` in `-var_stream_map` are omitted automatically when the source has no audio track (detected by ffprobe), so silent screen recordings encode cleanly.
 
 **Encoding settings explained:**
 
 | Setting | Value | Why |
 |---|---|---|
 | `-preset veryfast` | Speed over compression | Server has limited compute; fast > small |
-| `-b:v 800k` | Video bitrate for 480p | Good quality for small screen |
-| `-hls_time 6` | 6-second segments | Balance between startup time and ABR switching |
+| `-crf 23` | Quality target (not a fixed bitrate) | Spends only the bits the content needs; ~visually lossless |
+| `-maxrate 2800k` | Peak bitrate cap for 720p | A high-bitrate source can't blow past the rung |
+| `-hls_time 6` | 6-second segments | Balance between startup time and seeking |
 | `-hls_playlist_type vod` | VOD (not live) | Pre-built playlist; no live stream overhead |
 
 **GPU detection:**
@@ -339,7 +337,7 @@ If GPU is available, `-c:v:N libx264` is replaced with `-c:v:N h264_nvenc`. GPU 
 
 #### Step 5 — After encoding succeeds
 
-1. Write `VideoRendition` rows to database (one per quality level)
+1. Write the single `VideoRendition` row (720p) to the database
 2. Update `Video.hls_dir` to the output folder path
 3. Update `Video.duration_seconds` and `Video.source_height`
 4. Set `Video.status = "ready"`
@@ -415,8 +413,8 @@ The backend:
 3. **Rewrites every URL in it** — replaces bare filenames with signed token URLs:
 
 ```
-Before (on disk):      480p/index.m3u8
-After (sent to client): /api/v1/student/videos/{id}/variant.m3u8?name=480p/index.m3u8&t=<new_token>
+Before (on disk):      720p/index.m3u8
+After (sent to client): /api/v1/student/videos/{id}/variant.m3u8?name=720p/index.m3u8&t=<new_token>
 ```
 
 This means the client **never receives a real file path**. Every URL it gets has already been signed and will expire in 30 seconds.
@@ -424,23 +422,23 @@ This means the client **never receives a real file path**. Every URL it gets has
 #### Step 4 — hls.js requests the variant playlist
 
 ```
-GET /api/v1/student/videos/{id}/variant.m3u8?name=480p/index.m3u8&t=<token>
+GET /api/v1/student/videos/{id}/variant.m3u8?name=720p/index.m3u8&t=<token>
 ```
 
 The backend again:
 1. Verifies the token
-2. Reads the `480p/index.m3u8` from disk
+2. Reads the `720p/index.m3u8` from disk
 3. **Rewrites every segment URL** with individual per-segment tokens:
 
 ```
 Before: seg_00000.ts
-After:  /api/v1/student/videos/{id}/seg/480p/seg_00000.ts?t=<segment_token>
+After:  /api/v1/student/videos/{id}/seg/720p/seg_00000.ts?t=<segment_token>
 ```
 
 #### Step 5 — hls.js requests each video segment
 
 ```
-GET /api/v1/student/videos/{id}/seg/480p/seg_00000.ts?t=<segment_token>
+GET /api/v1/student/videos/{id}/seg/720p/seg_00000.ts?t=<segment_token>
 ```
 
 The backend:
@@ -606,16 +604,14 @@ MIDNIGHT (CELERY BEAT)
          ▼
 9. Celery worker picks up the task
 10. ffprobe reads source → gets height + duration
-11. Decides renditions: 480p + 720p + 1080p (if source ≥ 1080p)
+11. Decides output height: min(720, source) — capped at 720p, never upscaled
 12. FFmpeg runs one-pass encoding
-         │ creates /app/media/videos/<uuid>/master.m3u8
-         │ creates /app/media/videos/<uuid>/480p/seg_*.ts
-         │ creates /app/media/videos/<uuid>/720p/seg_*.ts
-         │ creates /app/media/videos/<uuid>/1080p/seg_*.ts
-         │ deletes /app/media/originals/<uuid>.mp4 (save space)
+         │ creates /app/media/videos/<instructor_id>/<video_id>/master.m3u8
+         │ creates /app/media/videos/<instructor_id>/<video_id>/720p/seg_*.ts
+         │ deletes /app/media/originals/<instructor_id>/<video_id>.* (save space)
          ▼
 13. Video.status = "ready"
-14. VideoRendition rows written to DB
+14. Single VideoRendition row (720p) written to DB
 
 
 STUDENT SIDE
@@ -640,20 +636,19 @@ STUDENT SIDE
          │ reads master.m3u8 from disk
          │ rewrites all URLs → signed variant URLs
          ▼
-22. hls.js picks best quality, requests variant playlist
+22. hls.js requests the (single) variant playlist
          ▼
-23. /student/videos/{id}/variant.m3u8?name=480p/index.m3u8&t=<token>
+23. /student/videos/{id}/variant.m3u8?name=720p/index.m3u8&t=<token>
          │ rewrites segment URLs → signed segment URLs (30s TTL each)
          ▼
 24. hls.js requests each 6-second segment
          ▼
-25. /student/videos/{id}/seg/480p/seg_00000.ts?t=<token>
+25. /student/videos/{id}/seg/720p/seg_00000.ts?t=<token>
          │ verifies segment token
          │ streams .ts file with no-cache headers
          ▼
-26. Student watches video with email watermark in top-right corner
-27. hls.js auto-switches to 720p if internet is fast enough
-28. Tokens auto-refresh every 120s without interrupting playback
+26. Student watches the 720p video with email watermark in top-right corner
+27. Tokens auto-refresh every 120s without interrupting playback
 
 
 UNENROLLMENT
@@ -698,12 +693,12 @@ docker compose exec postgres psql -U sm_user silicon_mango -c "SELECT original_f
 
 ### Count HLS segments for a video (shows encoding progress)
 ```powershell
-docker compose exec worker sh -c "ls /app/media/videos/*/480p/*.ts 2>/dev/null | wc -l"
+docker compose exec worker sh -c "ls /app/media/videos/*/*/720p/*.ts 2>/dev/null | wc -l"
 ```
 
-### See all encoded videos on disk
+### See all encoded videos on disk (grouped by instructor)
 ```powershell
-docker compose exec worker sh -c "ls /app/media/videos/"
+docker compose exec worker sh -c "ls -R /app/media/videos/"
 ```
 
 ### Run the app — what's on which port?
