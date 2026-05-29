@@ -1,30 +1,76 @@
 from __future__ import annotations
 
 import uuid as uuid_lib
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import APIError
 from app.db.session import get_db
-from app.models.batch import Batch, BatchStatus, Enrollment, EnrollmentStatus
-from app.models.course import Course
-from app.models.user import StudentProfile, User, UserRole
+from app.models.batch import Batch, BatchScheduleSlot, BatchStatus, Enrollment, EnrollmentStatus
+from app.models.course import Course, CourseInstructor
+from app.models.user import InstructorProfile, StudentProfile, User, UserRole
 from app.models.certificate import Certificate
 
 router = APIRouter(prefix="/public", tags=["public"])
 
 
+def _course_detail_dict(c: Course, instructors: list[dict]) -> dict:
+    return {
+        "id": str(c.id),
+        "title": c.title,
+        "slug": c.slug,
+        "description": c.description,
+        "category": c.category,
+        "course_type": c.course_type.value,
+        "duration_unit": c.duration_unit.value,
+        "duration_value": c.duration_value,
+        "price": float(c.price),
+        "discount": float(c.discount),
+        "banner_url": c.banner_url,
+        "tags": c.tags or [],
+        "syllabus_items": c.syllabus_items or [],
+        "faqs": c.faqs or [],
+        "certification_criteria": c.certification_criteria or [],
+        "syllabus_pdf_url": c.syllabus_pdf_url,
+        "instructors": instructors,
+    }
+
+
+_ENROLLABLE_STATUSES = (BatchStatus.upcoming, BatchStatus.active)
+
+
 @router.get("/courses")
 async def public_courses(
-    limit: int = Query(12, ge=1, le=50),
+    search: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
 ):
-    rows = (
-        await db.execute(
-            select(Course).where(Course.is_published == True).order_by(Course.created_at.desc()).limit(limit)  # noqa: E712
+    stmt = select(Course).where(Course.is_published == True)  # noqa: E712
+    if search and search.strip():
+        term = f"%{search.strip().lower()}%"
+        stmt = stmt.where(
+            func.lower(Course.title).like(term) | func.lower(func.coalesce(Course.category, "")).like(term)
         )
-    ).scalars().all()
+    rows = (await db.execute(stmt.order_by(Course.created_at.desc()).limit(limit))).scalars().all()
+
+    course_ids = [c.id for c in rows]
+    batches_count: dict = {cid: 0 for cid in course_ids}
+    if course_ids:
+        bres = await db.execute(
+            select(Batch.course_id, func.count(Batch.id))
+            .where(
+                Batch.course_id.in_(course_ids),
+                Batch.is_locked == False,  # noqa: E712
+                Batch.status.in_(_ENROLLABLE_STATUSES),
+            )
+            .group_by(Batch.course_id)
+        )
+        for cid, cnt in bres.all():
+            batches_count[cid] = cnt
+
     items = []
     for c in rows:
         items.append(
@@ -41,6 +87,7 @@ async def public_courses(
                 "discount": float(c.discount),
                 "banner_url": c.banner_url,
                 "tags": c.tags or [],
+                "batches_count": batches_count.get(c.id, 0),
             }
         )
     return {"success": True, "data": items}
@@ -67,6 +114,126 @@ async def public_stats(db: AsyncSession = Depends(get_db)):
             "certificates": certificates,
         },
     }
+
+
+async def _resolve_course(db: AsyncSession, id_or_slug: str) -> Course:
+    course: Optional[Course] = None
+    try:
+        uuid_lib.UUID(id_or_slug)
+        course = await db.get(Course, id_or_slug)
+    except (ValueError, TypeError):
+        course = (
+            await db.execute(select(Course).where(Course.slug == id_or_slug))
+        ).scalar_one_or_none()
+    if not course or not course.is_published:
+        raise APIError(code="NOT_FOUND", message="Course not found", status_code=404)
+    return course
+
+
+@router.get("/courses/{id_or_slug}")
+async def public_course_detail(id_or_slug: str, db: AsyncSession = Depends(get_db)):
+    course = await _resolve_course(db, id_or_slug)
+
+    # Instructors (batched)
+    ci_rows = (
+        await db.execute(
+            select(CourseInstructor.instructor_id).where(CourseInstructor.course_id == course.id)
+        )
+    ).scalars().all()
+    instructors: list[dict] = []
+    if ci_rows:
+        prof_rows = (
+            await db.execute(
+                select(InstructorProfile).where(InstructorProfile.user_id.in_(ci_rows))
+            )
+        ).scalars().all()
+        for p in prof_rows:
+            instructors.append(
+                {"display_name": p.display_name, "avatar_url": p.avatar_url, "bio": p.bio}
+            )
+
+    return {"success": True, "data": _course_detail_dict(course, instructors)}
+
+
+@router.get("/courses/{course_id}/batches")
+async def public_course_batches(course_id: str, db: AsyncSession = Depends(get_db)):
+    course = await _resolve_course(db, course_id)
+
+    batches = (
+        await db.execute(
+            select(Batch)
+            .where(
+                Batch.course_id == course.id,
+                Batch.is_locked == False,  # noqa: E712
+                Batch.status.in_(_ENROLLABLE_STATUSES),
+            )
+            .order_by(Batch.start_date)
+        )
+    ).scalars().all()
+
+    batch_ids = [b.id for b in batches]
+
+    # Active enrollment counts (batched)
+    enrolled_by_batch: dict = {bid: 0 for bid in batch_ids}
+    if batch_ids:
+        eres = await db.execute(
+            select(Enrollment.batch_id, func.count(Enrollment.id))
+            .where(Enrollment.batch_id.in_(batch_ids), Enrollment.status == EnrollmentStatus.active)
+            .group_by(Enrollment.batch_id)
+        )
+        for bid, cnt in eres.all():
+            enrolled_by_batch[bid] = cnt
+
+    # Schedule slots (batched)
+    slots_by_batch: dict = {bid: [] for bid in batch_ids}
+    if batch_ids:
+        sres = await db.execute(
+            select(BatchScheduleSlot).where(BatchScheduleSlot.batch_id.in_(batch_ids))
+        )
+        for slot in sres.scalars().all():
+            slots_by_batch.setdefault(slot.batch_id, []).append(
+                {
+                    "slot_type": slot.slot_type.value,
+                    "weekday": slot.weekday,
+                    "slot_date": slot.slot_date.isoformat() if slot.slot_date else None,
+                    "start_time": slot.start_time.strftime("%H:%M") if slot.start_time else None,
+                    "end_time": slot.end_time.strftime("%H:%M") if slot.end_time else None,
+                }
+            )
+
+    # Instructor names (batched)
+    instructor_ids = [b.instructor_id for b in batches if b.instructor_id]
+    instructor_names: dict = {}
+    if instructor_ids:
+        ip_rows = (
+            await db.execute(
+                select(InstructorProfile).where(InstructorProfile.user_id.in_(instructor_ids))
+            )
+        ).scalars().all()
+        instructor_names = {p.user_id: p.display_name for p in ip_rows}
+
+    items = []
+    for b in batches:
+        enrolled = enrolled_by_batch.get(b.id, 0)
+        seats_left = (b.capacity - enrolled) if b.capacity is not None else None
+        is_full = seats_left is not None and seats_left <= 0
+        items.append(
+            {
+                "id": str(b.id),
+                "name": b.name,
+                "delivery_mode": b.delivery_mode.value,
+                "status": b.status.value,
+                "start_date": b.start_date.isoformat() if b.start_date else None,
+                "end_date": b.end_date.isoformat() if b.end_date else None,
+                "capacity": b.capacity,
+                "enrolled_count": enrolled,
+                "seats_left": seats_left,
+                "is_full": is_full,
+                "instructor_name": instructor_names.get(b.instructor_id),
+                "schedule_slots": slots_by_batch.get(b.id, []),
+            }
+        )
+    return {"success": True, "data": items}
 
 
 @router.get("/verify-certificate/{cert_id}")

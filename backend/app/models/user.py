@@ -81,6 +81,9 @@ class StudentProfile(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False
     )
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    first_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    middle_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    last_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     city: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     occupation: Mapped[Optional[OccupationType]] = mapped_column(

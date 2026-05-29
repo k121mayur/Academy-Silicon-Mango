@@ -25,7 +25,14 @@ export const ROUTES = {
     dashboard: "/instructor/dashboard",
   },
   student: {
-    dashboard: "/portal/dashboard",
     profile: "/portal/profile",
+    explore: "/portal/explore",
+    courseDetails: (id: string) => `/portal/explore/${id}`,
+    batchSelect: (id: string) => `/portal/explore/${id}/batches`,
+    myCourses: "/portal/my-courses",
+    batchWorkspace: (id: string) => `/portal/my-courses/${id}`,
+    selfPaced: (id: string) => `/portal/courses/${id}`,
+    // Alias kept so old links / the role-guard fallback resolve.
+    dashboard: "/portal/my-courses",
   },
 } as const;

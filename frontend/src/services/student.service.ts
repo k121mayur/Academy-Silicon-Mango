@@ -104,3 +104,84 @@ export async function fetchMyCertificates() {
   const res = await api.get("/student/certificates");
   return res.data.data as StudentCertificate[];
 }
+
+// ---- Profile ----
+
+export interface EducationEntry {
+  qualification: string;
+  institution: string;
+  field_of_study: string;
+  completion_year: string;
+}
+
+export interface ExperienceEntry {
+  organisation: string;
+  post: string;
+  description?: string | null;
+}
+
+export interface StudentProfile {
+  first_name: string | null;
+  middle_name: string | null;
+  last_name: string | null;
+  display_name: string | null;
+  email: string;
+  mobile: string | null;
+  city: string | null;
+  occupation: "student" | "employee" | null;
+  education: EducationEntry[];
+  experience: ExperienceEntry[];
+  avatar_url: string | null;
+  profile_complete: boolean;
+}
+
+export interface ProfileUpdate {
+  first_name: string;
+  middle_name?: string | null;
+  last_name: string;
+  mobile: string;
+  city: string;
+  occupation: "student" | "employee";
+  education: EducationEntry[];
+  experience: ExperienceEntry[];
+}
+
+export async function fetchProfile() {
+  const res = await api.get("/student/profile");
+  return res.data.data as StudentProfile;
+}
+
+export async function updateProfile(payload: ProfileUpdate) {
+  const res = await api.patch("/student/profile", payload);
+  return res.data.data as StudentProfile;
+}
+
+// ---- Progress + attendance ----
+
+export interface BatchProgress {
+  batch_id: string;
+  overall_percent: number;
+  sessions: { done: number; total: number };
+  assignments: { graded: number; total: number };
+  attendance: { present: number; total: number };
+}
+
+export interface AttendanceItem {
+  session_id: string;
+  session_title: string;
+  scheduled_at: string | null;
+  status: "present" | "absent" | "late" | "excused" | "not_marked";
+  source: string;
+  marked_at: string | null;
+  notes: string | null;
+}
+
+export async function fetchBatchProgress(batchId: string) {
+  const res = await api.get(`/student/batches/${batchId}/progress`);
+  return res.data.data as BatchProgress;
+}
+
+export async function fetchBatchAttendance(batchId: string) {
+  const res = await api.get(`/student/batches/${batchId}/attendance`);
+  return res.data.data as AttendanceItem[];
+}

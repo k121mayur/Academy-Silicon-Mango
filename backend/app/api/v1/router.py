@@ -13,7 +13,12 @@ from app.api.v1.admin import (
     users as admin_users,
 )
 from app.api.v1.instructor import router as instructor_router, videos as instructor_videos
-from app.api.v1.student import router as student_router, videos as student_videos
+from app.api.v1.student import (
+    router as student_router,
+    videos as student_videos,
+    profile as student_profile,
+    payments as student_payments,
+)
 from app.api.v1 import public as public_router
 
 api_router = APIRouter()
@@ -34,3 +39,5 @@ api_router.include_router(instructor_router.router)
 api_router.include_router(instructor_videos.router)
 api_router.include_router(student_router.router)
 api_router.include_router(student_videos.router)
+api_router.include_router(student_profile.router)
+api_router.include_router(student_payments.router)

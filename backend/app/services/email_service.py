@@ -210,6 +210,44 @@ def render_certificate_issued_email(
     return subject, html, text
 
 
+def render_payment_receipt_email(
+    student_name: str,
+    course_title: str,
+    batch_name: str,
+    amount_display: str,
+    receipt_no: str,
+    courses_url: str,
+) -> tuple[str, str, str]:
+    subject = f"Payment received — {course_title}"
+    text = (
+        f"Hi {student_name},\n\n"
+        f"We've received your payment of {amount_display} and your enrollment in "
+        f"{course_title} ({batch_name}) is confirmed.\n\n"
+        f"Receipt number: {receipt_no}\n"
+        f"Your receipt PDF is attached to this email.\n\n"
+        f"Access your course any time in My Courses: {courses_url}\n\n"
+        "Happy learning!\n"
+        "— Silicon Mango Academy"
+    )
+    html = f"""
+    <!doctype html><html><body style="font-family:Inter,sans-serif;background:#f8f9fa;padding:32px;">
+      <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;">
+        <h2 style="font-family:Manrope,sans-serif;color:#7c5800;margin:0 0 8px;">Payment received ✅</h2>
+        <p style="color:#514532;line-height:1.5;">Hi {student_name}, your enrollment in <strong>{course_title}</strong> ({batch_name}) is confirmed.</p>
+        <div style="background:#f3f4f5;border-radius:12px;padding:16px;margin:20px 0;">
+          <p style="margin:0 0 6px;color:#514532;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">Amount paid</p>
+          <p style="margin:0;color:#191c1d;font-size:22px;font-weight:700;font-family:Manrope,sans-serif;">{amount_display}</p>
+          <p style="margin:8px 0 0;color:#837560;font-size:13px;">Receipt #: {receipt_no}</p>
+        </div>
+        <p style="color:#514532;line-height:1.5;">Your receipt is attached as a PDF.</p>
+        <a href="{courses_url}" style="display:inline-block;background:#7c5800;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Go to My Courses</a>
+        <p style="color:#837560;font-size:13px;margin-top:20px;">Happy learning!<br/>— Silicon Mango Academy</p>
+      </div>
+    </body></html>
+    """
+    return subject, html, text
+
+
 def render_welcome_instructor_email(display_name: str, email: str, password: str, login_url: str) -> tuple[str, str, str]:
     subject = "Welcome to Silicon Mango Academy — Instructor Account"
     text = (

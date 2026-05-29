@@ -104,7 +104,7 @@ export default function SelfPacedCourse() {
         <p className="mt-2 text-body-sm text-ink-variant">
           Batch not found or you're not enrolled.
         </p>
-        <Button className="mt-4" onClick={() => navigate("/portal/dashboard")}>Back to dashboard</Button>
+        <Button className="mt-4" onClick={() => navigate("/portal/my-courses")}>Back to My Courses</Button>
       </div>
     );
   }
@@ -114,11 +114,11 @@ export default function SelfPacedCourse() {
       {/* Top bar */}
       <header className="px-4 md:px-6 h-14 border-b border-ink-outlineVariant/40 flex items-center gap-3 sticky top-0 bg-surface-lowest z-10">
         <button
-          onClick={() => navigate("/portal/dashboard")}
+          onClick={() => navigate("/portal/my-courses")}
           className="flex items-center gap-1 text-body-sm text-ink-variant hover:text-ink"
         >
           <span className="icon text-[18px]">arrow_back</span>
-          Dashboard
+          My Courses
         </button>
         <span className="text-ink-outline">·</span>
         <div className="min-w-0">

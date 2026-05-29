@@ -1,9 +1,12 @@
+import { Suspense, lazy } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import PublicLayout from "@/components/layout/PublicLayout";
 import AdminLayout from "@/components/layout/AdminLayout";
 import InstructorLayout from "@/components/layout/InstructorLayout";
+import StudentLayout from "@/components/layout/StudentLayout";
 import ProtectedRoute from "@/router/ProtectedRoute";
+import { Spinner } from "@/components/ui/Spinner";
 
 import Landing from "@/pages/Landing";
 import Login from "@/pages/auth/Login";
@@ -28,8 +31,15 @@ import AdminPayments from "@/pages/admin/Payments";
 import PaymentSettings from "@/pages/admin/PaymentSettings";
 import AdminCatalogue from "@/pages/admin/Catalogue";
 
-import StudentDashboard from "@/pages/student/Dashboard";
-import SelfPacedCourse from "@/pages/student/SelfPacedCourse";
+// Student pages are lazy-loaded so the catalogue route never ships the video player / heavy libs.
+const StudentProfile = lazy(() => import("@/pages/student/Profile"));
+const ExploreCatalogue = lazy(() => import("@/pages/student/explore/ExploreCatalogue"));
+const CourseDetails = lazy(() => import("@/pages/student/explore/CourseDetails"));
+const BatchSelection = lazy(() => import("@/pages/student/explore/BatchSelection"));
+const MyCourses = lazy(() => import("@/pages/student/MyCourses"));
+const BatchWorkspace = lazy(() => import("@/pages/student/BatchWorkspace"));
+const SelfPacedCourse = lazy(() => import("@/pages/student/SelfPacedCourse"));
+
 import InstructorDashboard from "@/pages/instructor/Dashboard";
 import AssignedBatches from "@/pages/instructor/AssignedBatches";
 import CoursePlan from "@/pages/instructor/CoursePlan";
@@ -90,10 +100,32 @@ export default function App() {
         <Route path="account/change-password" element={<ChangePasswordPage />} />
       </Route>
 
-      <Route element={<ProtectedRoute roles={["student"]} />}>
-        <Route path="portal/dashboard" element={<StudentDashboard />} />
-        <Route path="portal/profile" element={<StudentDashboard />} />
-        <Route path="portal/courses/:batchId" element={<SelfPacedCourse />} />
+      <Route element={<ProtectedRoute roles={["student"]} requireProfileComplete />}>
+        <Route path="portal" element={<StudentLayout />}>
+          <Route index element={<Navigate to="/portal/my-courses" replace />} />
+          <Route path="profile" element={<StudentProfile />} />
+          <Route path="explore" element={<ExploreCatalogue />} />
+          <Route path="explore/:courseId" element={<CourseDetails />} />
+          <Route path="explore/:courseId/batches" element={<BatchSelection />} />
+          <Route path="my-courses" element={<MyCourses />} />
+          <Route path="my-courses/:batchId" element={<BatchWorkspace />} />
+          <Route path="dashboard" element={<Navigate to="/portal/my-courses" replace />} />
+        </Route>
+        {/* Self-paced viewer keeps its own full-screen chrome, outside the portal layout. */}
+        <Route
+          path="portal/courses/:batchId"
+          element={
+            <Suspense
+              fallback={
+                <div className="min-h-screen grid place-items-center bg-surface">
+                  <Spinner size={28} className="text-primary" />
+                </div>
+              }
+            >
+              <SelfPacedCourse />
+            </Suspense>
+          }
+        />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

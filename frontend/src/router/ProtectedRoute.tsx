@@ -36,7 +36,7 @@ export default function ProtectedRoute({ roles, requireProfileComplete }: Protec
 
   if (roles && !roles.includes(user.role)) {
     console.log(`[GUARD] Wrong role (${user.role}) for ${location.pathname} — redirecting`);
-    const target = user.role === "admin" ? "/admin/dashboard" : user.role === "instructor" ? "/instructor/dashboard" : "/portal/dashboard";
+    const target = user.role === "admin" ? "/admin/dashboard" : user.role === "instructor" ? "/instructor/dashboard" : "/portal/my-courses";
     return <Navigate to={target} replace />;
   }
 

@@ -80,7 +80,7 @@ export default function Signup() {
       console.log("[SIGNUP] OK", res.user);
       setUser({ ...res.user, profile_complete: res.profile_complete });
       toast.success("Account created. Welcome!");
-      navigate(res.profile_complete ? "/portal/dashboard" : "/portal/profile", { replace: true });
+      navigate(res.profile_complete ? "/portal/my-courses" : "/portal/profile", { replace: true });
     } catch (e) {
       const msg = extractErrorMessage(e, "Verification failed");
       setOtpError(msg);

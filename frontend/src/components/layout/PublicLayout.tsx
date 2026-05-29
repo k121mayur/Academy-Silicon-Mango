@@ -12,7 +12,7 @@ export default function PublicLayout() {
       ? "/admin/dashboard"
       : user?.role === "instructor"
       ? "/instructor/dashboard"
-      : "/portal/dashboard";
+      : "/portal/my-courses";
 
   return (
     <div className="min-h-screen flex flex-col bg-surface">

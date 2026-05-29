@@ -14,6 +14,7 @@ from app.models.course import Course
 from app.models.payment import Payment, PaymentStatus
 from app.models.user import StudentProfile, User, UserRole
 from app.schemas.batch import EnrollmentCreate
+from app.services.payment_service import create_enrollment_with_payment, payable_amount
 
 router = APIRouter(prefix="/enrollments", tags=["admin:enrollments"])
 
@@ -95,21 +96,15 @@ async def admin_enroll_student(
         if cnt >= batch.capacity:
             print(f"[ADMIN] Capacity warning override on enroll: batch {batch.id}")
 
-    enr = Enrollment(batch_id=batch.id, student_id=student.id, status=EnrollmentStatus.active)
-    db.add(enr)
-    await db.flush()
-
     course = await db.get(Course, batch.course_id)
-    payment = Payment(
-        enrollment_id=enr.id,
-        student_id=student.id,
-        batch_id=batch.id,
-        amount=(course.price - course.discount) if course else 0,
-        currency="INR",
+    enr, _payment = await create_enrollment_with_payment(
+        db,
+        batch=batch,
+        student=student,
+        amount=payable_amount(course),
         status=PaymentStatus.paid,
         razorpay_order_id="ADMIN_ENROLL",
     )
-    db.add(payment)
     await db.commit()
     print(f"[ADMIN] Admin-enrolled student {student.email} in {batch.name}")
     return {"success": True, "data": {"enrollment_id": str(enr.id)}}

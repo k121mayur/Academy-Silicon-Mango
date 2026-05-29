@@ -46,7 +46,7 @@ export default function Login() {
       if (role === "admin") navigate("/admin/dashboard", { replace: true });
       else if (role === "instructor") navigate("/instructor/dashboard", { replace: true });
       else if (!res.profile_complete) navigate("/portal/profile", { replace: true });
-      else navigate("/portal/dashboard", { replace: true });
+      else navigate("/portal/my-courses", { replace: true });
     } catch (err) {
       const code = extractErrorCode(err);
       const msg = extractErrorMessage(err, "Sign-in failed");

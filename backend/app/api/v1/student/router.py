@@ -12,10 +12,11 @@ from app.core.exceptions import APIError
 from app.db.session import get_db
 from app.dependencies.auth import require_student
 from app.models.assignment import Assignment, AssignmentType, Submission, SubmissionStatus
+from app.models.attendance import AttendanceRecord, AttendanceStatus
 from app.models.batch import Batch, Enrollment, EnrollmentStatus
 from app.models.certificate import Certificate
 from app.models.course import Course
-from app.models.session import Session as ClassSession, SessionResource
+from app.models.session import Session as ClassSession, SessionResource, SessionStatus
 from app.models.user import InstructorProfile, User
 from app.models.video import Video
 from app.services.storage_service import save_upload
@@ -277,6 +278,122 @@ async def submit_assignment(
             "is_late": is_late,
         },
     }
+
+
+async def _ensure_enrolled(db: AsyncSession, batch_id: str, student_id) -> Enrollment:
+    enr = (
+        await db.execute(
+            select(Enrollment).where(Enrollment.batch_id == batch_id, Enrollment.student_id == student_id)
+        )
+    ).scalar_one_or_none()
+    if not enr:
+        raise APIError(code="FORBIDDEN", message="Not enrolled in this batch", status_code=403)
+    return enr
+
+
+@router.get("/batches/{batch_id}/progress")
+async def my_batch_progress(
+    batch_id: str,
+    student: User = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    await _ensure_enrolled(db, batch_id, student.id)
+
+    sessions_total = (
+        await db.execute(select(func.count(ClassSession.id)).where(ClassSession.batch_id == batch_id))
+    ).scalar_one()
+    sessions_done = (
+        await db.execute(
+            select(func.count(ClassSession.id)).where(
+                ClassSession.batch_id == batch_id, ClassSession.status == SessionStatus.completed
+            )
+        )
+    ).scalar_one()
+
+    assignments_total = (
+        await db.execute(select(func.count(Assignment.id)).where(Assignment.batch_id == batch_id))
+    ).scalar_one()
+    assignment_ids = (
+        await db.execute(select(Assignment.id).where(Assignment.batch_id == batch_id))
+    ).scalars().all()
+    assignments_graded = 0
+    if assignment_ids:
+        assignments_graded = (
+            await db.execute(
+                select(func.count(Submission.id)).where(
+                    Submission.student_id == student.id,
+                    Submission.assignment_id.in_(assignment_ids),
+                    Submission.status == SubmissionStatus.graded,
+                )
+            )
+        ).scalar_one()
+
+    # Attendance is measured against sessions actually held (completed).
+    attendance_total = sessions_done
+    attendance_present = (
+        await db.execute(
+            select(func.count(AttendanceRecord.id))
+            .select_from(AttendanceRecord)
+            .join(ClassSession, ClassSession.id == AttendanceRecord.session_id)
+            .where(
+                ClassSession.batch_id == batch_id,
+                AttendanceRecord.student_id == student.id,
+                AttendanceRecord.status == AttendanceStatus.present,
+            )
+        )
+    ).scalar_one()
+
+    ratios = []
+    if sessions_total > 0:
+        ratios.append(sessions_done / sessions_total)
+    if assignments_total > 0:
+        ratios.append(assignments_graded / assignments_total)
+    if attendance_total > 0:
+        ratios.append(attendance_present / attendance_total)
+    overall = round(100 * (sum(ratios) / len(ratios))) if ratios else 0
+
+    return {
+        "success": True,
+        "data": {
+            "batch_id": batch_id,
+            "overall_percent": overall,
+            "sessions": {"done": sessions_done, "total": sessions_total},
+            "assignments": {"graded": assignments_graded, "total": assignments_total},
+            "attendance": {"present": attendance_present, "total": attendance_total},
+        },
+    }
+
+
+@router.get("/batches/{batch_id}/attendance")
+async def my_batch_attendance(
+    batch_id: str,
+    student: User = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    await _ensure_enrolled(db, batch_id, student.id)
+
+    rows = (
+        await db.execute(
+            select(AttendanceRecord, ClassSession)
+            .join(ClassSession, ClassSession.id == AttendanceRecord.session_id)
+            .where(ClassSession.batch_id == batch_id, AttendanceRecord.student_id == student.id)
+            .order_by(ClassSession.scheduled_at)
+        )
+    ).all()
+
+    items = [
+        {
+            "session_id": str(s.id),
+            "session_title": s.title,
+            "scheduled_at": s.scheduled_at.isoformat() if s.scheduled_at else None,
+            "status": rec.status.value,
+            "source": rec.source.value,
+            "marked_at": rec.marked_at.isoformat() if rec.marked_at else None,
+            "notes": rec.notes,
+        }
+        for rec, s in rows
+    ]
+    return {"success": True, "data": items}
 
 
 @router.get("/certificates")
