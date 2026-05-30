@@ -2,6 +2,7 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: sm_postgres
+    restart: unless-stopped
     environment:
       POSTGRES_DB: silicon_mango
       POSTGRES_USER: sm_user
@@ -23,6 +24,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: sm_redis
+    restart: unless-stopped
     command: redis-server --requirepass ${REDIS_PASSWORD:-sm_redis_pass_2024}
     ports:
       - "6381:6379"
@@ -41,6 +43,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: sm_backend
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
@@ -69,6 +72,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: sm_worker
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
@@ -94,6 +98,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: sm_beat
+    restart: unless-stopped
     depends_on:
       - redis
     env_file: ./backend/.env
@@ -113,6 +118,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: sm_frontend
+    restart: unless-stopped
     ports:
       - "5185:80"
     depends_on:
