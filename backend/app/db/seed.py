@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -24,5 +25,12 @@ async def seed_master_admin(db: AsyncSession) -> None:
         is_verified=True,
     )
     db.add(user)
-    await db.commit()
-    print(f"[SEED] Master admin created: {email} (password from env)")
+    try:
+        await db.commit()
+        print(f"[SEED] Master admin created: {email} (password from env)")
+    except IntegrityError:
+        # Multiple workers/processes boot at once and race to seed the same
+        # admin. The unique constraint on users.email makes all but one fail —
+        # that's expected and harmless, so swallow it instead of logging an error.
+        await db.rollback()
+        print(f"[SEED] Master admin already exists (seeded concurrently): {email}")
