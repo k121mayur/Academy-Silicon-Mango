@@ -15,7 +15,7 @@ export default function AdminInstructors() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
-  const [created, setCreated] = useState<{ email: string; password: string } | null>(null);
+  const [created, setCreated] = useState<{ email: string; password: string; emailSent: boolean } | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -93,7 +93,11 @@ export default function AdminInstructors() {
       />
 
       <Modal open={!!created} onClose={() => setCreated(null)} title="Instructor account created" size="sm">
-        <p className="text-body-sm text-ink-variant mb-3">A welcome email has been sent. Save these credentials:</p>
+        <p className="text-body-sm text-ink-variant mb-3">
+          {created?.emailSent
+            ? "A welcome email has been sent. Save these credentials:"
+            : "⚠️ The welcome email could NOT be sent. Share these credentials with the instructor manually, and ask your administrator to fix the server's email settings:"}
+        </p>
         <div className="bg-surface-containerLow rounded-xl p-3 space-y-2">
           <p className="text-label text-ink-outline">Email</p>
           <p className="font-mono text-body-sm">{created?.email}</p>
@@ -113,7 +117,7 @@ function CreateInstructorModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onCreated: (p: { email: string; password: string }) => void;
+  onCreated: (p: { email: string; password: string; emailSent: boolean }) => void;
 }) {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -161,8 +165,12 @@ function CreateInstructorModal({
         skills: skills.split(",").map((s) => s.trim()).filter(Boolean),
         password,
       });
-      toast.success("Instructor created");
-      onCreated({ email: res.email, password: res.temporary_password || password });
+      if (res.email_sent === false) {
+        toast(res.warning || "Instructor created, but the welcome email could not be sent.", { icon: "⚠️", duration: 6000 });
+      } else {
+        toast.success("Instructor created");
+      }
+      onCreated({ email: res.email, password: res.temporary_password || password, emailSent: res.email_sent !== false });
       setEmail(""); setName(""); setBio(""); setSkills(""); setPassword(""); setErrors({});
     } catch (err) {
       toast.error(extractErrorMessage(err));

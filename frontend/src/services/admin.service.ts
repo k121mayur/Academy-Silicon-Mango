@@ -205,7 +205,8 @@ export async function listInstructors(params: { page?: number; limit?: number; s
 }
 export async function createInstructor(payload: { email: string; display_name: string; bio?: string; skills?: string[]; password?: string }) {
   const res = await api.post("/admin/users/instructors", payload);
-  return res.data.data as { id: string; user_id: string; email: string; display_name: string; temporary_password?: string };
+  const data = res.data.data as { id: string; user_id: string; email: string; display_name: string; temporary_password?: string; email_sent?: boolean };
+  return { ...data, warning: res.data.warning as string | undefined };
 }
 export async function listStudents(params: { page?: number; limit?: number; search?: string } = {}) {
   const res = await api.get<PaginatedResponse<StudentDTO>>("/admin/users/students", { params });
@@ -213,7 +214,8 @@ export async function listStudents(params: { page?: number; limit?: number; sear
 }
 export async function createStudent(payload: { email: string; display_name: string; password: string; phone?: string; city?: string; batch_name?: string; instructor_name?: string }) {
   const res = await api.post("/admin/users/students", payload);
-  return res.data.data;
+  const data = res.data.data as { id: string; user_id: string; email: string; display_name: string; email_sent?: boolean };
+  return { ...data, warning: res.data.warning as string | undefined };
 }
 export async function getStudent(userId: string) {
   const res = await api.get(`/admin/users/students/${userId}`);

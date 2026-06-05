@@ -141,7 +141,7 @@ function CreateStudentModal({ open, onClose, onCreated }: { open: boolean; onClo
     if (!validate()) return;
     setSubmitting(true);
     try {
-      await createStudent({
+      const res = await createStudent({
         email: email.trim(),
         display_name: name.trim(),
         password,
@@ -150,7 +150,14 @@ function CreateStudentModal({ open, onClose, onCreated }: { open: boolean; onClo
         batch_name: batchName.trim(),
         instructor_name: instructorName.trim(),
       });
-      toast.success("Student created — welcome email sent");
+      if (res.email_sent === false) {
+        toast(
+          res.warning || `Student created, but the welcome email could not be sent. Share the credentials manually (email: ${email.trim()}).`,
+          { icon: "⚠️", duration: 6000 }
+        );
+      } else {
+        toast.success("Student created — welcome email sent");
+      }
       setEmail(""); setName(""); setPassword(""); setPhone(""); setCity(""); setBatchName(""); setInstructorName("");
       setErrors({});
       onCreated();

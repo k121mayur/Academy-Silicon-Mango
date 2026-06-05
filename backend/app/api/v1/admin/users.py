@@ -121,10 +121,10 @@ async def create_instructor(
     subject, html, text = render_welcome_instructor_email(
         payload.display_name, email, password, login_url=f"{settings.FRONTEND_URL}/login"
     )
-    await send_email(email, subject, html, text)
-    print(f"[ADMIN] Instructor account created: {email}")
+    email_sent = await send_email(email, subject, html, text)
+    print(f"[ADMIN] Instructor account created: {email} (welcome email sent={email_sent})")
 
-    return {
+    result = {
         "success": True,
         "data": {
             "id": str(profile.id),
@@ -132,8 +132,16 @@ async def create_instructor(
             "email": email,
             "display_name": payload.display_name,
             "temporary_password": password,
+            "email_sent": email_sent,
         },
     }
+    if not email_sent:
+        result["warning"] = (
+            "Account created, but the welcome email could not be delivered. "
+            "Share the login email and temporary password with the instructor manually, "
+            "and ask your administrator to check the server's SMTP configuration."
+        )
+    return result
 
 
 @router.get("/instructors/{user_id}", response_model=InstructorPublic)
@@ -271,17 +279,25 @@ async def create_student(
         batch_name=payload.batch_name,
         instructor_name=payload.instructor_name,
     )
-    await send_email(email, subject, html, text)
-    print(f"[ADMIN] Student created by admin: {email}")
-    return {
+    email_sent = await send_email(email, subject, html, text)
+    print(f"[ADMIN] Student created by admin: {email} (welcome email sent={email_sent})")
+    result = {
         "success": True,
         "data": {
             "id": str(profile.id),
             "user_id": str(user.id),
             "email": email,
             "display_name": payload.display_name,
+            "email_sent": email_sent,
         },
     }
+    if not email_sent:
+        result["warning"] = (
+            "Account created, but the welcome email could not be delivered. "
+            "Share the login credentials with the student manually, "
+            "and ask your administrator to check the server's SMTP configuration."
+        )
+    return result
 
 
 @router.get("/students/{user_id}")
