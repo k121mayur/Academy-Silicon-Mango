@@ -31,6 +31,21 @@ from app.models.user import (
     UserRole,
 )
 from app.models.video import Video, VideoRendition, VideoStatus
+from app.models.webinar import (
+    Organization,
+    Webinar,
+    WebinarAttendanceStatus,
+    WebinarEmailAudience,
+    WebinarEmailCampaign,
+    WebinarEmailStatus,
+    WebinarGender,
+    WebinarPaymentStatus,
+    WebinarProviderType,
+    WebinarRegistrationStatus,
+    WebinarRegistration,
+    WebinarReminderDispatch,
+    WebinarReminderType,
+)
 
 __all__ = [
     "Assignment",
@@ -76,4 +91,17 @@ __all__ = [
     "Video",
     "VideoRendition",
     "VideoStatus",
+    "Organization",
+    "Webinar",
+    "WebinarAttendanceStatus",
+    "WebinarEmailAudience",
+    "WebinarEmailCampaign",
+    "WebinarEmailStatus",
+    "WebinarGender",
+    "WebinarPaymentStatus",
+    "WebinarProviderType",
+    "WebinarRegistrationStatus",
+    "WebinarRegistration",
+    "WebinarReminderDispatch",
+    "WebinarReminderType",
 ]

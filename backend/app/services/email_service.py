@@ -248,6 +248,186 @@ def render_payment_receipt_email(
     return subject, html, text
 
 
+def _webinar_shell(inner_html: str) -> str:
+    return f"""
+    <!doctype html><html><body style="font-family:Inter,system-ui,sans-serif;background:#f8f9fa;padding:32px;">
+      <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;box-shadow:0 1px 3px rgba(124,88,0,0.08);">
+        <div style="margin-bottom:20px;">
+          <span style="font-family:Manrope,sans-serif;font-weight:800;font-size:18px;color:#7c5800;">Silicon Mango Academy</span>
+        </div>
+        {inner_html}
+        <p style="color:#837560;font-size:13px;margin-top:24px;">— Silicon Mango Academy</p>
+      </div>
+    </body></html>
+    """
+
+
+def _btn(label: str, url: str, bg: str = "#7c5800") -> str:
+    return (
+        f'<a href="{url}" style="display:inline-block;background:{bg};color:#fff;'
+        f'padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;margin:6px 0;">{label}</a>'
+    )
+
+
+def render_webinar_verification_email(name: str, webinar_title: str, verify_url: str) -> tuple[str, str, str]:
+    subject = f"Confirm your registration — {webinar_title}"
+    text = (
+        f"Hi {name},\n\n"
+        f"Thanks for registering for \"{webinar_title}\".\n\n"
+        f"Please confirm your email address to complete your registration:\n{verify_url}\n\n"
+        "If you didn't register, you can ignore this email.\n\n"
+        "— Silicon Mango Academy"
+    )
+    inner = f"""
+        <h2 style="font-family:Manrope,sans-serif;color:#191c1d;font-size:22px;margin:0 0 12px;">Confirm your registration</h2>
+        <p style="color:#514532;line-height:1.5;">Hi {name}, thanks for registering for <strong>{webinar_title}</strong>.</p>
+        <p style="color:#514532;line-height:1.5;">Please confirm your email address to secure your spot.</p>
+        <p>{_btn("Confirm my registration", verify_url)}</p>
+        <p style="color:#837560;font-size:13px;">If the button doesn't work, paste this link into your browser:<br/><span style="color:#7c5800;word-break:break-all;">{verify_url}</span></p>
+    """
+    return subject, _webinar_shell(inner), text
+
+
+def render_webinar_confirmation_email(
+    name: str,
+    webinar_title: str,
+    when_str: str,
+    host_name: str,
+    detail_url: str,
+    meeting_url: str | None,
+    calendar_url: str | None,
+) -> tuple[str, str, str]:
+    subject = f"You're registered — {webinar_title}"
+    meeting_line = f"\nJoin link: {meeting_url}" if meeting_url else ""
+    cal_line = f"\nAdd to Google Calendar: {calendar_url}" if calendar_url else ""
+    text = (
+        f"Hi {name},\n\n"
+        f"Your registration for \"{webinar_title}\" is confirmed.\n\n"
+        f"Host: {host_name}\n"
+        f"When: {when_str}{meeting_line}{cal_line}\n\n"
+        f"Webinar page: {detail_url}\n\n"
+        "See you there!\n— Silicon Mango Academy"
+    )
+    meeting_block = (
+        f'<p style="margin:4px 0;color:#191c1d;"><strong>Join link:</strong> <a href="{meeting_url}" style="color:#7c5800;">{meeting_url}</a></p>'
+        if meeting_url
+        else '<p style="margin:4px 0;color:#837560;font-size:13px;">The join link will be shared before the webinar starts.</p>'
+    )
+    buttons = _btn("View webinar", detail_url)
+    if calendar_url:
+        buttons += " " + _btn("Add to calendar", calendar_url, bg="#00687b")
+    inner = f"""
+        <h2 style="font-family:Manrope,sans-serif;color:#7c5800;font-size:22px;margin:0 0 8px;">You're registered! 🎉</h2>
+        <p style="color:#514532;line-height:1.5;">Hi {name}, your spot for <strong>{webinar_title}</strong> is confirmed.</p>
+        <div style="background:#f3f4f5;border-radius:12px;padding:16px;margin:18px 0;">
+          <p style="margin:4px 0;color:#191c1d;"><strong>Host:</strong> {host_name}</p>
+          <p style="margin:4px 0;color:#191c1d;"><strong>When:</strong> {when_str}</p>
+          {meeting_block}
+        </div>
+        <p>{buttons}</p>
+        <p style="color:#837560;font-size:13px;">An .ics calendar file is attached so you don't forget.</p>
+    """
+    return subject, _webinar_shell(inner), text
+
+
+def render_webinar_reminder_email(
+    name: str,
+    webinar_title: str,
+    when_label: str,
+    when_str: str,
+    detail_url: str,
+    meeting_url: str | None,
+) -> tuple[str, str, str]:
+    subject = f"Reminder: {webinar_title} — {when_label}"
+    meeting_line = f"\nJoin link: {meeting_url}" if meeting_url else ""
+    text = (
+        f"Hi {name},\n\n"
+        f"This is a reminder that \"{webinar_title}\" is {when_label}.\n\n"
+        f"When: {when_str}{meeting_line}\n\n"
+        f"Webinar page: {detail_url}\n\n"
+        "— Silicon Mango Academy"
+    )
+    buttons = _btn("Join the webinar", meeting_url) if meeting_url else _btn("View webinar", detail_url)
+    inner = f"""
+        <h2 style="font-family:Manrope,sans-serif;color:#7c5800;font-size:22px;margin:0 0 8px;">Starting {when_label}</h2>
+        <p style="color:#514532;line-height:1.5;">Hi {name}, a quick reminder that <strong>{webinar_title}</strong> is {when_label}.</p>
+        <div style="background:#f3f4f5;border-radius:12px;padding:16px;margin:18px 0;">
+          <p style="margin:4px 0;color:#191c1d;"><strong>When:</strong> {when_str}</p>
+        </div>
+        <p>{buttons}</p>
+    """
+    return subject, _webinar_shell(inner), text
+
+
+def render_webinar_rescheduled_email(
+    name: str,
+    webinar_title: str,
+    old_str: str,
+    new_str: str,
+    detail_url: str,
+    meeting_url: str | None,
+) -> tuple[str, str, str]:
+    subject = f"Rescheduled: {webinar_title}"
+    text = (
+        f"Hi {name},\n\n"
+        f"\"{webinar_title}\" has been rescheduled.\n\n"
+        f"Previous time: {old_str}\n"
+        f"New time: {new_str}\n\n"
+        f"Webinar page: {detail_url}\n\n"
+        "Sorry for any inconvenience — we hope you can still join.\n— Silicon Mango Academy"
+    )
+    inner = f"""
+        <h2 style="font-family:Manrope,sans-serif;color:#7c5800;font-size:22px;margin:0 0 8px;">Webinar rescheduled</h2>
+        <p style="color:#514532;line-height:1.5;">Hi {name}, the timing of <strong>{webinar_title}</strong> has changed.</p>
+        <div style="background:#fff4e5;border:1px solid #ffd699;border-radius:12px;padding:16px;margin:18px 0;">
+          <p style="margin:4px 0;color:#837560;text-decoration:line-through;">Was: {old_str}</p>
+          <p style="margin:4px 0;color:#191c1d;font-weight:700;">Now: {new_str}</p>
+        </div>
+        <p>{_btn("View updated details", detail_url)}</p>
+    """
+    return subject, _webinar_shell(inner), text
+
+
+def render_webinar_cancelled_email(name: str, webinar_title: str, when_str: str) -> tuple[str, str, str]:
+    subject = f"Cancelled: {webinar_title}"
+    text = (
+        f"Hi {name},\n\n"
+        f"We're sorry to let you know that \"{webinar_title}\" (scheduled for {when_str}) has been cancelled.\n\n"
+        "If you have any questions, just reply to this email.\n\n"
+        "— Silicon Mango Academy"
+    )
+    inner = f"""
+        <h2 style="font-family:Manrope,sans-serif;color:#b3261e;font-size:22px;margin:0 0 8px;">Webinar cancelled</h2>
+        <p style="color:#514532;line-height:1.5;">Hi {name}, unfortunately <strong>{webinar_title}</strong> (scheduled for {when_str}) has been cancelled.</p>
+        <p style="color:#514532;line-height:1.5;">We're sorry for the inconvenience. Keep an eye out for future sessions.</p>
+    """
+    return subject, _webinar_shell(inner), text
+
+
+def render_webinar_followup_email(name: str, webinar_title: str, detail_url: str) -> tuple[str, str, str]:
+    subject = f"Thanks for attending — {webinar_title}"
+    text = (
+        f"Hi {name},\n\n"
+        f"Thank you for attending \"{webinar_title}\". We'd love your feedback!\n\n"
+        f"Webinar page: {detail_url}\n\n"
+        "— Silicon Mango Academy"
+    )
+    inner = f"""
+        <h2 style="font-family:Manrope,sans-serif;color:#7c5800;font-size:22px;margin:0 0 8px;">Thanks for joining!</h2>
+        <p style="color:#514532;line-height:1.5;">Hi {name}, thank you for attending <strong>{webinar_title}</strong>.</p>
+        <p>{_btn("Revisit the webinar page", detail_url)}</p>
+    """
+    return subject, _webinar_shell(inner), text
+
+
+def render_webinar_custom_email(subject: str, body_html: str) -> tuple[str, str, str]:
+    """Wrap an admin-composed message body in the Silicon Mango shell."""
+    import re
+
+    text = re.sub(r"<[^>]+>", "", body_html or "")
+    return subject, _webinar_shell(body_html), text
+
+
 def render_welcome_instructor_email(display_name: str, email: str, password: str, login_url: str) -> tuple[str, str, str]:
     subject = "Welcome to Silicon Mango Academy — Instructor Account"
     text = (

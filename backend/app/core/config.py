@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     RAZORPAY_KEY_ID: Optional[str] = None
     RAZORPAY_KEY_SECRET: Optional[str] = None
 
+    # Cloudflare Turnstile (CAPTCHA) — used on the public webinar registration form.
+    # When unset, CAPTCHA verification is skipped so local/dev works without keys.
+    TURNSTILE_SITE_KEY: Optional[str] = None
+    TURNSTILE_SECRET_KEY: Optional[str] = None
+
     # Storage
     UPLOAD_DIR: str = "./uploads"
     MEDIA_DIR: str = "/app/media"
@@ -112,6 +117,10 @@ class Settings(BaseSettings):
     @property
     def smtp_enabled(self) -> bool:
         return bool(self.SMTP_HOST and self.SMTP_USER and self.SMTP_PASSWORD)
+
+    @property
+    def turnstile_enabled(self) -> bool:
+        return bool(self.TURNSTILE_SITE_KEY and self.TURNSTILE_SECRET_KEY)
 
 
 @lru_cache
