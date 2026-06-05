@@ -41,7 +41,7 @@ export default function AdminStudents() {
         <Button leftIcon="person_add" onClick={() => setCreateOpen(true)}>Add Student</Button>
       </div>
 
-      <Input placeholder="Search by email" value={search} onChange={(e) => setSearch(e.target.value)} leftIcon="search" containerClassName="max-w-sm" />
+      <Input placeholder="Search by name or email" value={search} onChange={(e) => setSearch(e.target.value)} leftIcon="search" containerClassName="max-w-sm" />
 
       {loading ? (
         <p className="text-body-sm text-ink-outline">Loading…</p>

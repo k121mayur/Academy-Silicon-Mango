@@ -53,9 +53,14 @@ async def list_instructors(
     base = select(User).where(User.role == UserRole.instructor)
     cnt = select(func.count(User.id)).where(User.role == UserRole.instructor)
     if search:
-        like = f"%{search}%"
-        base = base.where(User.email.ilike(like))
-        cnt = cnt.where(User.email.ilike(like))
+        like = f"%{search.strip()}%"
+        # Match by instructor display name (primary) OR email.
+        name_match = select(InstructorProfile.user_id).where(
+            InstructorProfile.display_name.ilike(like)
+        )
+        search_filter = or_(User.email.ilike(like), User.id.in_(name_match))
+        base = base.where(search_filter)
+        cnt = cnt.where(search_filter)
 
     total = (await db.execute(cnt)).scalar_one()
     base = base.order_by(User.created_at.desc()).offset((page - 1) * limit).limit(limit)
@@ -201,9 +206,14 @@ async def list_students(
     base = select(User).where(User.role == UserRole.student)
     cnt = select(func.count(User.id)).where(User.role == UserRole.student)
     if search:
-        like = f"%{search}%"
-        base = base.where(User.email.ilike(like))
-        cnt = cnt.where(User.email.ilike(like))
+        like = f"%{search.strip()}%"
+        # Match by student display name (primary) OR email.
+        name_match = select(StudentProfile.user_id).where(
+            StudentProfile.display_name.ilike(like)
+        )
+        search_filter = or_(User.email.ilike(like), User.id.in_(name_match))
+        base = base.where(search_filter)
+        cnt = cnt.where(search_filter)
 
     total = (await db.execute(cnt)).scalar_one()
     base = base.order_by(User.created_at.desc()).offset((page - 1) * limit).limit(limit)
