@@ -82,7 +82,8 @@ export async function getPublicCourseBatches(courseId: string) {
   return res.data.data as PublicBatch[];
 }
 
-/** Final payable = price − discount (absolute), matching what the backend charges. */
+/** Final payable = price − (price × discount%), matching what the backend charges.
+ *  `discount` is a percentage (0–100), NOT an absolute rupee amount. */
 export function finalPrice(price: number, discount: number): number {
-  return Math.max(price - (discount || 0), 0);
+  return Math.max(price - (price * (discount || 0)) / 100, 0);
 }

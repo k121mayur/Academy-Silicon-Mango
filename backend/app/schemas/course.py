@@ -31,8 +31,8 @@ class CourseBase(BaseModel):
     course_type: str = "live"
     duration_unit: str = "weeks"
     duration_value: int = Field(ge=1, le=104)
-    price: Decimal = Decimal("0")
-    discount: Decimal = Decimal("0")
+    price: Decimal = Field(default=Decimal("0"), ge=0)
+    discount: Decimal = Field(default=Decimal("0"), ge=0, le=100)  # percentage (0–100)
     tags: list[str] = []
     syllabus_items: list[SyllabusItem] = []
     faqs: list[FAQItem] = []
@@ -50,8 +50,8 @@ class CourseUpdate(BaseModel):
     course_type: Optional[str] = None
     duration_unit: Optional[str] = None
     duration_value: Optional[int] = None
-    price: Optional[Decimal] = None
-    discount: Optional[Decimal] = None
+    price: Optional[Decimal] = Field(default=None, ge=0)
+    discount: Optional[Decimal] = Field(default=None, ge=0, le=100)  # percentage (0–100)
     tags: Optional[list[str]] = None
     syllabus_items: Optional[list[SyllabusItem]] = None
     faqs: Optional[list[FAQItem]] = None

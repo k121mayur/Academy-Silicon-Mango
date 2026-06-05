@@ -162,7 +162,7 @@ export default function Landing() {
                         {c.duration_value} {c.duration_unit}
                       </span>
                       <p className="font-display font-bold text-title-md text-primary">
-                        {formatCurrency(Math.max(c.price - (c.discount || 0), 0))}
+                        {formatCurrency(Math.max(c.price - (c.price * (c.discount || 0)) / 100, 0))}
                       </p>
                     </div>
                   </div>

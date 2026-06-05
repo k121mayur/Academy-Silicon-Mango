@@ -38,9 +38,12 @@ async def get_existing_enrollment(db: AsyncSession, batch_id, student_id) -> Opt
 
 
 def payable_amount(course: Optional[Course]) -> Decimal:
+    """Final payable in rupees. `discount` is a PERCENTAGE (0–100) of the price."""
     if not course:
         return Decimal("0")
-    amt = (course.price or Decimal("0")) - (course.discount or Decimal("0"))
+    price = course.price or Decimal("0")
+    discount_pct = course.discount or Decimal("0")
+    amt = (price - (price * discount_pct / Decimal("100"))).quantize(Decimal("0.01"))
     return amt if amt > 0 else Decimal("0")
 
 

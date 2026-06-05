@@ -66,7 +66,7 @@ export function CourseCard({ course }: { course: PublicCourseListItem }) {
         </div>
         {hasDiscount && (
           <span className="absolute bottom-3 left-3 px-2.5 py-1 rounded-full text-label font-semibold bg-danger text-white shadow-md">
-            {formatCurrency(discount)} OFF
+            {discount}% OFF
           </span>
         )}
         {/* Reveal-on-hover CTA bar */}

@@ -146,7 +146,7 @@ export default function AdminCourses() {
                   <Badge tone={c.course_type === "live" ? "primary" : "tertiary"}>{c.course_type === "self_paced" ? "Self-paced" : "Live"}</Badge>
                 </TD>
                 <TD>{c.duration_value} {c.duration_unit}</TD>
-                <TD className="font-mono">{formatCurrency(Number(c.price) - Number(c.discount || 0))}</TD>
+                <TD className="font-mono">{formatCurrency(Math.max(Number(c.price) - (Number(c.price) * Number(c.discount || 0)) / 100, 0))}</TD>
                 <TD>{c.batches_count ?? 0}</TD>
                 <TD>
                   <Badge tone={c.is_published ? "success" : "neutral"}>{c.is_published ? "Published" : "Draft"}</Badge>

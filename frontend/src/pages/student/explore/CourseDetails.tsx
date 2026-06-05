@@ -137,7 +137,7 @@ export default function CourseDetails() {
               )}
             </div>
             {hasDiscount && (
-              <p className="text-label text-success mt-1">You save {formatCurrency(discount)}</p>
+              <p className="text-label text-success mt-1">You save {formatCurrency(price - payable)} ({discount}% off)</p>
             )}
             <Button
               fullWidth
