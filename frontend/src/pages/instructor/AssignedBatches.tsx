@@ -7,8 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { extractErrorMessage } from "@/lib/api";
 import { fetchBatches, type InstructorBatch } from "@/services/instructor.service";
 import { useSelectedBatch } from "@/features/instructor/selectedBatchStore";
-
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+import { WEEKDAY_LABELS } from "@/lib/utils";
 
 export default function AssignedBatches() {
   const [batches, setBatches] = useState<InstructorBatch[]>([]);
@@ -99,7 +98,7 @@ export default function AssignedBatches() {
                       {b.schedule_slots.map((s, i) => (
                         <li key={i}>
                           {s.slot_type === "weekday" && s.weekday !== null
-                            ? WEEKDAYS[s.weekday]
+                            ? WEEKDAY_LABELS[s.weekday]
                             : s.slot_date ?? "—"}{" "}
                           · {s.start_time?.slice(0, 5)} – {s.end_time?.slice(0, 5)}
                         </li>

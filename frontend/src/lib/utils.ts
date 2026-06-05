@@ -5,6 +5,14 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/**
+ * Weekday labels indexed Monday-first (Mon=0 … Sun=6) to match the backend,
+ * which stores `slot.weekday` using Python's `date.weekday()` convention.
+ * ALWAYS use this to render a stored weekday integer — never a Sunday-first
+ * array, or days render shifted by one (e.g. Saturday shown as Friday).
+ */
+export const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+
 export function formatCurrency(amount: number, currency = "INR"): string {
   return new Intl.NumberFormat("en-IN", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
 }

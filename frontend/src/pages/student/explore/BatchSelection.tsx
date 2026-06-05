@@ -9,7 +9,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { QueryErrorState } from "@/components/student/QueryErrorState";
 import { PaymentModal } from "@/components/student/PaymentModal";
 import { useAuthStore } from "@/features/auth/stores/authStore";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, WEEKDAY_LABELS } from "@/lib/utils";
 import { qk } from "@/lib/queryKeys";
 import { ROUTES } from "@/router/routes";
 import {
@@ -20,12 +20,10 @@ import {
   type PublicScheduleSlot,
 } from "@/services/public.service";
 
-const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
 function slotLabel(s: PublicScheduleSlot): string {
   const time = s.start_time && s.end_time ? ` ${s.start_time}–${s.end_time}` : "";
   if (s.slot_type === "weekday" && s.weekday != null && s.weekday >= 0 && s.weekday < 7) {
-    return `${WEEKDAYS[s.weekday]}${time}`;
+    return `${WEEKDAY_LABELS[s.weekday]}${time}`;
   }
   if (s.slot_date) return `${formatDate(s.slot_date)}${time}`;
   return time.trim() || "Scheduled";

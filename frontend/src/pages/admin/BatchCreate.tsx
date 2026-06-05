@@ -7,8 +7,7 @@ import { Select } from "@/components/ui/Select";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { extractErrorMessage } from "@/lib/api";
 import { createBatch, listCourses, listInstructors } from "@/services/admin.service";
-
-const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+import { WEEKDAY_LABELS } from "@/lib/utils";
 
 interface Slot {
   slot_type: "weekday" | "date_based";
@@ -169,7 +168,7 @@ export default function BatchCreate() {
                     label="Weekday"
                     value={String(s.weekday ?? 0)}
                     onChange={(e) => updateSlot(i, { weekday: parseInt(e.target.value) })}
-                    options={WEEKDAYS.map((w, idx) => ({ value: String(idx), label: w }))}
+                    options={WEEKDAY_LABELS.map((w, idx) => ({ value: String(idx), label: w }))}
                   />
                 ) : (
                   <Input label="Date" type="date" value={s.slot_date || ""} onChange={(e) => updateSlot(i, { slot_date: e.target.value })} />
