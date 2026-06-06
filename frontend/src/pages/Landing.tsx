@@ -4,6 +4,8 @@ import api from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { formatCurrency } from "@/lib/utils";
+import { WebinarCard } from "@/components/webinar/WebinarCard";
+import { listPublicWebinars, type PublicWebinarListItem } from "@/services/webinar.service";
 
 interface PublicCourse {
   id: string;
@@ -30,6 +32,7 @@ interface Stats {
 export default function Landing() {
   const [courses, setCourses] = useState<PublicCourse[]>([]);
   const [stats, setStats] = useState<Stats>({ students: 0, instructors: 0, courses: 0, certificates: 0 });
+  const [webinars, setWebinars] = useState<PublicWebinarListItem[]>([]);
 
   useEffect(() => {
     api
@@ -40,6 +43,9 @@ export default function Landing() {
       .get("/public/stats")
       .then((res) => setStats(res.data?.data || stats))
       .catch((e) => console.warn("[LANDING] Failed to load stats", e));
+    listPublicWebinars("upcoming")
+      .then((w) => setWebinars(w.slice(0, 3)))
+      .catch((e) => console.warn("[LANDING] Failed to load webinars", e));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -172,6 +178,35 @@ export default function Landing() {
           )}
         </div>
       </section>
+
+      {/* Upcoming Webinars */}
+      {webinars.length > 0 && (
+        <section id="webinars" className="py-16 md:py-20 bg-surface-containerLow">
+          <div className="max-w-7xl mx-auto px-4 md:px-6">
+            <div className="flex items-end justify-between mb-8">
+              <div>
+                <p className="text-caption text-tertiary mb-2">LIVE EVENTS</p>
+                <h2 className="font-display font-bold text-display-md text-ink">Upcoming webinars</h2>
+              </div>
+              <Link to="/webinars" className="text-body-sm text-primary font-semibold hover:underline hidden md:block">
+                View all webinars →
+              </Link>
+            </div>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {webinars.map((w) => (
+                <WebinarCard key={w.id} webinar={w} />
+              ))}
+            </div>
+            <div className="mt-6 md:hidden">
+              <Link to="/webinars">
+                <Button variant="outline" fullWidth rightIcon="arrow_forward">
+                  View all webinars
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* How It Works */}
       <section id="how-it-works" className="py-16 md:py-20 bg-surface-containerLow">

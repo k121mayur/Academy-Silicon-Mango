@@ -13,5 +13,8 @@ export const qk = {
     courses: (search?: string) => ["public", "courses", search ?? ""] as const,
     course: (id: string) => ["public", "course", id] as const,
     courseBatches: (id: string) => ["public", "course", id, "batches"] as const,
+    webinars: (status?: string, search?: string) =>
+      ["public", "webinars", status ?? "", search ?? ""] as const,
+    webinar: (idOrSlug: string) => ["public", "webinar", idOrSlug] as const,
   },
 } as const;

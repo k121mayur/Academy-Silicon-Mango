@@ -24,6 +24,7 @@ export default function PublicLayout() {
           </Link>
           <nav className="hidden md:flex items-center gap-6 text-body-sm text-ink-variant">
             <a href="/#courses" className="hover:text-ink">Courses</a>
+            <Link to="/webinars" className="hover:text-ink">Webinars</Link>
             <a href="/#instructors" className="hover:text-ink">Instructors</a>
             <a href="/#how-it-works" className="hover:text-ink">How it works</a>
             <a href="/#about" className="hover:text-ink">About</a>
@@ -63,10 +64,11 @@ export default function PublicLayout() {
             <p className="text-body-sm text-surface-containerHigh/70">Learn. Build. Get Certified.</p>
           </div>
           <div>
-            <p className="text-label uppercase tracking-wider text-surface-containerHigh/60 mb-3">Courses</p>
+            <p className="text-label uppercase tracking-wider text-surface-containerHigh/60 mb-3">Learn</p>
             <ul className="space-y-2 text-body-sm">
               <li><a href="/#courses" className="hover:text-white">Live cohorts</a></li>
               <li><a href="/#courses" className="hover:text-white">Self-paced</a></li>
+              <li><Link to="/webinars" className="hover:text-white">Webinars</Link></li>
             </ul>
           </div>
           <div>

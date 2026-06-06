@@ -12,6 +12,10 @@ import Landing from "@/pages/Landing";
 import Login from "@/pages/auth/Login";
 import Signup from "@/pages/auth/Signup";
 import VerifyCertificate from "@/pages/public/VerifyCertificate";
+import VerifyWebinarRegistration from "@/pages/public/VerifyWebinarRegistration";
+import WebinarListing from "@/pages/WebinarListing";
+import WebinarDetail from "@/pages/WebinarDetail";
+import WebinarRegister from "@/pages/WebinarRegister";
 import ChangePasswordPage from "@/pages/account/ChangePassword";
 
 import AdminDashboard from "@/pages/admin/Dashboard";
@@ -30,6 +34,9 @@ import AdminCertificates from "@/pages/admin/Certificates";
 import AdminPayments from "@/pages/admin/Payments";
 import PaymentSettings from "@/pages/admin/PaymentSettings";
 import AdminCatalogue from "@/pages/admin/Catalogue";
+import AdminWebinars from "@/pages/admin/Webinars";
+import WebinarForm from "@/pages/admin/WebinarForm";
+import WebinarDetailAdmin from "@/pages/admin/WebinarDetailAdmin";
 
 // Student pages are lazy-loaded so the catalogue route never ships the video player / heavy libs.
 const StudentProfile = lazy(() => import("@/pages/student/Profile"));
@@ -56,9 +63,13 @@ export default function App() {
         <Route index element={<Landing />} />
         <Route path="login" element={<Login />} />
         <Route path="signup" element={<Signup />} />
+        <Route path="webinars" element={<WebinarListing />} />
+        <Route path="webinars/:idOrSlug" element={<WebinarDetail />} />
+        <Route path="webinars/:idOrSlug/register" element={<WebinarRegister />} />
       </Route>
 
       <Route path="verify/:certId" element={<VerifyCertificate />} />
+      <Route path="webinars/verify/:token" element={<VerifyWebinarRegistration />} />
 
       <Route element={<ProtectedRoute roles={["admin"]} />}>
         <Route path="admin" element={<AdminLayout />}>
@@ -79,6 +90,10 @@ export default function App() {
           <Route path="payments" element={<AdminPayments />} />
           <Route path="payment-settings" element={<PaymentSettings />} />
           <Route path="catalogue" element={<AdminCatalogue />} />
+          <Route path="webinars" element={<AdminWebinars />} />
+          <Route path="webinars/create" element={<WebinarForm />} />
+          <Route path="webinars/:id/edit" element={<WebinarForm />} />
+          <Route path="webinars/:id" element={<WebinarDetailAdmin />} />
         </Route>
       </Route>
 

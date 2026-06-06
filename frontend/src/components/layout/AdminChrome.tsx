@@ -38,6 +38,10 @@ const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
     ],
   },
   {
+    title: "Events",
+    items: [{ label: "Webinars", to: "/admin/webinars", icon: "co_present" }],
+  },
+  {
     title: "Finances",
     items: [
       { label: "Payments", to: "/admin/payments", icon: "payments" },

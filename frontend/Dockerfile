@@ -3,6 +3,10 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
+# Cloudflare Turnstile site key is baked into the SPA at build time (Vite).
+# Empty by default → CAPTCHA widget is disabled (backend also skips verification).
+ARG VITE_TURNSTILE_SITE_KEY=""
+ENV VITE_TURNSTILE_SITE_KEY=$VITE_TURNSTILE_SITE_KEY
 RUN npm run build
 
 FROM nginx:alpine

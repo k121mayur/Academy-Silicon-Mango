@@ -9,7 +9,7 @@ celery = Celery(
     "silicon_mango",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=["app.tasks.encoding"],
+    include=["app.tasks.encoding", "app.tasks.webinars"],
 )
 
 celery.conf.update(
@@ -35,6 +35,12 @@ celery.conf.update(
     broker_connection_retry_on_startup=True,
     task_routes={
         "tasks.optimize_pending_videos": {"queue": "encoding"},
+        # Webinar mail runs on its own queue + worker so a 4-hour video encode on the
+        # `encoding` queue can never delay a time-sensitive "1 hour before" reminder.
+        "tasks.dispatch_webinar_reminders": {"queue": "webinars"},
+        "tasks.notify_webinar_reschedule": {"queue": "webinars"},
+        "tasks.notify_webinar_cancellation": {"queue": "webinars"},
+        "tasks.send_webinar_campaign": {"queue": "webinars"},
     },
 )
 
@@ -42,5 +48,10 @@ celery.conf.beat_schedule = {
     "nightly-optimize-videos": {
         "task": "tasks.optimize_pending_videos",
         "schedule": crontab(hour=0, minute=0),
+    },
+    # Scan for due webinar reminders (7d / 1d / 1h / start) every 5 minutes.
+    "dispatch-webinar-reminders": {
+        "task": "tasks.dispatch_webinar_reminders",
+        "schedule": crontab(minute="*/5"),
     },
 }
