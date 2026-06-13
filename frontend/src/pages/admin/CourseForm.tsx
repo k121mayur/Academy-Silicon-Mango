@@ -44,6 +44,7 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
   const [bannerFile, setBannerFile] = useState<File | null>(null);
   const [syllabusFile, setSyllabusFile] = useState<File | null>(null);
   const [bannerUrl, setBannerUrl] = useState<string | null>(initial?.banner_url || null);
+  const [syllabusUrl, setSyllabusUrl] = useState<string | null>(initial?.syllabus_pdf_url || null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const clearErr = (field: string) => setErrors((prev) => { const n = { ...prev }; delete n[field]; return n; });
 
@@ -83,7 +84,7 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
     }
 
     if (!bannerFile && !bannerUrl) e.banner = "Banner image is required";
-    if (!syllabusFile && !initial?.syllabus_pdf_url) e.syllabusPdf = "Syllabus PDF is required";
+    if (!syllabusFile && !syllabusUrl) e.syllabusPdf = "Syllabus PDF is required";
 
     if (tags.length === 0) e.tags = "At least one tag is required";
 
@@ -229,8 +230,8 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
               accept="image/*"
               value={bannerUrl ? `${bannerUrl}` : null}
               onChange={(f) => { setBannerFile(f); clearErr("banner"); }}
-              hint="PNG/JPG · will be cropped to 16:9"
-              cropAspectRatio={16 / 9}
+              onClear={() => { setBannerFile(null); setBannerUrl(null); }}
+              hint="PNG/JPG · 16:9 recommended"
             />
             {errors.banner && <p className="text-label text-danger mt-1">{errors.banner}</p>}
           </div>
@@ -238,8 +239,9 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
             <FileUpload
               label="Syllabus PDF"
               accept="application/pdf"
-              value={initial?.syllabus_pdf_url}
+              value={syllabusUrl}
               onChange={(f) => { setSyllabusFile(f); clearErr("syllabusPdf"); }}
+              onClear={() => { setSyllabusFile(null); setSyllabusUrl(null); }}
               hint="PDF only"
               preview={false}
             />

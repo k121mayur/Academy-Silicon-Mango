@@ -291,8 +291,8 @@ export default function WebinarForm() {
             Manage hosts under Webinars → Hosts. The default Silicon Mango brand is used unless you choose another.
           </p>
           <div className="grid sm:grid-cols-2 gap-4">
-            <FileUpload label="Flyer (card image)" accept="image/*" preview cropAspectRatio={4 / 3} value={flyerUrl} onChange={setFlyerFile} />
-            <FileUpload label="Banner (detail hero, optional)" accept="image/*" preview cropAspectRatio={16 / 9} value={bannerUrl} onChange={setBannerFile} />
+            <FileUpload label="Flyer (card image)" accept="image/*" preview value={flyerUrl} onChange={setFlyerFile} />
+            <FileUpload label="Banner (detail hero, optional)" accept="image/*" preview value={bannerUrl} onChange={setBannerFile} />
           </div>
         </CardBody>
       </Card>

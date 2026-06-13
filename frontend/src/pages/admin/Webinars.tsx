@@ -452,7 +452,6 @@ function HostModal({
           label="Logo"
           accept="image/*"
           preview
-          cropAspectRatio={1}
           value={org?.logo_url ? absoluteApiUrl(org.logo_url) : null}
           onChange={(f) => setLogoFile(f)}
         />
