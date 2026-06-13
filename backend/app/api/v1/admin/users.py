@@ -28,6 +28,7 @@ from app.schemas.user import (
     InstructorUpdate,
     StudentCreate,
     StudentPublic,
+    StudentUpdate,
 )
 from app.services.email_service import render_student_welcome_email, render_welcome_instructor_email, send_email
 
@@ -183,6 +184,13 @@ async def update_instructor(
     prof = prof_res.scalar_one_or_none()
 
     data = payload.model_dump(exclude_unset=True)
+    if "email" in data:
+        email = data.pop("email").lower()
+        if email != user.email:
+            existing = await db.execute(select(User).where(User.email == email, User.id != user.id))
+            if existing.scalar_one_or_none():
+                raise err_email_exists()
+            user.email = email
     if "is_active" in data:
         user.is_active = data.pop("is_active")
     if prof and data:
@@ -191,6 +199,22 @@ async def update_instructor(
                 setattr(prof, k, v)
     await db.commit()
     return await get_instructor(user_id, db, _)
+
+
+@router.delete("/instructors/{user_id}")
+async def delete_instructor(
+    user_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    user = await db.get(User, user_id)
+    if not user or user.role != UserRole.instructor:
+        raise APIError(code="USER_002", message="Instructor not found", status_code=404)
+    email = user.email
+    await db.delete(user)
+    await db.commit()
+    print(f"[ADMIN] Instructor deleted: {email}")
+    return {"success": True, "message": "Instructor removed"}
 
 
 # ---------------- Students ----------------
@@ -336,3 +360,50 @@ async def get_student(user_id: str, db: AsyncSession = Depends(get_db), _: User 
             "created_at": user.created_at,
         },
     }
+
+
+@router.patch("/students/{user_id}")
+async def update_student(
+    user_id: str,
+    payload: StudentUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    user = await db.get(User, user_id)
+    if not user or user.role != UserRole.student:
+        raise APIError(code="USER_002", message="Student not found", status_code=404)
+    prof_res = await db.execute(select(StudentProfile).where(StudentProfile.user_id == user.id))
+    prof = prof_res.scalar_one_or_none()
+
+    data = payload.model_dump(exclude_unset=True)
+    if "email" in data:
+        email = data.pop("email").lower()
+        if email != user.email:
+            existing = await db.execute(select(User).where(User.email == email, User.id != user.id))
+            if existing.scalar_one_or_none():
+                raise err_email_exists()
+            user.email = email
+    if "is_active" in data:
+        user.is_active = data.pop("is_active")
+    if prof and data:
+        for k, v in data.items():
+            if hasattr(prof, k):
+                setattr(prof, k, v)
+    await db.commit()
+    return await get_student(user_id, db, _)
+
+
+@router.delete("/students/{user_id}")
+async def delete_student(
+    user_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    user = await db.get(User, user_id)
+    if not user or user.role != UserRole.student:
+        raise APIError(code="USER_002", message="Student not found", status_code=404)
+    email = user.email
+    await db.delete(user)
+    await db.commit()
+    print(f"[ADMIN] Student deleted: {email}")
+    return {"success": True, "message": "Student removed"}

@@ -15,7 +15,8 @@ class InstructorCreate(BaseModel):
 
 
 class InstructorUpdate(BaseModel):
-    display_name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    display_name: Optional[str] = Field(None, min_length=1, max_length=255)
     bio: Optional[str] = None
     skills: Optional[list[str]] = None
     is_active: Optional[bool] = None
@@ -54,6 +55,14 @@ class StudentPublic(BaseModel):
     avatar_url: Optional[str] = None
     is_active: bool = True
     created_at: Optional[datetime] = None
+
+
+class StudentUpdate(BaseModel):
+    email: Optional[EmailStr] = None
+    display_name: Optional[str] = Field(None, min_length=1, max_length=255)
+    phone: Optional[str] = None
+    city: Optional[str] = None
+    is_active: Optional[bool] = None
 
 
 class StudentProfileUpdate(BaseModel):

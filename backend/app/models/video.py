@@ -31,8 +31,8 @@ class Video(Base):
         unique=True,
         nullable=False,
     )
-    uploaded_by: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=False
+    uploaded_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     original_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
