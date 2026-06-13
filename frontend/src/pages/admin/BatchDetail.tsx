@@ -9,6 +9,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Table, THead, TR, TH, TD } from "@/components/ui/Table";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { extractErrorMessage } from "@/lib/api";
+import { SearchableSelect } from "@/components/ui/SearchableSelect";
 import {
   getBatch,
   batchPlans,
@@ -18,9 +19,10 @@ import {
   batchEnroll,
   batchRemoveEnrollment,
   completeBatch,
-  listStudents,
+  listAllStudents,
   listInstructors,
   batchAssignInstructor,
+  StudentDTO,
 } from "@/services/admin.service";
 import { formatDate, formatDateTime } from "@/lib/utils";
 
@@ -32,8 +34,10 @@ export default function BatchDetail() {
   const [plans, setPlans] = useState<any[]>([]);
   const [enrollments, setEnrollments] = useState<any[]>([]);
   const [enrollOpen, setEnrollOpen] = useState(false);
-  const [studentSearch, setStudentSearch] = useState("");
-  const [studentResults, setStudentResults] = useState<any[]>([]);
+  const [allStudents, setAllStudents] = useState<StudentDTO[]>([]);
+  const [studentsLoading, setStudentsLoading] = useState(false);
+  const [enrollStudentId, setEnrollStudentId] = useState<string | null>(null);
+  const [enrolling, setEnrolling] = useState(false);
   const [completeOpen, setCompleteOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [assignInstructorOpen, setAssignInstructorOpen] = useState(false);
@@ -78,31 +82,30 @@ export default function BatchDetail() {
     }
   };
 
-  const searchStudents = async (q: string) => {
-    setStudentSearch(q);
-    if (!q) {
-      setStudentResults([]);
+  useEffect(() => {
+    if (!enrollOpen) {
+      setEnrollStudentId(null);
       return;
     }
-    try {
-      const res = await listStudents({ search: q, limit: 8 });
-      setStudentResults(res.data);
-    } catch {
-      setStudentResults([]);
-    }
-  };
+    setStudentsLoading(true);
+    listAllStudents()
+      .then(setAllStudents)
+      .catch((e) => toast.error(extractErrorMessage(e)))
+      .finally(() => setStudentsLoading(false));
+  }, [enrollOpen]);
 
-  const enroll = async (studentId: string) => {
-    if (!id) return;
+  const enroll = async () => {
+    if (!id || !enrollStudentId) return;
+    setEnrolling(true);
     try {
-      await batchEnroll(id, studentId);
+      await batchEnroll(id, enrollStudentId);
       toast.success("Student enrolled");
       setEnrollOpen(false);
-      setStudentSearch("");
-      setStudentResults([]);
       refresh();
     } catch (e) {
       toast.error(extractErrorMessage(e));
+    } finally {
+      setEnrolling(false);
     }
   };
 
@@ -302,26 +305,27 @@ export default function BatchDetail() {
         </Card>
       )}
 
-      <Modal open={enrollOpen} onClose={() => setEnrollOpen(false)} title="Enroll student" description="Search by name or email">
-        <Input placeholder="Search students…" value={studentSearch} onChange={(e) => searchStudents(e.target.value)} leftIcon="search" autoFocus />
-        <div className="mt-3 max-h-72 overflow-y-auto scrollbar-thin">
-          {studentResults.map((s) => (
-            <button
-              key={s.user_id}
-              onClick={() => enroll(s.user_id)}
-              className="w-full flex items-center justify-between p-3 hover:bg-surface-containerLow rounded-md text-left"
-            >
-              <div>
-                <p className="text-body-sm font-medium text-ink">{s.display_name}</p>
-                <p className="text-label text-ink-outline">{s.email}</p>
-              </div>
-              <span className="icon text-primary">add</span>
-            </button>
-          ))}
-          {studentSearch && studentResults.length === 0 && (
-            <p className="p-3 text-body-sm text-ink-outline">No matches</p>
-          )}
-        </div>
+      <Modal
+        open={enrollOpen}
+        onClose={() => setEnrollOpen(false)}
+        title="Enroll student"
+        description="Pick a student to add to this batch"
+        footer={<>
+          <Button variant="ghost" onClick={() => setEnrollOpen(false)} disabled={enrolling}>Cancel</Button>
+          <Button onClick={enroll} loading={enrolling} disabled={!enrollStudentId}>Enroll</Button>
+        </>}
+      >
+        <SearchableSelect
+          label="Student"
+          placeholder="Select a student"
+          loading={studentsLoading}
+          options={allStudents
+            .filter((s) => !enrollments.some((e) => e.student_id === s.user_id))
+            .map((s) => ({ value: s.user_id, label: s.display_name, sublabel: s.email }))}
+          value={enrollStudentId}
+          onChange={setEnrollStudentId}
+          emptyText="No students available"
+        />
       </Modal>
 
       <ConfirmModal
