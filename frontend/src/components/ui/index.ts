@@ -8,4 +8,5 @@ export { Spinner } from "./Spinner";
 export { Table, THead, TR, TH, TD } from "./Table";
 export { ConfirmModal } from "./ConfirmModal";
 export { Select } from "./Select";
+export { SearchableSelect } from "./SearchableSelect";
 export { EmptyState } from "./EmptyState";
