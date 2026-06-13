@@ -221,6 +221,50 @@ export async function getStudent(userId: string) {
   const res = await api.get(`/admin/users/students/${userId}`);
   return res.data.data;
 }
+export async function updateInstructor(
+  userId: string,
+  payload: { email?: string; display_name?: string; bio?: string | null; skills?: string[]; is_active?: boolean }
+) {
+  const res = await api.patch<InstructorDTO>(`/admin/users/instructors/${userId}`, payload);
+  return res.data;
+}
+export async function deleteInstructor(userId: string) {
+  await api.delete(`/admin/users/instructors/${userId}`);
+}
+export async function updateStudent(
+  userId: string,
+  payload: { email?: string; display_name?: string; phone?: string | null; city?: string | null; is_active?: boolean }
+) {
+  const res = await api.patch(`/admin/users/students/${userId}`, payload);
+  return res.data.data;
+}
+export async function deleteStudent(userId: string) {
+  await api.delete(`/admin/users/students/${userId}`);
+}
+
+// Page through the list endpoints to feed select dropdowns with every record.
+const SELECT_PAGE_LIMIT = 100;
+const SELECT_MAX_PAGES = 100;
+
+export async function listAllStudents(): Promise<StudentDTO[]> {
+  const all: StudentDTO[] = [];
+  for (let page = 1; page <= SELECT_MAX_PAGES; page++) {
+    const res = await listStudents({ page, limit: SELECT_PAGE_LIMIT });
+    all.push(...res.data);
+    if (page >= res.meta.pages) break;
+  }
+  return all;
+}
+
+export async function listAllBatches(): Promise<BatchDTO[]> {
+  const all: BatchDTO[] = [];
+  for (let page = 1; page <= SELECT_MAX_PAGES; page++) {
+    const res = await listBatches({ page, limit: SELECT_PAGE_LIMIT });
+    all.push(...res.data);
+    if (page >= res.meta.pages) break;
+  }
+  return all;
+}
 
 // ---- Enrollments ----
 export async function listAllEnrollments(params: { page?: number; limit?: number } = {}) {

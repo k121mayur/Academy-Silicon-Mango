@@ -3,19 +3,24 @@ import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 import { Modal } from "@/components/ui/Modal";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Table, THead, TR, TH, TD } from "@/components/ui/Table";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { extractErrorMessage } from "@/lib/api";
-import { createStudent, listStudents, StudentDTO } from "@/services/admin.service";
+import { createStudent, deleteStudent, listStudents, updateStudent, StudentDTO } from "@/services/admin.service";
 
 export default function AdminStudents() {
   const [items, setItems] = useState<StudentDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<StudentDTO | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<StudentDTO | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
@@ -30,6 +35,21 @@ export default function AdminStudents() {
   };
 
   useEffect(() => { fetchData(); /* eslint-disable-next-line */ }, [search]);
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteStudent(deleteTarget.user_id);
+      toast.success("Student removed");
+      setDeleteTarget(null);
+      fetchData();
+    } catch (e) {
+      toast.error(extractErrorMessage(e));
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   return (
     <div className="space-y-5">
@@ -77,9 +97,13 @@ export default function AdminStudents() {
                 <TD>{u.enrollments_count ?? 0}</TD>
                 <TD>{u.created_at ? new Date(u.created_at).toLocaleDateString() : "—"}</TD>
                 <TD>
-                  <Link to={`/admin/users/students/${u.user_id}`}>
-                    <Button size="sm" variant="ghost" leftIcon="visibility">View</Button>
-                  </Link>
+                  <div className="flex items-center justify-end gap-1">
+                    <Link to={`/admin/users/students/${u.user_id}`}>
+                      <Button size="sm" variant="ghost" leftIcon="visibility">View</Button>
+                    </Link>
+                    <Button size="sm" variant="ghost" leftIcon="edit" title="Edit student" onClick={() => setEditTarget(u)} />
+                    <Button size="sm" variant="ghost" leftIcon="delete" title="Remove student" className="text-danger" onClick={() => setDeleteTarget(u)} />
+                  </div>
                 </TD>
               </TR>
             ))}
@@ -88,7 +112,103 @@ export default function AdminStudents() {
       )}
 
       <CreateStudentModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => { setCreateOpen(false); fetchData(); }} />
+
+      <EditStudentModal
+        student={editTarget}
+        onClose={() => setEditTarget(null)}
+        onSaved={() => { setEditTarget(null); fetchData(); }}
+      />
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+        title={`Remove ${deleteTarget?.display_name || "student"}?`}
+        description="This permanently deletes the student's account along with their enrollments, attendance, payments and certificates. This cannot be undone."
+        confirmLabel="Remove student"
+        destructive
+        loading={deleting}
+      />
     </div>
+  );
+}
+
+function EditStudentModal({ student, onClose, onSaved }: { student: StudentDTO | null; onClose: () => void; onSaved: () => void }) {
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [city, setCity] = useState("");
+  const [active, setActive] = useState("true");
+  const [submitting, setSubmitting] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const clearErr = (field: string) => setErrors((prev) => { const n = { ...prev }; delete n[field]; return n; });
+
+  useEffect(() => {
+    if (!student) return;
+    setEmail(student.email);
+    setName(student.display_name);
+    setPhone(student.phone || "");
+    setCity(student.city || "");
+    setActive(student.is_active ? "true" : "false");
+    setErrors({});
+  }, [student]);
+
+  function validate(): boolean {
+    const e: Record<string, string> = {};
+    const emailTrimmed = email.trim();
+    if (!emailTrimmed) {
+      e.email = "Email is required";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed)) {
+      e.email = "Enter a valid email address";
+    }
+    if (!name.trim()) e.display_name = "Display name is required";
+    setErrors(e);
+    if (Object.keys(e).length > 0) toast.error(Object.values(e)[0]);
+    return Object.keys(e).length === 0;
+  }
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!student || !validate()) return;
+    setSubmitting(true);
+    try {
+      await updateStudent(student.user_id, {
+        email: email.trim(),
+        display_name: name.trim(),
+        phone: phone.trim() || null,
+        city: city.trim() || null,
+        is_active: active === "true",
+      });
+      toast.success("Student updated");
+      onSaved();
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal open={!!student} onClose={onClose} title="Edit Student" size="md"
+      footer={<>
+        <Button variant="ghost" onClick={onClose} disabled={submitting}>Cancel</Button>
+        <Button onClick={(e) => submit(e as any)} loading={submitting}>Save changes</Button>
+      </>}
+    >
+      <form onSubmit={submit} className="space-y-3">
+        <Input label="Email" type="email" value={email} onChange={(e) => { setEmail(e.target.value); clearErr("email"); }} leftIcon="mail" error={errors.email} />
+        <Input label="Display name" value={name} onChange={(e) => { setName(e.target.value); clearErr("display_name"); }} leftIcon="person" error={errors.display_name} />
+        <Input label="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} leftIcon="phone" />
+        <Input label="City" value={city} onChange={(e) => setCity(e.target.value)} leftIcon="location_on" />
+        <Select
+          label="Status"
+          value={active}
+          onChange={(e) => setActive(e.target.value)}
+          options={[{ value: "true", label: "Active" }, { value: "false", label: "Inactive" }]}
+        />
+      </form>
+    </Modal>
   );
 }
 
