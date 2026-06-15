@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.exceptions import APIError
 from app.db.session import get_db
 from app.dependencies.auth import require_admin
@@ -15,6 +16,7 @@ from app.models.batch import Batch
 from app.models.payment import Payment, PaymentMode, PaymentSettings, PaymentStatus
 from app.models.user import StudentProfile, User
 from app.schemas.payment import PaymentPublic, PaymentSettingsPublic, PaymentSettingsUpdate
+from app.services.payment_service import test_razorpay_connection
 
 router = APIRouter(tags=["admin:payments"])
 
@@ -73,17 +75,23 @@ def _mask(key: Optional[str]) -> Optional[str]:
     return key[:8] + "*" * (len(key) - 12) + key[-4:]
 
 
+def _settings_public(mode: str) -> PaymentSettingsPublic:
+    """Build the admin-facing view: the active mode, whether each mode's keys
+    exist in the env, and the masked PUBLIC key id of the active mode. No
+    secret ever appears here."""
+    active_key_id, _secret = settings.razorpay_keys(mode)
+    return PaymentSettingsPublic(
+        mode=mode,
+        test_configured=settings.razorpay_configured("test"),
+        live_configured=settings.razorpay_configured("live"),
+        active_key_id_masked=_mask(active_key_id),
+    )
+
+
 @router.get("/payment-settings", response_model=PaymentSettingsPublic)
 async def get_payment_settings(db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
-    res = await db.execute(select(PaymentSettings).limit(1))
-    s = res.scalar_one_or_none()
-    if not s:
-        return PaymentSettingsPublic(mode="test", key_id_masked=None, has_credentials=False)
-    return PaymentSettingsPublic(
-        mode=s.mode.value,
-        key_id_masked=_mask(s.key_id),
-        has_credentials=bool(s.key_id and s.key_secret),
-    )
+    s = (await db.execute(select(PaymentSettings).limit(1))).scalar_one_or_none()
+    return _settings_public(s.mode.value if s else "test")
 
 
 @router.put("/payment-settings", response_model=PaymentSettingsPublic)
@@ -97,16 +105,34 @@ async def update_payment_settings(
     except ValueError:
         raise APIError(code="VALIDATION", message="mode must be 'test' or 'live'")
 
-    res = await db.execute(select(PaymentSettings).limit(1))
-    s = res.scalar_one_or_none()
+    # Guard: never switch into a mode whose keys aren't on the server, or every
+    # student would immediately hit "payments not configured" (503).
+    if not settings.razorpay_configured(mode.value):
+        raise APIError(
+            code="PAYMENT_MODE_NOT_CONFIGURED",
+            message=(
+                f"Can't switch to {mode.value} mode — its Razorpay keys are not set on "
+                f"the server. Add RAZORPAY_{mode.value.upper()}_KEY_ID and "
+                f"RAZORPAY_{mode.value.upper()}_KEY_SECRET to the backend .env, restart, "
+                f"then try again."
+            ),
+            status_code=400,
+        )
+
+    s = (await db.execute(select(PaymentSettings).limit(1))).scalar_one_or_none()
     if s is None:
-        s = PaymentSettings(mode=mode, key_id=payload.key_id, key_secret=payload.key_secret, key_id_masked=_mask(payload.key_id))
+        s = PaymentSettings(mode=mode)
         db.add(s)
     else:
         s.mode = mode
-        s.key_id = payload.key_id
-        s.key_secret = payload.key_secret
-        s.key_id_masked = _mask(payload.key_id)
     await db.commit()
-    print(f"[ADMIN] Payment settings updated mode={mode.value}")
-    return PaymentSettingsPublic(mode=mode.value, key_id_masked=_mask(payload.key_id), has_credentials=True)
+    print(f"[ADMIN] Payment mode switched to {mode.value}")
+    return _settings_public(mode.value)
+
+
+@router.post("/payment-settings/test")
+async def test_payment_connection(db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
+    """Validate the ACTIVE mode's Razorpay keys by creating a ₹1 order (no
+    charge). Returns the exact gateway error if it fails — the fastest way to
+    tell an un-activated live account from a bad key."""
+    return await test_razorpay_connection(db)

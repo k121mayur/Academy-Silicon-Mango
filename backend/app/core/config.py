@@ -39,7 +39,18 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: Optional[str] = None
     FROM_EMAIL: str = "Silicon Mango Academy <noreply@siliconmango.com>"
 
-    # Razorpay
+    # Razorpay — secrets live HERE (env) only, never in the DB or the browser.
+    # Two independent key pairs:
+    #   TEST → Razorpay test mode (fake money, test cards/UPI; safe to experiment)
+    #   LIVE → real money, settled to your bank by Razorpay
+    # The admin "mode" toggle (stored in the DB) only chooses which pair is
+    # ACTIVE; switching modes never reads or moves these secrets.
+    RAZORPAY_TEST_KEY_ID: Optional[str] = None
+    RAZORPAY_TEST_KEY_SECRET: Optional[str] = None
+    RAZORPAY_LIVE_KEY_ID: Optional[str] = None
+    RAZORPAY_LIVE_KEY_SECRET: Optional[str] = None
+    # Deprecated single-pair vars — still honoured as a TEST-mode fallback so
+    # older .env files keep working. Prefer the explicit *_TEST_* pair above.
     RAZORPAY_KEY_ID: Optional[str] = None
     RAZORPAY_KEY_SECRET: Optional[str] = None
 
@@ -54,6 +65,7 @@ class Settings(BaseSettings):
 
     # Upload size caps (per file)
     MAX_VIDEO_MB: int = 500
+    MIN_VIDEO_MB: int = 10   # reject trivially small/likely-broken video uploads
     MAX_DOC_MB: int = 2
 
     # Video streaming
@@ -121,6 +133,21 @@ class Settings(BaseSettings):
     @property
     def turnstile_enabled(self) -> bool:
         return bool(self.TURNSTILE_SITE_KEY and self.TURNSTILE_SECRET_KEY)
+
+    def razorpay_keys(self, mode: str) -> tuple[Optional[str], Optional[str]]:
+        """(key_id, key_secret) for the given mode ('test' | 'live'), from env.
+        Test mode falls back to the legacy RAZORPAY_KEY_ID/SECRET pair."""
+        if mode == "live":
+            return self.RAZORPAY_LIVE_KEY_ID, self.RAZORPAY_LIVE_KEY_SECRET
+        return (
+            self.RAZORPAY_TEST_KEY_ID or self.RAZORPAY_KEY_ID,
+            self.RAZORPAY_TEST_KEY_SECRET or self.RAZORPAY_KEY_SECRET,
+        )
+
+    def razorpay_configured(self, mode: str) -> bool:
+        """True if BOTH keys for the given mode are present in the env."""
+        kid, ksec = self.razorpay_keys(mode)
+        return bool(kid and ksec)
 
 
 @lru_cache

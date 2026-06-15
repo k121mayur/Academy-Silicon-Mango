@@ -156,6 +156,9 @@ export async function updateBatch(id: string, payload: any) {
   const res = await api.put(`/admin/batches/${id}`, payload);
   return res.data as BatchDTO;
 }
+export async function deleteBatch(id: string) {
+  await api.delete(`/admin/batches/${id}`);
+}
 export async function batchAssignInstructor(id: string, instructorId: string) {
   const res = await api.post(`/admin/batches/${id}/assign-instructor`, { instructor_id: instructorId });
   return res.data as BatchDTO;
@@ -223,7 +226,7 @@ export async function getStudent(userId: string) {
 }
 export async function updateInstructor(
   userId: string,
-  payload: { email?: string; display_name?: string; bio?: string | null; skills?: string[]; is_active?: boolean }
+  payload: { email?: string; display_name?: string; bio?: string | null; skills?: string[]; is_active?: boolean; password?: string }
 ) {
   const res = await api.patch<InstructorDTO>(`/admin/users/instructors/${userId}`, payload);
   return res.data;
@@ -281,13 +284,26 @@ export async function listPayments(params: { page?: number; limit?: number; stat
   const res = await api.get("/admin/payments", { params });
   return res.data;
 }
+export interface PaymentSettings {
+  mode: "test" | "live";
+  test_configured: boolean;
+  live_configured: boolean;
+  active_key_id_masked?: string | null;
+}
 export async function getPaymentSettings() {
   const res = await api.get("/admin/payment-settings");
-  return res.data as { mode: string; key_id_masked?: string; has_credentials: boolean };
+  return res.data as PaymentSettings;
 }
-export async function updatePaymentSettings(payload: { mode: string; key_id: string; key_secret: string }) {
+// Keys are NOT sent from the browser — they live in the backend env. This only
+// flips which mode is active.
+export async function updatePaymentSettings(payload: { mode: "test" | "live" }) {
   const res = await api.put("/admin/payment-settings", payload);
-  return res.data;
+  return res.data as PaymentSettings;
+}
+// Diagnostic: validates the ACTIVE mode's keys by creating a ₹1 order (no charge).
+export async function testPaymentConnection() {
+  const res = await api.post("/admin/payment-settings/test");
+  return res.data as { ok: boolean; mode: string; order_id?: string; error?: string };
 }
 
 // ---- Certificates ----

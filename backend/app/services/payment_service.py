@@ -114,14 +114,25 @@ def _require_sdk():
         )
 
 
-async def resolve_razorpay_keys(db: AsyncSession) -> tuple[str, str]:
+async def get_active_payment_mode(db: AsyncSession) -> str:
+    """The admin-selected active mode ('test' | 'live'). Defaults to 'test'
+    until an admin explicitly switches it from the Payment Settings page."""
     s = (await db.execute(select(PaymentSettings).limit(1))).scalar_one_or_none()
-    key_id = s.key_id if (s and s.key_id) else settings.RAZORPAY_KEY_ID
-    key_secret = s.key_secret if (s and s.key_secret) else settings.RAZORPAY_KEY_SECRET
+    return s.mode.value if s else "test"
+
+
+async def resolve_razorpay_keys(db: AsyncSession) -> tuple[str, str]:
+    """Resolve the Razorpay (key_id, key_secret) for the currently active mode.
+
+    Secrets come from the backend env ONLY (settings.RAZORPAY_TEST_*/LIVE_*);
+    the DB stores just the active mode. Raises 503 if that mode's keys are unset.
+    """
+    mode = await get_active_payment_mode(db)
+    key_id, key_secret = settings.razorpay_keys(mode)
     if not key_id or not key_secret:
         raise APIError(
             code="PAYMENT_NOT_CONFIGURED",
-            message="Online payments are not configured yet. Please contact support.",
+            message=f"Online payments are not configured for {mode} mode yet. Please contact support.",
             status_code=503,
         )
     return key_id, key_secret
@@ -131,6 +142,7 @@ async def create_razorpay_order(
     db: AsyncSession, *, amount_paise: int, currency: str, receipt: str
 ) -> tuple[dict, str]:
     razorpay = _require_sdk()
+    mode = await get_active_payment_mode(db)
     key_id, key_secret = await resolve_razorpay_keys(db)
     client = razorpay.Client(auth=(key_id, key_secret))
 
@@ -144,8 +156,50 @@ async def create_razorpay_order(
             }
         )
 
-    order = await anyio.to_thread.run_sync(_create)
+    try:
+        order = await anyio.to_thread.run_sync(_create)
+    except Exception as exc:  # noqa: BLE001 — razorpay.errors.* / transport errors
+        # Surface the REAL reason in the server log. The #1 cause of "test works
+        # but live doesn't" is an un-activated Razorpay account or a wrong live
+        # key — both raise HERE, and previously bubbled up as an opaque 500, so
+        # the checkout (and its QR) never opened for the student.
+        print(f"[PAYMENT] Razorpay order.create FAILED (mode={mode}): {type(exc).__name__}: {exc}")
+        raise APIError(
+            code="PAYMENT_GATEWAY_ERROR",
+            message="We couldn't start the payment right now. Please try again, or contact support if it continues.",
+            status_code=502,
+        ) from exc
     return order, key_id
+
+
+async def test_razorpay_connection(db: AsyncSession) -> dict:
+    """Admin diagnostic: create a tiny (₹1) order with the ACTIVE mode's keys to
+    confirm they actually work against Razorpay. Creates NO charge — an order is
+    only a payment intent that expires unpaid. Returns {ok, mode, order_id?, error?}.
+    """
+    mode = await get_active_payment_mode(db)
+    key_id, key_secret = settings.razorpay_keys(mode)
+    if not (key_id and key_secret):
+        return {"ok": False, "mode": mode, "error": f"No {mode}-mode keys found in the server environment (.env)."}
+    try:
+        razorpay = _require_sdk()
+    except APIError as exc:
+        msg = exc.detail.get("message") if isinstance(exc.detail, dict) else str(exc.detail)
+        return {"ok": False, "mode": mode, "error": msg}
+
+    client = razorpay.Client(auth=(key_id, key_secret))
+
+    def _ping():
+        return client.order.create(
+            {"amount": 100, "currency": "INR", "receipt": "sma_conn_test", "payment_capture": 1}
+        )
+
+    try:
+        order = await anyio.to_thread.run_sync(_ping)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[PAYMENT] Connection test FAILED (mode={mode}): {type(exc).__name__}: {exc}")
+        return {"ok": False, "mode": mode, "error": f"{type(exc).__name__}: {exc}"}
+    return {"ok": True, "mode": mode, "order_id": order.get("id")}
 
 
 async def verify_razorpay_signature(
