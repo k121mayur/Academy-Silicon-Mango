@@ -2,6 +2,11 @@ export const ROUTES = {
   landing: "/",
   login: "/login",
   signup: "/signup",
+  public: {
+    courses: "/courses",
+    courseDetails: (idOrSlug: string) => `/courses/${idOrSlug}`,
+    webinars: "/webinars",
+  },
   admin: {
     root: "/admin",
     dashboard: "/admin/dashboard",

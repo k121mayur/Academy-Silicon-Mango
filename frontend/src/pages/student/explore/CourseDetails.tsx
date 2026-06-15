@@ -5,8 +5,10 @@ import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
+import { Modal } from "@/components/ui/Modal";
 import { RichTextView } from "@/components/shared/RichTextView";
 import { QueryErrorState } from "@/components/student/QueryErrorState";
+import { useAuthStore } from "@/features/auth/stores/authStore";
 import { formatCurrency } from "@/lib/utils";
 import { absoluteApiUrl } from "@/lib/api";
 import { queryClient } from "@/lib/queryClient";
@@ -24,7 +26,9 @@ type Tab = "overview" | "syllabus" | "faqs" | "certificate";
 export default function CourseDetails() {
   const { courseId = "" } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuthStore();
   const [tab, setTab] = useState<Tab>("overview");
+  const [authPrompt, setAuthPrompt] = useState(false);
 
   const { data: course, isLoading, isError, error, refetch } = useQuery({
     queryKey: qk.public.course(courseId),
@@ -50,18 +54,50 @@ export default function CourseDetails() {
   const payable = finalPrice(price, discount);
   const hasDiscount = discount > 0;
 
-  const goEnroll = () => navigate(ROUTES.student.batchSelect(courseId));
+  const isStudent = user?.role === "student";
+
+  // Enrolment requires a student account. Logged-out visitors are prompted to
+  // sign in or sign up; signed-in students go straight to batch selection.
+  const goEnroll = () => {
+    if (isStudent) {
+      navigate(ROUTES.student.batchSelect(course.id));
+    } else {
+      setAuthPrompt(true);
+    }
+  };
 
   return (
     <div className="space-y-5">
       {/* Breadcrumb */}
       <nav className="text-label text-ink-outline flex items-center gap-1.5 animate-fade-in">
-        <Link to={ROUTES.student.explore} className="hover:text-primary">
-          Explore
+        <Link to={isStudent ? ROUTES.student.explore : ROUTES.public.courses} className="hover:text-primary">
+          {isStudent ? "Explore" : "Courses"}
         </Link>
         <span className="icon text-[14px]">chevron_right</span>
         <span className="text-ink-variant truncate max-w-[60vw]">{course.title}</span>
       </nav>
+
+      <Modal
+        open={authPrompt}
+        onClose={() => setAuthPrompt(false)}
+        title="Create an account to enrol"
+        description="You need a Silicon Mango account to enrol in this course. Sign in or sign up — it only takes a minute."
+        footer={
+          <>
+            <Button variant="outline" onClick={() => navigate(ROUTES.login, { state: { from: ROUTES.public.courseDetails(course.id) } })}>
+              Sign in
+            </Button>
+            <Button rightIcon="arrow_forward" onClick={() => navigate(ROUTES.signup, { state: { from: ROUTES.public.courseDetails(course.id) } })}>
+              Create account
+            </Button>
+          </>
+        }
+      >
+        <p className="text-body-sm text-ink-variant">
+          Browsing is free and open to everyone. Enrolment, course materials, assignments and
+          certificates are available once you have an account.
+        </p>
+      </Modal>
 
       <div className="grid lg:grid-cols-3 gap-6 items-start">
         {/* Left: hero + tabs */}
