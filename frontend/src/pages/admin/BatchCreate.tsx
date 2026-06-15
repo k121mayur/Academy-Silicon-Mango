@@ -50,6 +50,32 @@ export default function BatchCreate() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseId, courses]);
 
+  // End date is derived from the course duration (inclusive of the start day),
+  // mirroring the backend: a 4-week batch from Jun 1 ends Jun 28; a 15-day
+  // batch from Jul 1 ends Jul 15.
+  const computeEndDate = (start: string, c: any): string => {
+    if (!start || !c) return "";
+    const total = c.duration_unit === "weeks" ? Number(c.duration_value) * 7 : Number(c.duration_value);
+    const days = Math.max(total || 1, 1);
+    const d = new Date(`${start}T00:00:00`);
+    d.setDate(d.getDate() + days - 1);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  // Keep the end date in sync whenever the start date or selected course changes.
+  useEffect(() => {
+    if (startDate && course) {
+      setEndDate(computeEndDate(startDate, course));
+      clearErr("endDate");
+    } else {
+      setEndDate("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startDate, course]);
+
   const addSlot = () => {
     if (!course) return;
     if (course.duration_unit === "weeks") {
@@ -144,7 +170,21 @@ export default function BatchCreate() {
           />
           <Input label="Capacity" type="number" min={1} value={capacity} onChange={(e) => { setCapacity(e.target.value); clearErr("capacity"); }} error={errors.capacity} />
           <Input label="Start date" type="date" value={startDate} onChange={(e) => { setStartDate(e.target.value); clearErr("startDate"); }} error={errors.startDate} />
-          <Input label="End date" type="date" value={endDate} onChange={(e) => { setEndDate(e.target.value); clearErr("endDate"); }} error={errors.endDate} />
+          <div>
+            <Input
+              label="End date (auto-calculated)"
+              type="date"
+              value={endDate}
+              readOnly
+              disabled
+              error={errors.endDate}
+            />
+            <p className="text-label text-ink-outline mt-1">
+              {course
+                ? `Auto-set from the course's ${course.duration_value} ${course.duration_unit} duration.`
+                : "Select a course and start date — the end date is calculated automatically."}
+            </p>
+          </div>
         </CardBody>
       </Card>
 

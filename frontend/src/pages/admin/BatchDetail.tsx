@@ -10,6 +10,7 @@ import { Table, THead, TR, TH, TD } from "@/components/ui/Table";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { extractErrorMessage } from "@/lib/api";
 import { SearchableSelect } from "@/components/ui/SearchableSelect";
+import { Select } from "@/components/ui/Select";
 import {
   getBatch,
   batchPlans,
@@ -19,6 +20,8 @@ import {
   batchEnroll,
   batchRemoveEnrollment,
   completeBatch,
+  updateBatch,
+  deleteBatch,
   listAllStudents,
   listInstructors,
   batchAssignInstructor,
@@ -40,6 +43,11 @@ export default function BatchDetail() {
   const [enrolling, setEnrolling] = useState(false);
   const [completeOpen, setCompleteOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState({ name: "", start_date: "", end_date: "", capacity: "", status: "upcoming" });
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [assignInstructorOpen, setAssignInstructorOpen] = useState(false);
   const [instructorOptions, setInstructorOptions] = useState<any[]>([]);
   const [instructorSearch, setInstructorSearch] = useState("");
@@ -161,6 +169,55 @@ export default function BatchDetail() {
     }
   };
 
+  const openEdit = () => {
+    setEditForm({
+      name: batch.name ?? "",
+      start_date: batch.start_date ?? "",
+      end_date: batch.end_date ?? "",
+      capacity: batch.capacity != null ? String(batch.capacity) : "",
+      // "completed" is reached only through the Complete-batch flow, so it's not offered here.
+      status: batch.status === "completed" ? "active" : batch.status,
+    });
+    setEditOpen(true);
+  };
+
+  const saveEdit = async () => {
+    if (!id) return;
+    if (!editForm.name.trim()) { toast.error("Batch name is required"); return; }
+    setSavingEdit(true);
+    try {
+      // end_date is intentionally omitted — the backend re-derives it from the
+      // course duration relative to start_date, keeping the two in sync.
+      await updateBatch(id, {
+        name: editForm.name.trim(),
+        start_date: editForm.start_date,
+        capacity: editForm.capacity.trim() === "" ? null : Number(editForm.capacity),
+        status: editForm.status,
+      });
+      toast.success("Batch updated");
+      setEditOpen(false);
+      refresh();
+    } catch (e) {
+      toast.error(extractErrorMessage(e));
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const onDelete = async () => {
+    if (!id) return;
+    setDeleting(true);
+    try {
+      await deleteBatch(id);
+      toast.success("Batch deleted");
+      navigate("/admin/batches");
+    } catch (e) {
+      toast.error(extractErrorMessage(e));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (!batch) return <p className="text-body-sm text-ink-outline">Loading…</p>;
 
   return (
@@ -178,9 +235,17 @@ export default function BatchDetail() {
             {batch.status}{batch.is_locked ? " • locked" : ""}
           </Badge>
           {!batch.is_locked && (
-            <Button variant="outline" leftIcon="lock" onClick={() => setCompleteOpen(true)}>
-              Complete batch
-            </Button>
+            <>
+              <Button variant="outline" leftIcon="edit" onClick={openEdit}>
+                Edit
+              </Button>
+              <Button variant="outline" leftIcon="lock" onClick={() => setCompleteOpen(true)}>
+                Complete batch
+              </Button>
+              <Button variant="ghost" leftIcon="delete" className="text-danger" onClick={() => setDeleteOpen(true)}>
+                Delete
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -336,6 +401,77 @@ export default function BatchDetail() {
         description="The batch will be locked, and a certificate PDF will be rendered and emailed to every enrolled student. Make sure the certificate template is uploaded first."
         confirmLabel="Complete & email certificates"
         loading={busy}
+      />
+
+      <Modal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        title="Edit batch"
+        description="Update the batch details. Completed batches are locked and can't be edited."
+        size="md"
+        footer={<>
+          <Button variant="ghost" onClick={() => setEditOpen(false)} disabled={savingEdit}>Cancel</Button>
+          <Button onClick={saveEdit} loading={savingEdit}>Save changes</Button>
+        </>}
+      >
+        <div className="space-y-3">
+          <Input
+            label="Batch name"
+            value={editForm.name}
+            onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+            leftIcon="groups_2"
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Start date"
+              type="date"
+              value={editForm.start_date}
+              onChange={(e) => setEditForm((f) => ({ ...f, start_date: e.target.value }))}
+            />
+            <Input
+              label="End date (auto)"
+              type="date"
+              value={editForm.end_date}
+              readOnly
+              disabled
+              hint="Recalculated from the course duration on save."
+            />
+          </div>
+          <Input
+            label="Capacity"
+            type="number"
+            min={0}
+            value={editForm.capacity}
+            onChange={(e) => setEditForm((f) => ({ ...f, capacity: e.target.value }))}
+            hint="Leave blank for unlimited"
+          />
+          <Select
+            label="Status"
+            value={editForm.status}
+            onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value }))}
+            options={[
+              { value: "upcoming", label: "Upcoming" },
+              { value: "active", label: "Active" },
+              { value: "cancelled", label: "Cancelled" },
+            ]}
+            hint="Use “Complete batch” to mark a batch completed and issue certificates."
+          />
+        </div>
+      </Modal>
+
+      <ConfirmModal
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        onConfirm={onDelete}
+        title={`Delete "${batch.name}"?`}
+        description={
+          enrollments.length > 0
+            ? `This permanently deletes the batch and removes all ${enrollments.length} enrollment(s), its schedule and session plan. Students keep their accounts. This cannot be undone.`
+            : "This permanently deletes the batch, its schedule and session plan. This cannot be undone."
+        }
+        confirmLabel="Delete batch"
+        destructive
+        loading={deleting}
       />
 
       <Modal

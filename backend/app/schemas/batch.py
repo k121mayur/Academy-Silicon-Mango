@@ -19,7 +19,9 @@ class BatchCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     delivery_mode: str = "live"  # live | recorded
     start_date: date
-    end_date: date
+    # Optional: when omitted, the backend auto-calculates it from the course's
+    # duration (weeks/days) relative to start_date.
+    end_date: Optional[date] = None
     capacity: Optional[int] = None
     instructor_id: Optional[str] = None
     schedule_slots: list[ScheduleSlotIn] = []

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from datetime import date as date_type
+from datetime import timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -22,7 +23,9 @@ from app.models.batch import (
     EnrollmentStatus,
     SlotType,
 )
-from app.models.course import Course
+from app.models.certificate import Certificate
+from app.models.course import Course, DurationUnit
+from app.models.payment import Payment
 from app.models.user import InstructorProfile, StudentProfile, User, UserRole
 from app.schemas.batch import (
     BatchCreate,
@@ -120,6 +123,17 @@ async def list_batches(
     }
 
 
+def compute_end_date(course: Course, start: date_type) -> date_type:
+    """Derive the batch end date from the course duration, inclusive of the start day.
+
+    A 4-week course starting 2026-06-01 ends 2026-06-28 (28 days).
+    A 15-day course starting 2026-07-01 ends 2026-07-15 (15 days).
+    """
+    total_days = course.duration_value * 7 if course.duration_unit == DurationUnit.weeks else course.duration_value
+    total_days = max(int(total_days), 1)
+    return start + timedelta(days=total_days - 1)
+
+
 def _auto_status(start: date_type, end: date_type) -> BatchStatus:
     today = date_type.today()
     if today < start:
@@ -139,7 +153,10 @@ async def create_batch(
     if not course:
         raise APIError(code="NOT_FOUND", message="Course not found", status_code=404)
 
-    if payload.end_date < payload.start_date:
+    # End date is auto-calculated from the course duration when not supplied.
+    end_date = payload.end_date or compute_end_date(course, payload.start_date)
+
+    if end_date < payload.start_date:
         raise APIError(code="VALIDATION", message="End date must be after start date")
 
     try:
@@ -159,9 +176,9 @@ async def create_batch(
         instructor_id=instructor_id,
         name=payload.name,
         delivery_mode=mode,
-        status=_auto_status(payload.start_date, payload.end_date),
+        status=_auto_status(payload.start_date, end_date),
         start_date=payload.start_date,
-        end_date=payload.end_date,
+        end_date=end_date,
         capacity=payload.capacity,
     )
     db.add(batch)
@@ -213,6 +230,20 @@ async def update_batch(
         raise APIError(code="BATCH_003", message="Batch is locked")
 
     data = payload.model_dump(exclude_unset=True)
+
+    # Validate the resulting date range (fall back to current values for unset fields).
+    new_start = data.get("start_date", batch.start_date)
+    new_end = data.get("end_date", batch.end_date)
+    # If the start date moved but no end date was supplied, re-derive the end date
+    # from the course duration so the two stay in sync.
+    if "start_date" in data and "end_date" not in data:
+        course = await db.get(Course, batch.course_id)
+        if course:
+            new_end = compute_end_date(course, new_start)
+            data["end_date"] = new_end
+    if new_end < new_start:
+        raise APIError(code="VALIDATION", message="End date must be after start date")
+
     if "delivery_mode" in data:
         batch.delivery_mode = DeliveryMode(data.pop("delivery_mode"))
     if "status" in data:
@@ -223,6 +254,46 @@ async def update_batch(
     await db.commit()
     await db.refresh(batch)
     return await _enriched_batch(db, batch)
+
+
+@router.delete("/{batch_id}")
+async def delete_batch(
+    batch_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    batch = await db.get(Batch, batch_id)
+    if not batch:
+        raise APIError(code="NOT_FOUND", message="Batch not found", status_code=404)
+
+    # A completed batch is locked and its certificates are issued — never deletable.
+    if batch.is_locked or batch.status == BatchStatus.completed:
+        raise APIError(code="BATCH_005", message="Cannot delete a completed batch")
+
+    # Deleting a batch cascade-deletes its enrollments, payments and certificates at the
+    # DB level. Guard the financial and academic records so they can't be silently wiped.
+    pay_count = (
+        await db.execute(select(func.count(Payment.id)).where(Payment.batch_id == batch.id))
+    ).scalar_one()
+    if pay_count > 0:
+        raise APIError(
+            code="HAS_PAYMENTS",
+            message="Cannot delete a batch that has payment records — these are financial records and must be preserved.",
+        )
+    cert_count = (
+        await db.execute(select(func.count(Certificate.id)).where(Certificate.batch_id == batch.id))
+    ).scalar_one()
+    if cert_count > 0:
+        raise APIError(
+            code="HAS_CERTIFICATES",
+            message="Cannot delete a batch that has issued certificates.",
+        )
+
+    name = batch.name
+    await db.delete(batch)
+    await db.commit()
+    print(f"[ADMIN] Batch deleted: {name} ({batch_id})")
+    return {"success": True, "message": "Batch deleted"}
 
 
 @router.post("/{batch_id}/assign-instructor", response_model=BatchPublic)
