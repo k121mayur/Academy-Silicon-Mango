@@ -2,15 +2,14 @@ import { ChangeEvent, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { extractErrorMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { uploadVideo, VideoDTO } from "@/services/video.service";
+import { useVideoUploadStore } from "@/features/instructor/videoUploadStore";
 
-const MAX_VIDEO_BYTES = 500 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 500 * 1024 * 1024; // 500 MB — matches backend MAX_VIDEO_MB
+const MIN_VIDEO_BYTES = 10 * 1024 * 1024; //  10 MB — matches backend MIN_VIDEO_MB
 
 interface Props {
   sessionId: string;
-  onUploaded?: (video: VideoDTO) => void;
   className?: string;
 }
 
@@ -21,14 +20,14 @@ function formatBytes(n: number): string {
   return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-export function VideoUpload({ sessionId, onUploaded, className }: Props) {
+export function VideoUpload({ sessionId, className }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
-  const [progress, setProgress] = useState(0);
-  const [uploading, setUploading] = useState(false);
-  const [eta, setEta] = useState<number | null>(null);
-  const startRef = useRef<number>(0);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const active = useVideoUploadStore((s) => s.uploads[sessionId]);
+  const start = useVideoUploadStore((s) => s.start);
+  const uploading = active?.status === "uploading";
 
   const onPick = (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -36,6 +35,10 @@ export function VideoUpload({ sessionId, onUploaded, className }: Props) {
     if (!f) return;
     if (!f.type.startsWith("video/")) {
       toast.error("Please pick a video file (mp4, mov, mkv, webm…)");
+      return;
+    }
+    if (f.size < MIN_VIDEO_BYTES) {
+      toast.error("Video is smaller than 10 MB — please upload the full lesson video.");
       return;
     }
     if (f.size > MAX_VIDEO_BYTES) {
@@ -46,7 +49,7 @@ export function VideoUpload({ sessionId, onUploaded, className }: Props) {
     if (!title) setTitle(f.name.replace(/\.[^.]+$/, ""));
   };
 
-  const onUpload = async () => {
+  const onUpload = () => {
     if (!file) {
       toast.error("Pick a video first.");
       return;
@@ -55,39 +58,49 @@ export function VideoUpload({ sessionId, onUploaded, className }: Props) {
       toast.error("Give the lesson a title.");
       return;
     }
-    setUploading(true);
-    setProgress(0);
-    setEta(null);
-    startRef.current = Date.now();
-    try {
-      const video = await uploadVideo(sessionId, file, title.trim(), ({ progress, loaded, total }) => {
-        setProgress(progress);
-        const elapsed = (Date.now() - startRef.current) / 1000;
-        const remaining = loaded > 0 ? (elapsed / loaded) * (total - loaded) : null;
-        setEta(remaining);
-      });
-      toast.success("Uploaded — available after tonight's optimization.");
-      setFile(null);
-      setTitle("");
-      setProgress(0);
-      if (onUploaded) onUploaded(video);
-    } catch (e) {
-      toast.error(extractErrorMessage(e, "Upload failed"));
-    } finally {
-      setUploading(false);
-    }
+    start(sessionId, file, title.trim());
+    // Local picker state is no longer needed — the store now owns this upload.
+    setFile(null);
+    setTitle("");
   };
 
+  // ── In-progress upload: persisted view (survives closing/reopening the dialog) ──
+  if (uploading) {
+    const pct = (active.progress * 100).toFixed(0);
+    return (
+      <div className={cn("space-y-3", className)}>
+        <div className="flex items-center gap-3 p-3 rounded-xl bg-surface-containerLow border border-ink-outlineVariant/60">
+          <span className="icon text-primary text-[28px] animate-pulse">cloud_upload</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-body-sm font-medium text-ink truncate">{active.title || active.fileName}</p>
+            <p className="text-label text-ink-outline truncate">Uploading {active.fileName}</p>
+          </div>
+        </div>
+        <div className="space-y-2">
+          <div className="h-2 rounded-full bg-surface-container overflow-hidden">
+            <div className="h-full bg-primary-fill transition-all duration-150" style={{ width: `${pct}%` }} />
+          </div>
+          <div className="flex justify-between text-label text-ink-outline">
+            <span>{pct}% uploaded</span>
+            {active.eta != null && active.eta > 0 && (
+              <span>~{active.eta < 60 ? `${Math.round(active.eta)}s` : `${Math.round(active.eta / 60)}m`} remaining</span>
+            )}
+          </div>
+        </div>
+        <p className="text-label text-ink-outline">
+          Upload in progress — you can close this dialog and it will keep running. Reopen "Add resource"
+          to check on it. A new upload can be added once this one finishes.
+        </p>
+      </div>
+    );
+  }
+
+  // ── Idle: file picker + upload button ──
   return (
     <div className={cn("space-y-3", className)}>
       <div
-        onClick={() => !uploading && inputRef.current?.click()}
-        className={cn(
-          "border-2 border-dashed rounded-xl p-5 flex items-center gap-4 transition-colors",
-          uploading
-            ? "border-ink-outlineVariant bg-surface-containerLow cursor-not-allowed"
-            : "border-ink-outlineVariant hover:border-primary hover:bg-surface-containerLow cursor-pointer"
-        )}
+        onClick={() => inputRef.current?.click()}
+        className="border-2 border-dashed rounded-xl p-5 flex items-center gap-4 transition-colors border-ink-outlineVariant hover:border-primary hover:bg-surface-containerLow cursor-pointer"
       >
         <div className="w-14 h-14 rounded-xl bg-primary-container/40 text-primary grid place-items-center shrink-0">
           <span className="icon text-[28px]">videocam</span>
@@ -96,62 +109,34 @@ export function VideoUpload({ sessionId, onUploaded, className }: Props) {
           {file ? (
             <>
               <p className="text-body-sm font-medium text-ink truncate">{file.name}</p>
-              <p className="text-label text-ink-outline">
-                {formatBytes(file.size)} · click to change
-              </p>
+              <p className="text-label text-ink-outline">{formatBytes(file.size)} · click to change</p>
             </>
           ) : (
             <>
               <p className="text-body-sm font-medium text-ink">Click to pick a video file</p>
-              <p className="text-label text-ink-outline">Max 500 MB · MP4 / MOV / MKV / WEBM</p>
+              <p className="text-label text-ink-outline">10 MB – 500 MB · MP4 / MOV / MKV / WEBM</p>
             </>
           )}
         </div>
       </div>
-      <input
-        ref={inputRef}
-        type="file"
-        accept="video/*"
-        onChange={onPick}
-        className="hidden"
-        disabled={uploading}
-      />
+      <input ref={inputRef} type="file" accept="video/*" onChange={onPick} className="hidden" />
 
       <Input
         label="Lesson title"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder="e.g. Week 1 — Introduction"
-        disabled={uploading}
       />
 
-      {uploading && (
-        <div className="space-y-2">
-          <div className="h-2 rounded-full bg-surface-container overflow-hidden">
-            <div
-              className="h-full bg-primary transition-all duration-150"
-              style={{ width: `${(progress * 100).toFixed(1)}%` }}
-            />
-          </div>
-          <div className="flex justify-between text-label text-ink-outline">
-            <span>{(progress * 100).toFixed(0)}% uploaded</span>
-            {eta != null && eta > 0 && (
-              <span>
-                ~{eta < 60 ? `${Math.round(eta)}s` : `${Math.round(eta / 60)}m`} remaining
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-
       <div className="flex justify-end">
-        <Button onClick={onUpload} loading={uploading} disabled={!file || !title.trim()} leftIcon="upload">
+        <Button onClick={onUpload} disabled={!file || !title.trim()} leftIcon="upload">
           Upload video
         </Button>
       </div>
 
       <p className="text-label text-ink-outline">
-        Upload any quality — videos are automatically optimized to a single 720p stream at midnight to reduce server load and bandwidth. Students can watch once optimization completes.
+        Videos are automatically optimized to a single 720p stream in the midnight batch to reduce server
+        load and bandwidth. Students can watch once optimization completes.
       </p>
     </div>
   );

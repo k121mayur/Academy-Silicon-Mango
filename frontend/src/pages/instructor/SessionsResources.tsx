@@ -22,6 +22,7 @@ import {
 } from "@/services/instructor.service";
 import { VideoUpload } from "@/components/shared/VideoUpload";
 import { useSelectedBatch } from "@/features/instructor/selectedBatchStore";
+import { useVideoUploadStore } from "@/features/instructor/videoUploadStore";
 import { NoBatchSelected } from "./_NoBatch";
 
 const STATUS_OPTS = [
@@ -69,6 +70,24 @@ export default function SessionsResources() {
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBatchId]);
+
+  // Video uploads run in a global store so they survive the dialog being closed.
+  // When one finishes (anywhere), refresh the list so the new lesson appears.
+  const videoUploads = useVideoUploadStore((s) => s.uploads);
+  const clearUpload = useVideoUploadStore((s) => s.clear);
+  useEffect(() => {
+    const finished = Object.values(videoUploads).filter(
+      (u) => u.status === "done" || u.status === "error"
+    );
+    if (finished.length === 0) return;
+    for (const u of finished) {
+      if (u.status === "done") toast.success("Video uploaded — it will be optimized to 720p tonight.");
+      else toast.error(u.error || "Video upload failed");
+      clearUpload(u.sessionId);
+    }
+    reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoUploads]);
 
   const isSelfPaced = batch?.delivery_mode === "recorded";
 
@@ -457,6 +476,11 @@ function AddResourceModal({
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // If a video upload for this session is still running, show only that progress
+  // (not a fresh resource form) until it completes.
+  const activeUpload = useVideoUploadStore((s) => s.uploads[session.id]);
+  const uploadInProgress = activeUpload?.status === "uploading";
+
   const submit = async () => {
     if (resourceType === "video") {
       return; // VideoUpload component handles its own submit
@@ -500,7 +524,7 @@ function AddResourceModal({
       title={`Add resource to "${session.title}"`}
       size="md"
       footer={
-        resourceType === "video" ? (
+        resourceType === "video" || uploadInProgress ? (
           <Button variant="ghost" onClick={onClose}>Close</Button>
         ) : (
           <>
@@ -511,23 +535,31 @@ function AddResourceModal({
       }
     >
       <div className="space-y-3">
+        {uploadInProgress ? (
+          // A video upload is still running for this session — show its progress only.
+          <VideoUpload sessionId={session.id} />
+        ) : (
+        <>
         <Select label="Type" value={resourceType} onChange={(e) => setResourceType(e.target.value as any)} options={typeOptions} />
 
         {resourceType === "video" ? (
-          <VideoUpload sessionId={session.id} onUploaded={onAdded} />
+          <VideoUpload sessionId={session.id} />
         ) : (
           <>
             <Input label="Title *" value={title} onChange={(e) => setTitle(e.target.value)} />
             {resourceType === "file" ? (
               <FileUpload
                 onChange={(f) => setFile(f)}
+                accept="*"
                 preview={false}
-                hint="Slides, PDF, etc. — max 2 MB"
+                hint="Slides, PDF, docs, etc. — max 2 MB"
               />
             ) : (
               <Input label="URL *" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://..." />
             )}
           </>
+        )}
+        </>
         )}
       </div>
     </Modal>

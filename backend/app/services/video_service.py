@@ -32,6 +32,7 @@ async def save_video_upload(file: UploadFile, uploader: User) -> tuple[str, int,
     Raises APIError(413) on size cap exceed; deletes partial file.
     """
     cap = settings.MAX_VIDEO_MB * 1024 * 1024
+    floor = settings.MIN_VIDEO_MB * 1024 * 1024
     media = _media_root()
 
     original_filename = file.filename or "video.mp4"
@@ -74,6 +75,18 @@ async def save_video_upload(file: UploadFile, uploader: User) -> tuple[str, int,
         except FileNotFoundError:
             pass
         raise
+
+    # Reject too-small uploads (likely truncated/broken or not a real lesson video).
+    if total < floor:
+        try:
+            os.unlink(abs_path)
+        except FileNotFoundError:
+            pass
+        raise APIError(
+            code="FILE_TOO_SMALL",
+            message=f"Video must be at least {settings.MIN_VIDEO_MB} MB.",
+            status_code=400,
+        )
 
     print(f"[VIDEO] Saved upload to {abs_path} ({total} bytes)")
     return str(abs_path), total, original_filename

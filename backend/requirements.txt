@@ -28,3 +28,8 @@ reportlab==4.2.5
 celery[redis]==5.4.0
 python-dateutil==2.9.0.post0
 razorpay==1.4.2
+# razorpay 1.4.2 does `import pkg_resources`, which ships inside setuptools.
+# python:3.12-slim no longer bundles setuptools, and setuptools>=81 REMOVED
+# pkg_resources entirely — so the SDK fails to import (surfacing in the UI as
+# "Payment library is not installed"). Pin <81 to keep pkg_resources available.
+setuptools<81

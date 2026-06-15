@@ -56,6 +56,18 @@ export function uploadVideo(
         });
       }
     };
+    // Map common failure statuses to actionable messages. A 413 from a CDN
+    // (e.g. Cloudflare's free-plan 100 MB cap) arrives as an HTML page, not JSON,
+    // so we can't rely on a parsed body for it.
+    const statusMessage = (status: number, fallback: string): string => {
+      if (status === 413)
+        return "Upload rejected as too large. The server allows up to 500 MB, but a CDN/proxy in front may cap it lower (Cloudflare's free plan caps uploads at 100 MB). Use a smaller file or have an admin raise the limit.";
+      if (status === 401 || status === 403)
+        return "Your session expired during the upload. Please sign in again and retry.";
+      if (status === 0) return "Connection lost during upload — check your network and retry.";
+      return fallback;
+    };
+
     xhr.onerror = () => reject(new Error("Network error during upload"));
     xhr.ontimeout = () => reject(new Error("Upload timed out"));
     xhr.onload = () => {
@@ -65,10 +77,10 @@ export function uploadVideo(
           resolve(body.data as VideoDTO);
         } else {
           const msg = body?.error?.message || body?.message || `Upload failed (${xhr.status})`;
-          reject(new Error(msg));
+          reject(new Error(statusMessage(xhr.status, msg)));
         }
       } catch (e) {
-        reject(new Error(`Upload failed (${xhr.status})`));
+        reject(new Error(statusMessage(xhr.status, `Upload failed (${xhr.status})`)));
       }
     };
     xhr.send(form);

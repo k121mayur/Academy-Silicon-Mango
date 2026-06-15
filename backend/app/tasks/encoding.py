@@ -139,6 +139,11 @@ async def _encode_one(video_id, Session: async_sessionmaker) -> tuple[bool, Opti
 
         rendition = ff.rendition_for(probe.height)
         out_dir = hls_root_for(uploader_id, str(video_id))
+        # Wipe any prior output (e.g. legacy 1080p/720p folders from an older
+        # multi-rendition encode, or a partial run) so we regenerate cleanly with
+        # only the single fresh 720p rendition.
+        from shutil import rmtree
+        rmtree(out_dir, ignore_errors=True)
         out_dir.mkdir(parents=True, exist_ok=True)
 
         try:
