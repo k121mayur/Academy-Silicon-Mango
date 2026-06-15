@@ -177,7 +177,8 @@ docker compose logs -f backend worker
 # Find one request across logs by its X-Request-ID (shown in error responses)
 docker compose logs backend | grep <request-id>
 
-# Encode a just-uploaded video immediately (normally automatic on upload + nightly)
+# Encode pending videos now. Optimisation normally runs ONLY in the nightly
+# midnight batch (not on upload), so use this to process a video sooner.
 docker compose exec worker celery -A app.celery_app.celery call tasks.optimize_pending_videos
 
 # Check video statuses

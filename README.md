@@ -117,6 +117,23 @@ Each role has its **own portal and navigation**, and the system **locks routes b
 | **react-hot-toast** | Toast notifications | Success/error messages |
 | **Cloudflare Turnstile** | Bot-protection CAPTCHA | Registration form anti-abuse (gracefully disabled when no key set) |
 
+#### Design system, motion & performance (UI/UX)
+
+The interface is intentionally **dependency-light** — there is **no animation library** (no Framer Motion / GSAP). All motion is CSS-first so it runs off the main thread and stays smooth on low-end devices and slow connections. The UI craft follows two design skills: Emil Kowalski's *design-engineering* principles and the *design-taste-frontend* ("taste") skill.
+
+| Area | What we do | Why |
+|---|---|---|
+| **Brand theme** | Single locked palette — mango amber (`#ffb800`), cyan (`#00d7fe`), ink — on a Material-3-style token system (`primary`, `surface`, `ink`, …) defined in `tailwind.config.ts`. | Consistency; the brand stays recognisable on every screen. |
+| **Motion** | Custom easing curves (`--ease-out`, `--ease-spring`, …) exposed as CSS variables **and** Tailwind tokens; UI transitions kept **under 300 ms**; only `transform`/`opacity` animate. | Built-in CSS easings feel weak; transform/opacity are GPU-friendly and never trigger layout. |
+| **Scroll reveals** | Dependency-free `useReveal` hook + `<Reveal>` component using `IntersectionObserver`; staggered via a `--reveal-delay` CSS variable. | Cascading entrances with zero JS animation cost. |
+| **Reduced motion** | Global `prefers-reduced-motion` contract in `index.css` removes movement but keeps opacity/colour cues. | Accessibility — motion sickness safety without losing comprehension. |
+| **Code splitting** | **Every route is `React.lazy()`-loaded** with a Suspense boundary inside each layout (chrome never flashes). Vite `manualChunks` isolates the heavy libraries — `hls.js`, `pdfjs-dist`, Tiptap, Recharts — into separate chunks. | A landing-page visitor downloads a fraction of the JS; heavy libs load **only** on the routes that use them. |
+| **Images** | `<Img>` wrapper adds native `loading="lazy"` + `decoding="async"` + fade-in; skeleton loaders match content shape. | Off-screen images never block first paint; perceived speed on slow links. |
+| **Responsiveness** | Mobile-first; glass sticky nav with a real mobile menu; safe-area `viewport-fit=cover`; 16 px inputs to prevent iOS zoom; fluid type scale. | Works on any device from small phones to ultrawide. |
+| **Edge / nginx caching** | nginx serves the fingerprinted `/assets/` chunks with a 1-year `immutable` cache and gzips text assets; `index.html` is `no-cache`. | Repeat visits and Cloudflare hits cost almost nothing, while a new deploy is picked up instantly without stale chunk references. |
+
+Key UI/UX files: [`frontend/src/index.css`](frontend/src/index.css) (tokens, easing vars, reveal/glass/skeleton utilities, reduced-motion), [`frontend/tailwind.config.ts`](frontend/tailwind.config.ts) (easing tokens, keyframes, brand shadows), [`frontend/src/hooks/useReveal.ts`](frontend/src/hooks/useReveal.ts), and the motion primitives in `frontend/src/components/ui/` (`Reveal`, `Skeleton`, `Img`, `CountUp`).
+
 ### Infrastructure
 
 | Technology | What it is | Why we chose it |
@@ -746,6 +763,12 @@ Academy-Silicon-Mango/
 │   │   │   │   └── WebinarDetailAdmin.tsx # /admin/webinars/:id — Overview/Registrations/Emails/Attendance/Reports
 │   │   │   └── ...                        # existing pages
 │   │   ├── components/
+│   │   │   ├── ui/                        # design-system primitives
+│   │   │   │   ├── Button.tsx Card.tsx Badge.tsx Modal.tsx Input.tsx … # + tactile press / interactive states
+│   │   │   │   ├── Reveal.tsx             # scroll-reveal wrapper (IntersectionObserver)
+│   │   │   │   ├── Skeleton.tsx           # shimmer skeleton + SkeletonCard
+│   │   │   │   ├── Img.tsx                # lazy/async image with fade-in
+│   │   │   │   └── CountUp.tsx            # rAF count-up, runs once on scroll-in
 │   │   │   ├── shared/
 │   │   │   │   ├── MetaTags.tsx           # document.title + OG meta (no react-helmet)
 │   │   │   │   └── Turnstile.tsx          # Cloudflare Turnstile widget (lazy-loaded)
@@ -753,7 +776,10 @@ Academy-Silicon-Mango/
 │   │   │   │   └── WebinarCard.tsx        # card + skeleton for listing page
 │   │   │   └── layout/
 │   │   │       ├── AdminChrome.tsx        # + Events → Webinars nav entry
-│   │   │       └── PublicLayout.tsx       # + Webinars nav link + footer link
+│   │   │       ├── RouteFallback.tsx      # branded Suspense fallback (shared by all layouts)
+│   │   │       └── PublicLayout.tsx       # glass sticky nav + mobile menu + footer
+│   │   ├── hooks/
+│   │   │   └── useReveal.ts               # IntersectionObserver scroll-reveal hook
 │   │   ├── services/
 │   │   │   ├── webinar.service.ts         # public API client + DTOs + formatters
 │   │   │   └── webinar.admin.service.ts   # admin API client + DTOs (incl. CSV download)

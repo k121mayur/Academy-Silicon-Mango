@@ -230,3 +230,8 @@ __marimo__/
 .streamlit/secrets.toml
 .claude
 .claude/
+
+#Reports
+CODEBASE_AUDIT_REPORT.html
+council-report-2026-06-12_2330.html
+council-transcript-2026-06-12_2330.md
