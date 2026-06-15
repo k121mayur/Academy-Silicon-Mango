@@ -153,7 +153,10 @@ services:
       - ./backend/media:/app/media
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8085/health || exit 1"]
-      interval: 30s
+      # 60s liveness ping. /health is a static {"status":"ok"} with no DB/Redis
+      # call, so once a minute is plenty to catch a hung backend while keeping
+      # the access log quiet.
+      interval: 60s
       timeout: 5s
       retries: 3
       start_period: 40s
