@@ -193,6 +193,11 @@ async def update_instructor(
             user.email = email
     if "is_active" in data:
         user.is_active = data.pop("is_active")
+    if "password" in data:
+        new_password = data.pop("password")
+        if new_password:
+            user.hashed_password = hash_password(new_password)
+            print(f"[ADMIN] Instructor password reset: {user.email}")
     if prof and data:
         for k, v in data.items():
             if hasattr(prof, k):

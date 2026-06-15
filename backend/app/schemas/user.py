@@ -20,6 +20,7 @@ class InstructorUpdate(BaseModel):
     bio: Optional[str] = None
     skills: Optional[list[str]] = None
     is_active: Optional[bool] = None
+    password: Optional[str] = Field(None, min_length=8)
 
 
 class InstructorPublic(BaseModel):

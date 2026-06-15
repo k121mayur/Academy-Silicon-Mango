@@ -160,6 +160,7 @@ function EditInstructorModal({ instructor, onClose, onSaved }: { instructor: Ins
   const [bio, setBio] = useState("");
   const [skills, setSkills] = useState("");
   const [active, setActive] = useState("true");
+  const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -172,6 +173,7 @@ function EditInstructorModal({ instructor, onClose, onSaved }: { instructor: Ins
     setBio(instructor.bio || "");
     setSkills((instructor.skills || []).join(", "));
     setActive(instructor.is_active ? "true" : "false");
+    setPassword("");
     setErrors({});
   }, [instructor]);
 
@@ -186,6 +188,7 @@ function EditInstructorModal({ instructor, onClose, onSaved }: { instructor: Ins
     if (!name.trim()) e.display_name = "Display name is required";
     const skillsList = skills.split(",").map((s) => s.trim()).filter(Boolean);
     if (skillsList.length === 0) e.skills = "At least one skill is required";
+    if (password && password.length < 8) e.password = "Password must be at least 8 characters";
     setErrors(e);
     if (Object.keys(e).length > 0) toast.error(Object.values(e)[0]);
     return Object.keys(e).length === 0;
@@ -202,8 +205,10 @@ function EditInstructorModal({ instructor, onClose, onSaved }: { instructor: Ins
         bio: bio.trim() || null,
         skills: skills.split(",").map((s) => s.trim()).filter(Boolean),
         is_active: active === "true",
+        // Only send a password when the admin actually typed one — blank leaves it unchanged.
+        ...(password ? { password } : {}),
       });
-      toast.success("Instructor updated");
+      toast.success(password ? "Instructor updated — new password set" : "Instructor updated");
       onSaved();
     } catch (err) {
       toast.error(extractErrorMessage(err));
@@ -229,6 +234,16 @@ function EditInstructorModal({ instructor, onClose, onSaved }: { instructor: Ins
           value={active}
           onChange={(e) => setActive(e.target.value)}
           options={[{ value: "true", label: "Active" }, { value: "false", label: "Inactive" }]}
+        />
+        <Input
+          label="Reset password (optional)"
+          type="password"
+          value={password}
+          onChange={(e) => { setPassword(e.target.value); clearErr("password"); }}
+          leftIcon="lock"
+          autoComplete="new-password"
+          hint="Leave blank to keep the current password. Min 8 characters. Share the new password with the instructor manually."
+          error={errors.password}
         />
       </form>
     </Modal>
