@@ -28,7 +28,8 @@ export const Select = forwardRef<HTMLSelectElement, Props>(function Select(
           id={sid}
           className={cn(
             "w-full h-10 pl-3 pr-9 rounded-md bg-surface-lowest border text-body-sm text-ink appearance-none cursor-pointer",
-            error ? "border-danger" : "border-ink-outlineVariant focus:border-primary",
+            "transition-[border-color,box-shadow] duration-200 ease-out",
+            error ? "border-danger" : "border-ink-outlineVariant hover:border-ink-outline focus:border-primary",
             "focus:outline-none focus:ring-4",
             error ? "focus:ring-danger/10" : "focus:ring-primary-container/30",
             className

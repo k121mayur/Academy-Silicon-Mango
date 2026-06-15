@@ -651,7 +651,7 @@ function Bars({ title, data }: { title: string; data: Record<string, number> }) 
                   <span className="font-medium text-ink">{v}</span>
                 </div>
                 <div className="h-2 rounded-full bg-surface-container overflow-hidden">
-                  <div className="h-full bg-primary rounded-full" style={{ width: `${(v / max) * 100}%` }} />
+                  <div className="h-full bg-primary-fill rounded-full" style={{ width: `${(v / max) * 100}%` }} />
                 </div>
               </div>
             ))}

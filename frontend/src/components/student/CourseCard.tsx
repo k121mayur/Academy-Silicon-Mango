@@ -13,12 +13,13 @@ import {
 } from "@/services/public.service";
 import { stripHtml } from "@/components/shared/RichTextView";
 
-export function CourseCard({ course }: { course: PublicCourseListItem }) {
+export function CourseCard({ course, to }: { course: PublicCourseListItem; to?: string }) {
   const price = Number(course.price);
   const discount = Number(course.discount || 0);
   const payable = finalPrice(price, discount);
   const hasDiscount = discount > 0;
   const preview = stripHtml(course.description || "");
+  const detailHref = to ?? ROUTES.student.courseDetails(course.id);
 
   // Prefetch detail + batches so navigation feels instant.
   const prefetch = () => {
@@ -31,7 +32,7 @@ export function CourseCard({ course }: { course: PublicCourseListItem }) {
 
   return (
     <Link
-      to={ROUTES.student.courseDetails(course.id)}
+      to={detailHref}
       onMouseEnter={prefetch}
       onFocus={prefetch}
       className="group relative bg-surface-lowest rounded-2xl overflow-hidden border border-ink-outlineVariant/30 transition-all duration-300 hover:-translate-y-1 hover:shadow-modal hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 flex flex-col"

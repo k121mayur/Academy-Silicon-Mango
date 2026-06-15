@@ -7,7 +7,7 @@ interface Props {
 }
 
 const SAFE_TAG_PATTERN =
-  /<(?!\/?(?:p|br|strong|b|em|i|u|s|h2|h3|ul|ol|li|blockquote|code|pre|span)\b)[^>]*>/gi;
+  /<(?!\/?(?:p|br|strong|b|em|i|u|s|h1|h2|h3|h4|ul|ol|li|blockquote|code|pre|span)\b)[^>]*>/gi;
 const EVENT_HANDLER_PATTERN = / on[a-z]+\s*=\s*"[^"]*"/gi;
 const JAVASCRIPT_HREF_PATTERN = /(href|src)\s*=\s*"\s*javascript:[^"]*"/gi;
 

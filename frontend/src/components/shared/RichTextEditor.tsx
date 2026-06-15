@@ -26,7 +26,7 @@ function Btn({ active, onClick, title, children }: { active?: boolean; onClick: 
       onMouseDown={(e) => { e.preventDefault(); onClick(); }}
       className={cn(
         "w-7 h-7 grid place-items-center rounded text-[13px] font-medium transition-colors shrink-0",
-        active ? "bg-primary text-white" : "text-ink-variant hover:bg-surface-container"
+        active ? "bg-primary-fill text-primary-on" : "text-ink-variant hover:bg-surface-container"
       )}
     >
       {children}

@@ -64,7 +64,7 @@ export function BatchCard({
           </div>
           <div className="h-2 rounded-full bg-surface-container overflow-hidden">
             <div
-              className={`h-full rounded-full transition-all duration-700 ${completed ? "bg-success" : "bg-primary"}`}
+              className={`h-full rounded-full transition-all duration-700 ${completed ? "bg-success" : "bg-primary-fill"}`}
               style={{ width: `${pct}%` }}
             />
           </div>

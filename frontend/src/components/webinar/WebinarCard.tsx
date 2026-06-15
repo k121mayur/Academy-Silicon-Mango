@@ -29,7 +29,7 @@ export function WebinarCard({ webinar }: { webinar: PublicWebinarListItem }) {
   return (
     <Link
       to={`/webinars/${webinar.slug}`}
-      className="group relative bg-surface-lowest rounded-2xl overflow-hidden border border-ink-outlineVariant/30 transition-all duration-300 hover:-translate-y-1 hover:shadow-modal hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 flex flex-col"
+      className="group relative bg-surface-lowest rounded-2xl overflow-hidden border border-ink-outlineVariant/30 transition-[transform,box-shadow,border-color] duration-300 ease-out hover:-translate-y-1 hover:shadow-card-hover hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 flex flex-col"
     >
       <div className="relative h-44 overflow-hidden bg-gradient-to-br from-primary-container via-secondary-container to-tertiary-container">
         {webinar.flyer_url || webinar.banner_url ? (

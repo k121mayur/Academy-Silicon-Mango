@@ -15,7 +15,7 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variants: Record<Variant, string> = {
   primary:
-    "bg-primary text-white hover:bg-[#6b4c00] active:bg-[#5a3f00] shadow-sm hover:shadow-md hover:-translate-y-px active:translate-y-0 active:shadow-sm",
+    "bg-primary-fill text-primary-on hover:bg-primary-fillHover active:bg-primary-fillActive shadow-sm hover:shadow-md hover:-translate-y-px active:translate-y-0 active:shadow-sm",
   secondary:
     "bg-secondary-container text-secondary hover:bg-[#bbd4f0] active:bg-[#a8c8eb] hover:-translate-y-px active:translate-y-0",
   tertiary:
@@ -56,8 +56,10 @@ export const Button = forwardRef<HTMLButtonElement, Props>(function Button(
       className={cn(
         "inline-flex items-center justify-center font-medium select-none",
         "transition-[transform,box-shadow,background-color,border-color,color] duration-200 ease-out will-change-transform",
+        // Tactile press feedback — the button visibly answers the user (Emil Kowalski).
+        "active:scale-[0.98]",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-1",
-        "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:transform-none disabled:hover:shadow-none",
+        "disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 disabled:hover:transform-none disabled:hover:shadow-none",
         variants[variant],
         sizes[size],
         fullWidth && "w-full",

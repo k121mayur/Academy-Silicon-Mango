@@ -36,9 +36,13 @@ export function Modal({ open, onClose, title, description, children, footer, siz
       onClick={() => closable && onClose()}
     >
       <div
+        role="dialog"
+        aria-modal="true"
         onClick={(e) => e.stopPropagation()}
         className={cn(
-          "bg-surface-lowest rounded-2xl shadow-modal w-full overflow-hidden animate-slide-up",
+          // Modals scale in from centre (they aren't anchored to a trigger).
+          "bg-surface-lowest rounded-2xl shadow-modal w-full overflow-hidden animate-scale-in",
+          "max-h-[90vh] overflow-y-auto scrollbar-thin",
           sizes[size]
         )}
       >

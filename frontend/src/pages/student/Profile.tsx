@@ -232,7 +232,7 @@ export default function StudentProfile() {
         <div className="h-1.5 rounded-full bg-surface-container overflow-hidden">
           <div
             className={`h-full rounded-full transition-all duration-500 ${
-              completeness === 100 ? "bg-success" : "bg-primary"
+              completeness === 100 ? "bg-success" : "bg-primary-fill"
             }`}
             style={{ width: `${completeness}%` }}
           />

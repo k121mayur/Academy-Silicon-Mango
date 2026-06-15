@@ -40,10 +40,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
           className={cn(
             "w-full h-10 rounded-md bg-surface-lowest border text-body-sm text-ink",
             "placeholder:text-ink-outline",
-            "transition-colors",
+            "transition-[border-color,box-shadow,background-color] duration-200 ease-out",
             error
               ? "border-danger focus:border-danger focus:ring-danger/20"
-              : "border-ink-outlineVariant focus:border-primary",
+              : "border-ink-outlineVariant hover:border-ink-outline focus:border-primary",
             "focus:outline-none focus:ring-4",
             error ? "focus:ring-danger/10" : "focus:ring-primary-container/30",
             leftIcon ? "pl-10" : "pl-3",
@@ -106,8 +106,8 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
         rows={rows}
         className={cn(
           "w-full rounded-md bg-surface-lowest border text-body-sm text-ink p-3",
-          "placeholder:text-ink-outline",
-          error ? "border-danger" : "border-ink-outlineVariant focus:border-primary",
+          "placeholder:text-ink-outline transition-[border-color,box-shadow] duration-200 ease-out",
+          error ? "border-danger" : "border-ink-outlineVariant hover:border-ink-outline focus:border-primary",
           "focus:outline-none focus:ring-4",
           error ? "focus:ring-danger/10" : "focus:ring-primary-container/30",
           className

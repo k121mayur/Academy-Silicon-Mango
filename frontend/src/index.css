@@ -5,6 +5,17 @@
 @layer base {
   :root {
     color-scheme: light;
+    /* Custom easing curves — the built-in CSS easings lack punch (Emil Kowalski). */
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+    --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+    --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  html {
+    scroll-behavior: smooth;
+    /* Offset anchor jumps so the sticky header never covers section titles. */
+    scroll-padding-top: 5rem;
+    -webkit-text-size-adjust: 100%;
   }
   html, body {
     height: 100%;
@@ -12,9 +23,26 @@
   body {
     @apply bg-surface text-ink font-sans antialiased;
     font-feature-settings: "ss01" on, "cv11" on;
+    text-rendering: optimizeLegibility;
   }
   *:focus-visible {
     @apply outline-none ring-2 ring-primary-container ring-offset-2 ring-offset-surface;
+  }
+  /* Larger tap targets / no accidental zoom on inputs for touch devices. */
+  @media (max-width: 640px) {
+    input, select, textarea { font-size: 16px; }
+  }
+  /* Accessibility: reduced motion means fewer + gentler animations, not zero.
+     Keep opacity/colour transitions that aid comprehension; remove movement. */
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+    [data-reveal] { opacity: 1 !important; transform: none !important; }
   }
 }
 
@@ -53,7 +81,67 @@
   }
 
   .gradient-mango {
-    background: linear-gradient(135deg, #ffb800 0%, #ffba20 50%, #7c5800 100%);
+    background: linear-gradient(135deg, #ffc21a 0%, #ffb800 50%, #e08a00 100%);
+  }
+
+  /* Animated mango → amber gradient text (panned via background-position). */
+  .text-gradient-mango {
+    background-image: linear-gradient(110deg, #a85f00 0%, #ffb800 35%, #00687b 70%, #a85f00 100%);
+    background-size: 220% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Scroll-reveal: hidden until the useReveal hook flips data-reveal="in".
+     Movement + opacity on enter; honours prefers-reduced-motion (base layer). */
+  [data-reveal] {
+    opacity: 0;
+    transform: translateY(18px);
+    transition: opacity 0.6s var(--ease-spring), transform 0.6s var(--ease-spring);
+    transition-delay: var(--reveal-delay, 0ms);
+    will-change: opacity, transform;
+  }
+  [data-reveal="in"] {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* Frosted glass surface — 1px inner border + highlight for real edge refraction.
+     Falls back to a solid fill where transparency is reduced. */
+  .glass {
+    background: rgba(248, 249, 250, 0.72);
+    backdrop-filter: saturate(180%) blur(14px);
+    -webkit-backdrop-filter: saturate(180%) blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .glass { background: #ffffff; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  }
+
+  /* Skeleton loader — matches layout shape, shimmer instead of a spinner. */
+  .skeleton {
+    background: linear-gradient(90deg, #edeeef 25%, #f3f4f5 37%, #edeeef 63%);
+    background-size: 200% 100%;
+    @apply animate-shimmer rounded-md;
+  }
+
+  /* Hover-lift, gated to fine-pointer devices so touch taps don't false-trigger. */
+  .hover-lift {
+    transition: transform 0.22s var(--ease-out), box-shadow 0.22s var(--ease-out);
+    will-change: transform;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .hover-lift:hover { transform: translateY(-4px); }
+  }
+
+  /* Tactile press feedback for any pressable element (Emil: buttons must listen). */
+  .press {
+    transition: transform 0.14s var(--ease-out);
+  }
+  .press:active {
+    transform: scale(0.97);
   }
 }
 
@@ -71,12 +159,28 @@
   float: left;
   height: 0;
 }
+.rich-text h1 {
+  font-family: "Manrope", system-ui, sans-serif;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 30px;
+  margin: 0.6em 0 0.25em;
+  color: #191c1d;
+}
 .rich-text h2 {
   font-family: "Manrope", system-ui, sans-serif;
   font-size: 18px;
   font-weight: 700;
   line-height: 26px;
   margin: 0.6em 0 0.2em;
+  color: #191c1d;
+}
+.rich-text h4 {
+  font-family: "Manrope", system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  margin: 0.5em 0 0.2em;
   color: #191c1d;
 }
 .rich-text h3 {

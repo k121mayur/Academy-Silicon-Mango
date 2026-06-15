@@ -58,13 +58,16 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] grid place-items-center px-4 py-10">
-      <div className="w-full max-w-md">
+    <div className="relative min-h-[calc(100vh-4rem)] grid place-items-center px-4 py-10 isolate overflow-hidden">
+      <div className="absolute inset-0 bg-mango-aurora pointer-events-none -z-10" />
+      <div className="absolute inset-0 grid-pattern opacity-30 pointer-events-none -z-10" />
+      <div className="w-full max-w-md animate-slide-up">
         <div className="text-center mb-6">
+          <img src="/Logo1.png" alt="Silicon Mango" width={48} height={48} className="w-12 h-12 object-contain mx-auto mb-3" />
           <h1 className="font-display font-bold text-display-md text-ink mb-1">Welcome back</h1>
           <p className="text-body-sm text-ink-variant">Sign in to continue your learning journey</p>
         </div>
-        <Card className="p-7">
+        <Card className="p-7 shadow-modal">
           {errorMsg && (
             <div className="mb-4 p-3 rounded-lg bg-danger-container border border-danger/20 text-body-sm text-danger flex gap-2">
               <span className="icon text-[18px] mt-0.5">error</span>

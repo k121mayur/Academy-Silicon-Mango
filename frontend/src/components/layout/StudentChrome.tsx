@@ -74,7 +74,7 @@ export function StudentSidebar({ onNavigate }: { onNavigate?: () => void }) {
                       {({ isActive }) => (
                         <>
                           {isActive && !locked && (
-                            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 rounded-full bg-primary" />
+                            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 rounded-full bg-primary-fill" />
                           )}
                           <span className="icon text-[20px]">{item.icon}</span>
                           <span className="flex-1">{item.label}</span>

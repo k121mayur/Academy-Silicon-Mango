@@ -121,7 +121,15 @@ export function FileUpload({ value, onChange, accept = "image/*", hint, label, p
           </button>
         )}
       </div>
-      <input ref={inputRef} type="file" accept={accept} onChange={handleChange} className="hidden" />
+      {/* A wildcard accept means "all files" — omit the attribute entirely so the
+          OS file dialog defaults to All Files instead of one filtered type. */}
+      <input
+        ref={inputRef}
+        type="file"
+        accept={accept === "*" || accept === "*/*" ? undefined : accept}
+        onChange={handleChange}
+        className="hidden"
+      />
     </div>
   );
 }
