@@ -40,6 +40,13 @@ export interface PublicCourseDetail {
   certification_criteria: any[];
   syllabus_pdf_url: string | null;
   instructors: PublicInstructor[];
+  certificate_template: PublicCertificateTemplate | null;
+}
+
+export interface PublicCertificateTemplate {
+  template_url: string;
+  template_type: "pdf" | "image";
+  field_config: any;
 }
 
 export interface PublicScheduleSlot {
@@ -61,6 +68,8 @@ export interface PublicBatch {
   enrolled_count: number;
   seats_left: number | null;
   is_full: boolean;
+  enrollment_open: boolean;
+  enrollment_closes_on: string | null;
   instructor_name: string | null;
   schedule_slots: PublicScheduleSlot[];
 }

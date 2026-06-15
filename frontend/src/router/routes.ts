@@ -33,7 +33,6 @@ export const ROUTES = {
     profile: "/portal/profile",
     explore: "/portal/explore",
     courseDetails: (id: string) => `/portal/explore/${id}`,
-    batchSelect: (id: string) => `/portal/explore/${id}/batches`,
     myCourses: "/portal/my-courses",
     batchWorkspace: (id: string) => `/portal/my-courses/${id}`,
     selfPaced: (id: string) => `/portal/courses/${id}`,

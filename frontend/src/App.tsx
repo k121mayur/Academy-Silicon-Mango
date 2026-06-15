@@ -48,7 +48,6 @@ const WebinarDetailAdmin = lazy(() => import("@/pages/admin/WebinarDetailAdmin")
 const StudentProfile = lazy(() => import("@/pages/student/Profile"));
 const ExploreCatalogue = lazy(() => import("@/pages/student/explore/ExploreCatalogue"));
 const CourseDetails = lazy(() => import("@/pages/student/explore/CourseDetails"));
-const BatchSelection = lazy(() => import("@/pages/student/explore/BatchSelection"));
 const MyCourses = lazy(() => import("@/pages/student/MyCourses"));
 const BatchWorkspace = lazy(() => import("@/pages/student/BatchWorkspace"));
 const SelfPacedCourse = lazy(() => import("@/pages/student/SelfPacedCourse"));
@@ -133,7 +132,6 @@ export default function App() {
             <Route path="profile" element={<StudentProfile />} />
             <Route path="explore" element={<ExploreCatalogue />} />
             <Route path="explore/:courseId" element={<CourseDetails />} />
-            <Route path="explore/:courseId/batches" element={<BatchSelection />} />
             <Route path="my-courses" element={<MyCourses />} />
             <Route path="my-courses/:batchId" element={<BatchWorkspace />} />
             <Route path="dashboard" element={<Navigate to="/portal/my-courses" replace />} />
