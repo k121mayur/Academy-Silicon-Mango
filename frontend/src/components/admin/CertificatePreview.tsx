@@ -40,7 +40,9 @@ interface Props {
   courseTitle: string;
   dateStr: string;
   qrUrl: string;
-  onChange: (next: CertificateFieldConfig) => void;
+  onChange?: (next: CertificateFieldConfig) => void;
+  /** When true, the preview is display-only: no dragging, no edit affordances. */
+  readOnly?: boolean;
 }
 
 const MAX_DISPLAY_WIDTH = 900;
@@ -54,6 +56,7 @@ export function CertificatePreview({
   dateStr,
   qrUrl,
   onChange,
+  readOnly = false,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
@@ -135,7 +138,7 @@ export function CertificatePreview({
   } | null>(null);
 
   const onPointerDown = (field: FieldKey) => (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (!natural) return;
+    if (!natural || readOnly) return;
     e.preventDefault();
     e.stopPropagation();
     (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
@@ -158,7 +161,7 @@ export function CertificatePreview({
     const nextY = clamp(Math.round(s.startNatY + dy), 0, natural.h);
     const current = fieldConfig[s.field];
     const updated = { ...current, x: nextX, y: nextY };
-    onChange({ ...fieldConfig, [s.field]: updated });
+    onChange?.({ ...fieldConfig, [s.field]: updated });
   };
 
   const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -185,7 +188,7 @@ export function CertificatePreview({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
-        className="absolute select-none whitespace-nowrap cursor-move"
+        className={`absolute select-none whitespace-nowrap ${readOnly ? "" : "cursor-move"}`}
         style={{
           left: cfg.x * scale,
           top: cfg.y * scale,
@@ -197,10 +200,10 @@ export function CertificatePreview({
           touchAction: "none",
           textShadow: "0 0 2px rgba(255,255,255,0.5)",
         }}
-        title={`Drag ${field} (x=${cfg.x}, y=${cfg.y})`}
+        title={readOnly ? undefined : `Drag ${field} (x=${cfg.x}, y=${cfg.y})`}
       >
-        <span className="ring-1 ring-primary/30 hover:ring-primary px-1 rounded-sm">
-          {value || `[${field}]`}
+        <span className={readOnly ? "" : "ring-1 ring-primary/30 hover:ring-primary px-1 rounded-sm"}>
+          {value || (readOnly ? "" : `[${field}]`)}
         </span>
       </div>
     );
@@ -216,7 +219,7 @@ export function CertificatePreview({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
-        className="absolute cursor-move ring-1 ring-primary/30 hover:ring-primary"
+        className={`absolute ${readOnly ? "" : "cursor-move ring-1 ring-primary/30 hover:ring-primary"}`}
         style={{
           left: cfg.x * scale,
           top: cfg.y * scale,
@@ -227,7 +230,7 @@ export function CertificatePreview({
           background: "white",
           padding: 2,
         }}
-        title={`Drag QR (x=${cfg.x}, y=${cfg.y})`}
+        title={readOnly ? undefined : `Drag QR (x=${cfg.x}, y=${cfg.y})`}
       >
         <QRCodeSVG value={qrUrl} size={size - 4} marginSize={0} />
       </div>
@@ -276,7 +279,7 @@ export function CertificatePreview({
           )}
         </div>
       )}
-      {natural && (
+      {natural && !readOnly && (
         <p className="mt-2 text-label text-ink-outline">
           Natural size: {natural.w} × {natural.h}px · Preview scale: {(scale * 100).toFixed(0)}%
           · Drag the labels to reposition them.

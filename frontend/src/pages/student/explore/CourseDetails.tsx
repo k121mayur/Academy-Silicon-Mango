@@ -1,13 +1,21 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import toast from "react-hot-toast";
 
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { Modal } from "@/components/ui/Modal";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { RichTextView } from "@/components/shared/RichTextView";
 import { QueryErrorState } from "@/components/student/QueryErrorState";
+import { PaymentModal } from "@/components/student/PaymentModal";
+import { BatchPicker, isBatchSelectable } from "@/components/catalog/BatchPicker";
+import {
+  CertificatePreview,
+  type CertificateFieldConfig,
+} from "@/components/admin/CertificatePreview";
 import { useAuthStore } from "@/features/auth/stores/authStore";
 import { formatCurrency } from "@/lib/utils";
 import { absoluteApiUrl } from "@/lib/api";
@@ -21,7 +29,7 @@ import {
   type PublicCourseDetail,
 } from "@/services/public.service";
 
-type Tab = "overview" | "syllabus" | "faqs" | "certificate";
+type Tab = "overview" | "syllabus" | "batches" | "certificate" | "faqs";
 
 export default function CourseDetails() {
   const { courseId = "" } = useParams();
@@ -56,14 +64,11 @@ export default function CourseDetails() {
 
   const isStudent = user?.role === "student";
 
-  // Enrolment requires a student account. Logged-out visitors are prompted to
-  // sign in or sign up; signed-in students go straight to batch selection.
+  // "Enroll now" reveals the inline batch picker for everyone. The picker's own
+  // "Continue to payment" button enforces the auth + profile gates, so logged-out
+  // visitors can still browse the available batches before being asked to sign in.
   const goEnroll = () => {
-    if (isStudent) {
-      navigate(ROUTES.student.batchSelect(course.id));
-    } else {
-      setAuthPrompt(true);
-    }
+    setTab("batches");
   };
 
   return (
@@ -133,12 +138,13 @@ export default function CourseDetails() {
             {[
               { id: "overview" as const, label: "Overview", icon: "info" },
               { id: "syllabus" as const, label: `Syllabus (${course.syllabus_items?.length || 0})`, icon: "list_alt" },
-              { id: "faqs" as const, label: `FAQs (${course.faqs?.length || 0})`, icon: "help_outline" },
+              { id: "batches" as const, label: "Batches", icon: "groups" },
               {
                 id: "certificate" as const,
                 label: `Certificate (${course.certification_criteria?.length || 0})`,
                 icon: "workspace_premium",
               },
+              { id: "faqs" as const, label: `FAQs (${course.faqs?.length || 0})`, icon: "help_outline" },
             ].map((t) => (
               <button
                 key={t.id}
@@ -156,8 +162,17 @@ export default function CourseDetails() {
           <div className="animate-fade-in">
             {tab === "overview" && <OverviewTab course={course} />}
             {tab === "syllabus" && <SyllabusTab course={course} />}
-            {tab === "faqs" && <FaqsTab course={course} />}
+            {tab === "batches" && (
+              <BatchesTab
+                course={course}
+                courseId={courseId}
+                payable={payable}
+                isStudent={isStudent}
+                onRequireAuth={() => setAuthPrompt(true)}
+              />
+            )}
             {tab === "certificate" && <CertificateTab course={course} />}
+            {tab === "faqs" && <FaqsTab course={course} />}
           </div>
         </div>
 
@@ -308,26 +323,179 @@ function FaqsTab({ course }: { course: PublicCourseDetail }) {
 }
 
 function CertificateTab({ course }: { course: PublicCourseDetail }) {
+  const { user } = useAuthStore();
   const criteria = (course.certification_criteria || []).slice().sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
+  const tmpl = course.certificate_template;
+
+  const previewName = user?.display_name?.trim() || "Your Name";
+
   return (
-    <div className="space-y-3">
-      <p className="text-body-sm text-ink-variant">
-        Meet the following criteria to earn your certificate of completion:
-      </p>
-      {criteria.length === 0 ? (
-        <p className="text-body-sm text-ink-outline">No criteria added yet.</p>
-      ) : (
-        <ul className="space-y-2">
-          {criteria.map((c: any, i: number) => (
-            <li
-              key={i}
-              className="flex items-start gap-3 p-3 bg-surface-containerLow rounded-lg border border-ink-outlineVariant/40"
-            >
-              <span className="icon text-success mt-0.5">check_circle</span>
-              <span className="text-body-sm text-ink">{c.text}</span>
-            </li>
+    <div className="space-y-5">
+      {tmpl ? (
+        <section className="space-y-2">
+          <h3 className="text-title-md font-semibold text-ink">Your certificate</h3>
+          <p className="text-body-sm text-ink-variant">
+            This is the certificate you'll earn on completing the course. Your name and the
+            completion date are filled in automatically when it's issued.
+          </p>
+          <div className="rounded-2xl border border-ink-outlineVariant/40 bg-surface-containerLow p-3 overflow-hidden">
+            <CertificatePreview
+              readOnly
+              templateUrl={tmpl.template_url}
+              templateType={tmpl.template_type}
+              fieldConfig={mergeCertConfig(tmpl.field_config)}
+              studentName={previewName}
+              courseTitle={course.title}
+              dateStr="On completion"
+              qrUrl={`${window.location.origin}/verify/sample-preview`}
+            />
+          </div>
+        </section>
+      ) : null}
+
+      <section className="space-y-3">
+        <p className="text-body-sm text-ink-variant">
+          Meet the following criteria to earn your certificate of completion:
+        </p>
+        {criteria.length === 0 ? (
+          <p className="text-body-sm text-ink-outline">No criteria added yet.</p>
+        ) : (
+          <ul className="space-y-2">
+            {criteria.map((c: any, i: number) => (
+              <li
+                key={i}
+                className="flex items-start gap-3 p-3 bg-surface-containerLow rounded-lg border border-ink-outlineVariant/40"
+              >
+                <span className="icon text-success mt-0.5">check_circle</span>
+                <span className="text-body-sm text-ink">{c.text}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+
+const DEFAULT_CERT_CONFIG: CertificateFieldConfig = {
+  name: { x: 400, y: 320, font_size: 28, font_color: "#000000", align: "center" },
+  course: { x: 400, y: 380, font_size: 20, font_color: "#000000", align: "center" },
+  date: { x: 400, y: 460, font_size: 14, font_color: "#000000", align: "center" },
+  qr: { x: 800, y: 600, size: 100 },
+};
+
+/** Merge a saved (possibly partial) field_config over the defaults so the preview
+ *  always has a complete config — mirrors the admin builder's merge behaviour. */
+function mergeCertConfig(override: any): CertificateFieldConfig {
+  const o = override ?? {};
+  return {
+    name: { ...DEFAULT_CERT_CONFIG.name, ...(o.name ?? {}) },
+    course: { ...DEFAULT_CERT_CONFIG.course, ...(o.course ?? {}) },
+    date: { ...DEFAULT_CERT_CONFIG.date, ...(o.date ?? {}) },
+    qr: { ...DEFAULT_CERT_CONFIG.qr, ...(o.qr ?? {}) },
+  };
+}
+
+function BatchesTab({
+  course,
+  courseId,
+  payable,
+  isStudent,
+  onRequireAuth,
+}: {
+  course: PublicCourseDetail;
+  courseId: string;
+  payable: number;
+  isStudent: boolean;
+  onRequireAuth: () => void;
+}) {
+  const profileComplete = useAuthStore((s) => s.user?.profile_complete ?? false);
+  const [selected, setSelected] = useState<string>("");
+  const [payOpen, setPayOpen] = useState(false);
+
+  const batchesQ = useQuery({
+    queryKey: qk.public.courseBatches(courseId),
+    queryFn: () => getPublicCourseBatches(courseId),
+    enabled: !!courseId,
+  });
+
+  const batches = batchesQ.data ?? [];
+  const selectedBatch = batches.find((b) => b.id === selected);
+
+  const onContinue = () => {
+    if (!selected) {
+      toast.error("Select a batch to continue.");
+      return;
+    }
+    if (!isStudent) {
+      onRequireAuth();
+      return;
+    }
+    if (!profileComplete) {
+      toast("Complete your profile first.", { icon: "🔒" });
+      return;
+    }
+    setPayOpen(true);
+  };
+
+  if (batchesQ.isError) {
+    return (
+      <QueryErrorState error={batchesQ.error} onRetry={() => batchesQ.refetch()} title="Couldn't load batches" />
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-title-md font-semibold text-ink">Choose your batch</h3>
+        <p className="text-body-sm text-ink-variant">
+          Pick the schedule that works for you, then continue to secure payment.
+        </p>
+      </div>
+
+      {batchesQ.isLoading ? (
+        <div className="space-y-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-24 bg-surface-container rounded-2xl animate-pulse" />
           ))}
-        </ul>
+        </div>
+      ) : batches.length === 0 ? (
+        <EmptyState
+          icon="event_busy"
+          title="No open batches yet"
+          description="This course doesn't have any batches open for enrolment right now. Check back soon."
+        />
+      ) : (
+        <>
+          <BatchPicker batches={batches} selected={selected} onSelect={setSelected} />
+          <div className="sticky bottom-4 flex items-center justify-between gap-3 bg-surface-lowest/90 backdrop-blur border border-ink-outlineVariant/40 rounded-2xl shadow-card p-3">
+            <div className="px-2">
+              <p className="text-label text-ink-outline">Total payable</p>
+              <p className="font-display font-bold text-title-lg text-primary">
+                {payable === 0 ? "Free" : formatCurrency(payable)}
+              </p>
+            </div>
+            <Button
+              size="lg"
+              rightIcon="arrow_forward"
+              disabled={!selected || (selectedBatch ? !isBatchSelectable(selectedBatch) : false)}
+              onClick={onContinue}
+            >
+              Continue to payment
+            </Button>
+          </div>
+        </>
+      )}
+
+      {selectedBatch && (
+        <PaymentModal
+          open={payOpen}
+          onClose={() => setPayOpen(false)}
+          courseId={courseId}
+          courseTitle={course.title}
+          batch={selectedBatch}
+          payable={payable}
+        />
       )}
     </div>
   );
