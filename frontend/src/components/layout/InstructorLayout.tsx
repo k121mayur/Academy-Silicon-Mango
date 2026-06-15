@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { InstructorSidebar, InstructorTopBar } from "./InstructorChrome";
+import { RouteFallback } from "./RouteFallback";
 
 export default function InstructorLayout() {
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -20,7 +21,9 @@ export default function InstructorLayout() {
       <div className="flex-1 min-w-0 flex flex-col">
         <InstructorTopBar onMenuClick={() => setDrawerOpen(true)} />
         <main className="flex-1 p-4 md:p-6 lg:p-8">
-          <Outlet />
+          <Suspense fallback={<RouteFallback />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>

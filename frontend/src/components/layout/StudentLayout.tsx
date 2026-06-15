@@ -3,18 +3,7 @@ import { Outlet } from "react-router-dom";
 import { StudentSidebar, StudentTopBar } from "./StudentChrome";
 import { StudentErrorBoundary } from "@/components/student/StudentErrorBoundary";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { Spinner } from "@/components/ui/Spinner";
-
-function RouteFallback() {
-  return (
-    <div className="min-h-[50vh] grid place-items-center">
-      <div className="flex flex-col items-center gap-3 text-ink-outline">
-        <Spinner size={28} className="text-primary" />
-        <p className="text-body-sm">Loading…</p>
-      </div>
-    </div>
-  );
-}
+import { RouteFallback } from "./RouteFallback";
 
 export default function StudentLayout() {
   const [drawerOpen, setDrawerOpen] = useState(false);
