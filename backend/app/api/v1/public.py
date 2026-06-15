@@ -12,12 +12,13 @@ from app.db.session import get_db
 from app.models.batch import Batch, BatchScheduleSlot, BatchStatus, Enrollment, EnrollmentStatus
 from app.models.course import Course, CourseInstructor
 from app.models.user import InstructorProfile, StudentProfile, User, UserRole
-from app.models.certificate import Certificate
+from app.models.certificate import Certificate, CertificateTemplate
+from app.services.payment_service import enrollment_window_end, is_enrollment_open
 
 router = APIRouter(prefix="/public", tags=["public"])
 
 
-def _course_detail_dict(c: Course, instructors: list[dict]) -> dict:
+def _course_detail_dict(c: Course, instructors: list[dict], certificate_template: Optional[dict]) -> dict:
     return {
         "id": str(c.id),
         "title": c.title,
@@ -36,6 +37,7 @@ def _course_detail_dict(c: Course, instructors: list[dict]) -> dict:
         "certification_criteria": c.certification_criteria or [],
         "syllabus_pdf_url": c.syllabus_pdf_url,
         "instructors": instructors,
+        "certificate_template": certificate_template,
     }
 
 
@@ -152,7 +154,22 @@ async def public_course_detail(id_or_slug: str, db: AsyncSession = Depends(get_d
                 {"display_name": p.display_name, "avatar_url": p.avatar_url, "bio": p.bio}
             )
 
-    return {"success": True, "data": _course_detail_dict(course, instructors)}
+    # Certificate template (so students can see what they'll earn). Only the saved
+    # background + field positions are exposed — never any issued certificate.
+    tmpl = (
+        await db.execute(
+            select(CertificateTemplate).where(CertificateTemplate.course_id == course.id)
+        )
+    ).scalar_one_or_none()
+    certificate_template = None
+    if tmpl and tmpl.template_url:
+        certificate_template = {
+            "template_url": tmpl.template_url,
+            "template_type": "pdf" if tmpl.template_url.lower().endswith(".pdf") else "image",
+            "field_config": tmpl.field_config or {},
+        }
+
+    return {"success": True, "data": _course_detail_dict(course, instructors, certificate_template)}
 
 
 @router.get("/courses/{course_id}/batches")
@@ -217,6 +234,7 @@ async def public_course_batches(course_id: str, db: AsyncSession = Depends(get_d
         enrolled = enrolled_by_batch.get(b.id, 0)
         seats_left = (b.capacity - enrolled) if b.capacity is not None else None
         is_full = seats_left is not None and seats_left <= 0
+        enrollment_open = is_enrollment_open(course, b)
         items.append(
             {
                 "id": str(b.id),
@@ -229,6 +247,8 @@ async def public_course_batches(course_id: str, db: AsyncSession = Depends(get_d
                 "enrolled_count": enrolled,
                 "seats_left": seats_left,
                 "is_full": is_full,
+                "enrollment_open": enrollment_open,
+                "enrollment_closes_on": enrollment_window_end(course, b).isoformat(),
                 "instructor_name": instructor_names.get(b.instructor_id),
                 "schedule_slots": slots_by_batch.get(b.id, []),
             }

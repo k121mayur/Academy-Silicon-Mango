@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Optional
 
@@ -10,9 +11,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.exceptions import APIError
 from app.models.batch import Batch, Enrollment, EnrollmentStatus
-from app.models.course import Course
+from app.models.course import Course, DurationUnit
 from app.models.payment import Payment, PaymentSettings, PaymentStatus
 from app.models.user import User
+
+
+# ---- late-enrollment window (shared by the public endpoint and the self-enroll guard) ----
+
+# How long after a batch starts students may still enroll, by course duration unit.
+# Weeks-based courses stay open through their first week; days-based courses a couple of days.
+LATE_ENROLL_GRACE_DAYS = {DurationUnit.weeks: 7, DurationUnit.days: 2}
+
+
+def enrollment_window_end(course: Course, batch: Batch) -> date:
+    """Last day (inclusive) a student may self-enroll in this batch."""
+    grace = LATE_ENROLL_GRACE_DAYS.get(course.duration_unit, 7)
+    return batch.start_date + timedelta(days=grace)
+
+
+def is_enrollment_open(course: Course, batch: Batch) -> bool:
+    """Upcoming batches are always open; once started, the grace window applies."""
+    return date.today() <= enrollment_window_end(course, batch)
 
 
 # ---- enrollment / capacity helpers (shared by admin-enroll and self-enroll) ----
@@ -65,6 +84,12 @@ async def assert_enrollable(db: AsyncSession, batch: Batch, student: User) -> De
         if cnt >= batch.capacity:
             raise APIError(code="BATCH_FULL", message="This batch is full", status_code=409)
     course = await db.get(Course, batch.course_id)
+    if course and not is_enrollment_open(course, batch):
+        raise APIError(
+            code="ENROLL_CLOSED",
+            message="Enrollment for this batch has closed.",
+            status_code=409,
+        )
     return payable_amount(course)
 
 
