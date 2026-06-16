@@ -137,14 +137,14 @@ export default function CourseDetails() {
           <div className="border-b border-ink-outlineVariant/30 flex gap-1 overflow-x-auto scrollbar-thin">
             {[
               { id: "overview" as const, label: "Overview", icon: "info" },
-              { id: "syllabus" as const, label: `Syllabus (${course.syllabus_items?.length || 0})`, icon: "list_alt" },
+              { id: "syllabus" as const, label: "Syllabus", icon: "list_alt" },
               { id: "batches" as const, label: "Batches", icon: "groups" },
               {
                 id: "certificate" as const,
-                label: `Certificate (${course.certification_criteria?.length || 0})`,
+                label: "Certificate",
                 icon: "workspace_premium",
               },
-              { id: "faqs" as const, label: `FAQs (${course.faqs?.length || 0})`, icon: "help_outline" },
+              { id: "faqs" as const, label: "FAQs", icon: "help_outline" },
             ].map((t) => (
               <button
                 key={t.id}

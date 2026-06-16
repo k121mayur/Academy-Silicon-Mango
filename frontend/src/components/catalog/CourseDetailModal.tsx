@@ -159,9 +159,9 @@ export function CourseDetailModal({ courseId, onClose, onEdit, onTogglePublish }
           <div className="px-5 md:px-8 border-b border-ink-outlineVariant/30 flex gap-1 overflow-x-auto scrollbar-thin flex-shrink-0">
             {[
               { id: "overview" as const, label: "Overview", icon: "info" },
-              { id: "syllabus" as const, label: `Syllabus (${totalSyllabus})`, icon: "list_alt" },
-              { id: "faqs" as const, label: `FAQs (${totalFaqs})`, icon: "help_outline" },
-              { id: "certificate" as const, label: `Certificate (${totalCriteria})`, icon: "workspace_premium" },
+              { id: "syllabus" as const, label: "Syllabus", icon: "list_alt" },
+              { id: "faqs" as const, label: "FAQs", icon: "help_outline" },
+              { id: "certificate" as const, label: "Certificate", icon: "workspace_premium" },
             ].map((t) => (
               <button
                 key={t.id}
