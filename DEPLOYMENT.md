@@ -131,6 +131,16 @@ Oracle Ubuntu images ship with iptables rules — allow 80/443 there too if pres
 
 ## 5. Deploy
 
+> **First deployment on a server that ALREADY has data** (you've been running an
+> older version): run the one-time volume adoption step **before** anything else,
+> so your existing database is moved under the new protected volume name and is
+> never orphaned. It is safe and idempotent:
+> ```bash
+> bash scripts/adopt-volumes.sh
+> ```
+> On a brand-new server with no data yet, this just creates empty protected
+> volumes — also safe. (Details in §11 Persistence.)
+
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
@@ -139,11 +149,27 @@ What happens: the `migrate` service runs database migrations once and exits, the
 Postgres, Redis, the 3-worker API, the Celery worker/beat, and the nginx front
 door start. `restart: unless-stopped` keeps them up across reboots/crashes.
 
-To update later:
+To update later, use the **deploy script** — it is the one safe, canonical path.
+It backs up the database first, pulls fast-forward only, rebuilds, and can never
+delete a data volume:
 ```bash
-git pull
+bash scripts/deploy.sh
+```
+
+<details><summary>What the old manual sequence was — and why we replaced it</summary>
+
+The old `docker compose down && git pull && docker compose up --build` is risky:
+run from a different folder (or by the CI runner, whose working directory differs)
+it used a different Compose **project name**, which silently bound the database
+container to a *different, empty* volume — the data appeared wiped. The deploy
+script and the pinned project name (see §11) remove that footgun entirely. If you
+ever must do it by hand, the equivalent safe form is:
+```bash
+git pull --ff-only
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
+Never add `-v` to a `down` here — that flag is what deletes volumes.
+</details>
 
 ---
 
@@ -219,9 +245,17 @@ git log --oneline -5
 git checkout <previous-commit>
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
-Data is safe: Postgres lives in the `pgdata` volume, videos/uploads in
+Data is safe: Postgres lives in the `sm_pgdata` volume, videos/uploads in
 `backend/media` and `backend/uploads`, and the Celery queue survives restarts
 (Redis AOF + acks-late). Rolling back only changes code/config.
+
+If a deploy corrupted *data* (not just code), restore the last good database
+snapshot — `restore.sh` takes a safety backup of the current state first, then
+asks you to type `RESTORE` to confirm:
+```bash
+bash scripts/restore.sh                  # newest backup in ./backups
+bash scripts/restore.sh backups/silicon_mango_YYYYmmdd_HHMMSS.dump   # a specific one
+```
 
 ---
 
@@ -231,6 +265,76 @@ Oracle's Always-Free tier also offers an **Ampere A1 shape with up to 4 cores /
 24 GB**. Move there first (just bigger `mem_limit`/`cpus` and `GUNICORN_WORKERS`).
 Beyond that, split into two VMs behind Oracle's Load Balancer with a shared
 managed Postgres — but at 50–70 users you are far from needing that.
+
+---
+
+## 11. Persistence — why your data NEVER disappears across redeploys
+
+This is the contract: **deploying a new version preserves every account, course,
+upload, payment record and certificate from the previous version.** Here is exactly
+how that is guaranteed, and the one rule you must follow.
+
+### Where each kind of data lives
+
+| Data | Storage | Survives `down` | Survives `down -v` / prune |
+|---|---|---|---|
+| Postgres (accounts, courses, payments, …) | named volume **`sm_pgdata`** (external) | ✅ | ✅ refused by Compose |
+| Redis (Celery queue, OTP cache) | named volume **`sm_redisdata`** (external) | ✅ | ✅ refused by Compose |
+| Encoded videos / HLS | bind mount `./backend/media` (real disk) | ✅ | ✅ |
+| Uploads (banners, PDFs, certs) | bind mount `./backend/uploads` (real disk) | ✅ | ✅ |
+
+### The two protections that make this bulletproof
+
+1. **Pinned project name** (`name: silicon-mango` in `docker-compose.yml`).
+   Docker names volumes `<project>_<volume>`, and the project name *defaults to the
+   folder you run from*. Before this fix, you (folder `silicon-mango`) and the CI
+   runner (folder `Academy-Silicon-Mango`) produced **different** volume names for
+   the same `sm_postgres` container — so a deploy from the "other" location bound
+   the DB to an empty volume and the data looked wiped. Pinning the name makes the
+   volume address identical for everyone, on every machine, forever.
+
+2. **External, fixed-name volumes** (`sm_pgdata`, `sm_redisdata`).
+   Declared `external: true`, so Compose **never deletes them** — not even
+   `docker compose down -v`, `docker compose rm -v`, or `docker volume prune`
+   (those only remove volumes Compose itself created). If a volume is somehow
+   missing, `up` **fails loudly** instead of silently starting on an empty
+   database. You can't lose the data by fat-fingering a flag.
+
+### The one rule
+
+**Never rename `name:` in `docker-compose.yml` or the `name:` under `volumes:` on a
+live server.** Those strings ARE the address of your data. Changing them points the
+app at a different (empty) volume. Everything else — `down`, `up`, `--build`,
+`git pull`, rebuilding images, rebooting the VM — is safe and preserves data.
+
+### One-time adoption (existing servers)
+
+A server that ran an older version already has data in an old volume name. Move it
+under the protected name **once**, before the first new-version deploy:
+```bash
+bash scripts/adopt-volumes.sh
+```
+It auto-detects the volume currently holding your data, copies it into `sm_pgdata`
+/ `sm_redisdata`, and **leaves the old volume untouched** as a backup. Idempotent:
+re-running it once data is in place does nothing. (If you have several old
+candidate volumes it will stop and ask you to pin the source —
+`SOURCE_PGDATA=<name> bash scripts/adopt-volumes.sh`.)
+
+### Backups (defense in depth)
+
+Volumes protect against accidental deletion; backups protect against corruption,
+a bad migration, or "I deleted the wrong row." Take one anytime:
+```bash
+bash scripts/backup.sh        # writes a compressed dump to ./backups, keeps newest 14
+```
+`scripts/deploy.sh` runs this automatically before every deploy. Schedule a daily
+backup with cron on the VM:
+```bash
+0 2 * * *  cd /path/to/silicon-mango && bash scripts/backup.sh >> backups/backup.log 2>&1
+```
+Backups live in `./backups` (gitignored). For true disaster resilience, copy that
+folder off-box periodically (e.g. `rsync`/object storage) — a backup on the same
+disk doesn't survive losing the disk.
 
 ---
 

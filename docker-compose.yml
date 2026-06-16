@@ -13,6 +13,15 @@
 #  not reservations. Guaranteed reservations total ~1 GB.
 # ============================================================
 
+# Pin the Compose PROJECT NAME so it never depends on the directory you run from.
+# Docker prefixes every default volume/network with the project name; if that name
+# changes (e.g. you `git pull` into a folder called "Academy-Silicon-Mango" but a
+# colleague runs from "silicon-mango", or the CI runner uses its own work dir),
+# the SAME `sm_postgres` container comes back bound to a DIFFERENT, EMPTY volume and
+# your data appears wiped. Pinning the name makes the data volume address stable for
+# everyone, on every machine, forever. DO NOT change this value on a live server.
+name: silicon-mango
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -303,8 +312,22 @@ services:
       - sm_network
 
 volumes:
+  # ── PERSISTENT DATA — protected by design ──────────────────────────────────
+  # These are declared `external: true` with a FIXED name. Two consequences, both
+  # intentional and both protecting your data:
+  #   1. `docker compose down -v`, `docker compose rm -v`, and `docker volume prune`
+  #      will NOT touch them — Compose only deletes volumes it created, never
+  #      external ones. The classic "I ran down -v and lost everything" can't happen.
+  #   2. Compose will NOT auto-create them. If the volume is missing, `up` fails with
+  #      a clear error instead of silently starting on an empty database. You create
+  #      it ONCE via scripts/adopt-volumes.sh (which also rescues data from any
+  #      old/mismatched volume name). See DEPLOYMENT.md §Persistence.
   pgdata:
+    external: true
+    name: sm_pgdata
   redisdata:
+    external: true
+    name: sm_redisdata
 
 networks:
   sm_network:

@@ -6,6 +6,10 @@ backend/uploads/
 # But keep the folder structure so the bind mount works after a fresh clone
 !backend/uploads/.gitkeep
 
+# Database backups produced by scripts/backup.sh (can be large; never commit data)
+backups/*
+!backups/.gitkeep
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
