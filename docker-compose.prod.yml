@@ -1,20 +1,43 @@
 # ============================================================
-#  Production overlay — apply ON TOP of docker-compose.yml on the Oracle VM:
+#  Production overlay — apply ON TOP of docker-compose.yml on the server:
 #
 #     docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 #
 #  Adds: public 80/443 on the nginx front door, TLS termination with a
-#  Cloudflare Origin certificate, and Cloudflare-only origin lock-down
-#  (Authenticated Origin Pulls + real client IP + shared-secret header).
+#  Cloudflare Origin certificate, Cloudflare-only origin lock-down (Authenticated
+#  Origin Pulls + real client IP + shared-secret header), and AMD Radeon GPU
+#  passthrough to the video-encoder worker.
 #
-#  Requires (see DEPLOYMENT.md):
+#  Requires (see DEPLOYER_GUIDE.md):
 #    - ./certs/origin.pem, ./certs/origin.key         (Cloudflare Origin CA cert)
 #    - ./certs/cloudflare-origin-pull-ca.pem          (downloaded from Cloudflare)
 #    - root .env: SERVER_NAME, SEGMENT_SIGNING_SECRET, ORIGIN_SHARED_SECRET
-#    - Oracle Security List: allow inbound 80 + 443 ONLY (everything else closed)
+#    - host firewall: allow inbound 80 + 443 ONLY (everything else closed)
+#    - AMD GPU: /dev/dri present on the host (the worker maps it for VAAPI encode)
 # ============================================================
 
 services:
+  # ─── Video encoder worker — gets the AMD Radeon GPU passed through ───────────
+  #  Only this service encodes (it owns the `encoding` queue), so only it needs
+  #  the GPU. The render node is mapped here, in the PROD overlay, on purpose:
+  #  the base docker-compose.yml is also used for local dev (e.g. Windows / Docker
+  #  Desktop) where /dev/dri does not exist — mapping it there would break `up`.
+  #
+  #  With the device present AND apt's VAAPI-enabled ffmpeg + mesa-va-drivers in
+  #  the image, select_encoder() picks h264_vaapi and the GPU does the work; if
+  #  the GPU encode ever fails at runtime, run_encode() still falls back to CPU
+  #  libx264, so a transient GPU hiccup can never drop a video.
+  worker:
+    devices:
+      # AMD Radeon render node. If `vainfo` (see DEPLOYER_GUIDE) shows the node at
+      # a different path than renderD128, change BOTH sides to match.
+      - /dev/dri:/dev/dri
+    environment:
+      # Force VAAPI in production so the GPU always does the work (runtime CPU
+      # fallback still protects against transient GPU failure). Set to "auto" to
+      # let the worker auto-detect, or "cpu" to disable the GPU entirely.
+      VIDEO_ENCODER: ${VIDEO_ENCODER:-vaapi}
+
   frontend:
     ports:
       - "80:80"

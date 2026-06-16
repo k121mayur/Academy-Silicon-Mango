@@ -1,7 +1,9 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+# BuildKit cache mount: npm's download cache persists across builds, so a
+# changed lockfile only re-fetches the diff instead of the whole tree.
+RUN --mount=type=cache,target=/root/.npm npm ci
 COPY . .
 # Cloudflare Turnstile site key is baked into the SPA at build time (Vite).
 # Empty by default → CAPTCHA widget is disabled (backend also skips verification).

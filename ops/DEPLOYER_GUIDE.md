@@ -1,129 +1,110 @@
 # Deployer Guide — Silicon Mango Academy
-### What to do before and during this deployment, and why each step matters
+### What to do before and during a deployment, and why each step matters
 
 ---
 
-## Read this first — what changed and why this matters
+## Read this first
 
-This deployment includes a **security hardening update**. The app now handles real student
-payments and real personal data, so several vulnerabilities were fixed before going to
-production.
+This app handles real student **payments** and **personal data**, so it has a few
+hard safety rails baked in. The two that affect you most:
 
-**The most important change:** the app will now **refuse to start** if any secret password
-or key is still set to its default "development" value. This is intentional. It means if you
-forget to set a strong password, the app will print a clear error and stop — instead of
-silently running with passwords that are publicly visible in the git repository.
+1. **The app refuses to start with weak secrets.** If any password or key is still
+   set to its known development default, the backend prints a clear `[BOOT][FATAL]`
+   line naming the variable and stops — instead of silently running with a password
+   that is publicly visible in the git repo. This is a feature, not a bug.
 
-Because of this, there are a few things that **must be done on the server before or during
-this deploy**, things that can't be done by editing code in the repo. This guide walks you
-through all of them step by step.
+2. **Your data lives in protected external volumes** (`sm_pgdata`, `sm_redisdata`).
+   `docker compose down -v` and `docker volume prune` cannot delete them, and the
+   scripted deploy path refuses any volume-deleting flag. You would have to remove
+   them by hand and by name to lose data.
 
----
-
-## Before you start: what you need
-
-- SSH access to the Oracle VM where the app is running
-- The root `.env` file on the VM (the one that lives next to `docker-compose.yml`)
-- The `backend/.env` file on the VM (inside the `backend/` folder)
-- About 15–20 minutes
+We run on **our own server** (not a cloud VM). All the commands below assume you are
+SSH'd into that server, in the repository root (the folder that contains
+`docker-compose.yml`).
 
 ---
 
-## Step 1 — Rotate the Postgres database password
-### (Do this FIRST, before pulling or redeploying anything)
+## What you need before you start
 
-**Why this step exists:** Postgres only reads the password from the environment **one time**
-— when the database volume is first created. After that, the volume already exists, and
-Postgres ignores the environment variable completely. It remembers the password internally.
+- SSH access to the server, with your user in the `docker` group (or use `sudo`).
+- The repository checked out on the server. All commands run from its root.
+- Two env files filled in with strong secrets (covered in Step 2):
+  - the **root** `.env` (next to `docker-compose.yml`)
+  - **`backend/.env`** (inside the `backend/` folder)
+- The three **Cloudflare Origin certificate** files in `./certs/` (Step 3).
+- For hardware video encoding: an **AMD Radeon GPU** on the host with `/dev/dri`
+  present (Step 4). If the box has no GPU, encoding still works on CPU — nothing
+  breaks, it's just slower.
+- Docker Engine 20.10+ / Docker Compose v2. (Build speed-ups below rely on BuildKit,
+  which Compose v2 enables automatically.)
+- About 15–20 minutes.
 
-What this means practically: if you change the `DB_PASSWORD` in `.env` and then redeploy,
-the backend will try to connect using the new password, but the database still has the old
-one. Every single request to the app will fail with a database connection error. The site
-goes down completely.
+---
 
-The correct way to rotate the database password is to tell the database directly — while it
-is still running — to change the password. Then update the `.env` to match. This way both
-sides agree.
+## Step 1 — Rotate the Postgres password (FIRST, before redeploying)
 
-**Do this now, while the old deployment is still running:**
+**Why this matters:** Postgres reads `POSTGRES_PASSWORD` from the environment **only
+once** — when its data volume is first created. After that it remembers the password
+internally and ignores the env var. So if you just change `DB_PASSWORD` in `.env` and
+redeploy, the backend connects with the *new* password while the database still
+expects the *old* one → every request fails with a connection error and the site goes
+down.
+
+The correct way is to change the password *inside the running database first*, then
+update `.env` to match. **Do this while the current deployment is still up:**
 
 ```bash
-# Replace YOUR_NEW_STRONG_PASSWORD with the actual new password you chose.
-# Use something long and random — e.g. generate it with:
-#   python3 -c "import secrets; print(secrets.token_hex(32))"
+# Pick a strong random password first:
+python3 -c "import secrets; print(secrets.token_hex(32))"
 
+# Then set it inside the live database (replace YOUR_NEW_STRONG_PASSWORD):
 docker exec -it sm_postgres psql -U sm_user -d silicon_mango \
   -c "ALTER USER sm_user WITH PASSWORD 'YOUR_NEW_STRONG_PASSWORD';"
 ```
 
-You should see `ALTER ROLE` printed. That means it worked.
-
-**Now immediately update the root `.env` file** on the server (the one next to
-`docker-compose.yml`) so `DB_PASSWORD` equals that same new password:
+You should see `ALTER ROLE`. Now update the **root `.env`** so `DB_PASSWORD` equals
+that exact same value:
 
 ```
 DB_PASSWORD=YOUR_NEW_STRONG_PASSWORD
 ```
 
-Keep this terminal open. Do not redeploy yet.
+> Skip this entire step on a **brand-new server** with no existing database — there is
+> no old password to reconcile. Just set `DB_PASSWORD` in `.env` (Step 2) before the
+> first `up`, and Postgres adopts it when it creates the volume.
 
 ---
 
-## Step 2 — Fill in all required secrets in both .env files
+## Step 2 — Fill in all required secrets
 
-The app now has a boot guard that checks for weak secrets at startup. If a secret is still
-set to its default development value, the app refuses to start and prints which variable
-needs to be changed.
-
-You need to set strong values for all of these before deploying.
-
-**Generate a strong random secret** (run this command as many times as you need, once per
-secret — each run gives a different value):
+Generate one strong value per secret (run as many times as needed):
 
 ```bash
 python3 -c "import secrets; print(secrets.token_hex(32))"
 ```
 
----
-
-### Root `.env` (the file next to `docker-compose.yml`)
-
-Open this file and make sure the following variables are set to strong values. If any of
-them look like the examples below, **change them — those are the weak defaults that are
-publicly visible in the code repository**:
+### Root `.env` (next to `docker-compose.yml`)
 
 | Variable | What it's for | Weak default to replace |
 |---|---|---|
 | `DB_PASSWORD` | Database password | `sm_secure_pass_2024` |
 | `REDIS_PASSWORD` | Redis cache/queue password | `sm_redis_pass_2024` |
-| `SEGMENT_SIGNING_SECRET` | Signs video segment URLs so students can't hotlink or share them | `dev_segment_secret_change_me` |
-| `SERVER_NAME` | Your domain name, e.g. `academy.siliconmango.in` | `_` |
+| `SEGMENT_SIGNING_SECRET` | Signs video-segment URLs so students can't hotlink/share them. **Must match `SECRET`/`SM_SEGMENT_SECRET` consumed by the frontend.** | `dev_segment_secret_change_me` |
+| `ORIGIN_SHARED_SECRET` | Shared header secret proving traffic came through Cloudflare (prod overlay). | (set a strong value) |
+| `SERVER_NAME` | Your domain, e.g. `academy.siliconmango.in` | `_` |
+| `VIDEO_ENCODER` | Optional. `vaapi` (default in prod) forces the AMD GPU; `auto` auto-detects; `cpu` disables GPU. Leave unset to use the prod default `vaapi`. | (optional) |
 
-**What to set them to:** use the random generator above. Copy the output and paste it as
-the value. Example of what the file should look like after:
-
-```env
-DB_PASSWORD=a3f9c2e7b1d4f6a8c0e2f4b6d8a0c2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2b4c6
-REDIS_PASSWORD=b4e8c2f6a0d4e8b2c6f0a4e8c2f6a0d4e8b2c6f0a4e8c2f6a0d4e8b2c6f0a4e8
-SEGMENT_SIGNING_SECRET=c5f9d3a7b1e5c9f3a7b1e5c9f3a7b1e5c9f3a7b1e5c9f3a7b1e5c9f3a7b1e5c9
-SERVER_NAME=academy.siliconmango.in
-```
-
----
-
-### `backend/.env` (inside the `backend/` folder)
-
-Open this file and set:
+### `backend/.env` (inside `backend/`)
 
 | Variable | What it's for | Weak default to replace |
 |---|---|---|
-| `SECRET_KEY` | Signs all login tokens. If someone knows this, they can forge an admin login without a password. | `change-me-in-production-this-is-a-dev-key-only` |
-| `MASTER_ADMIN_PASSWORD` | The password for the main admin account | `Admin@12345` |
-| `MASTER_ADMIN_EMAIL` | The email address for the main admin account | whatever the current value is — make sure it's the real admin email |
-| `ENVIRONMENT` | **Must be exactly `production`** — this enables Secure cookies, hides the API docs page, and arms the boot guard | `development` |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | How long a login session stays active. Setting this to `15` means if someone steals a token, it expires in 15 minutes instead of 24 hours. | (may not be set — add it) |
+| `SECRET_KEY` | Signs all login tokens. Leaked = forged admin logins. | `change-me-in-production-this-is-a-dev-key-only` |
+| `MASTER_ADMIN_PASSWORD` | Password for the main admin account | `Admin@12345` |
+| `MASTER_ADMIN_EMAIL` | Email for the main admin account | (set the real admin email) |
+| `ENVIRONMENT` | **Must be exactly `production`** — enables Secure cookies, hides API docs, arms the boot guard | `development` |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Login session lifetime. `15` limits the blast radius of a stolen token. | (add if missing) |
 
-Set it like this:
+Example `backend/.env` block:
 
 ```env
 SECRET_KEY=d6a0e4c8f2b6a0e4c8f2b6a0e4c8f2b6a0e4c8f2b6a0e4c8f2b6a0e4c8f2b6a0
@@ -137,17 +118,14 @@ ACCESS_TOKEN_EXPIRE_MINUTES=15
 
 ## Step 3 — Confirm the TLS certificates are in place
 
-The production nginx configuration requires three certificate files to exist on the server
-at `./certs/` (relative to the repository root). If these files are missing, nginx will
-fail to start and the entire site will be down.
-
-Run:
+The production nginx needs three files in `./certs/` (relative to the repo root).
+Missing files = nginx won't start = whole site down.
 
 ```bash
-ls /path/to/repo/certs/
+ls certs/
 ```
 
-You should see these three files:
+Expect exactly:
 
 ```
 cloudflare-origin-pull-ca.pem
@@ -155,148 +133,220 @@ origin.key
 origin.pem
 ```
 
-**If any of these are missing:** do not proceed with the deploy. Contact Siddh — these
-files need to be placed on the server before the new deployment will work. They are
-Cloudflare origin certificates and are never stored in the git repository (for security
-reasons).
+If any are missing, **stop** and contact Siddh. These are Cloudflare origin
+certificates and are intentionally never committed to git.
 
 ---
 
-## Step 4 — Deploy
+## Step 4 — Confirm the AMD GPU is visible (skip if the box has no GPU)
 
-Once steps 1–3 are done, run the standard deploy commands:
+Video encoding uses the **AMD Radeon GPU via VAAPI**. The encoder worker image ships
+Debian's VAAPI-enabled `ffmpeg` plus the Mesa `radeonsi` driver, and the prod overlay
+passes `/dev/dri` into the worker container.
+
+**On the host**, confirm the render node exists:
 
 ```bash
-docker-compose down
-git pull
-docker-compose up --build
+ls -l /dev/dri/
 ```
 
-Watch the terminal output. The backend will print boot messages. If any secret is still
-weak, you will see something like:
+You should see `renderD128` (and usually `card0`). If `/dev/dri` does not exist, the
+host has no usable GPU — that's fine, encoding will fall back to CPU automatically and
+nothing else changes. (If you want to *force* CPU, set `VIDEO_ENCODER=cpu` in the root
+`.env`.)
+
+> If your render node is at a different path (e.g. `renderD129`), edit the `worker`
+> `devices:` mapping in `docker-compose.prod.yml` to match on **both** sides.
+
+The actual in-container GPU check is in Step 6, after the stack is up.
+
+---
+
+## Step 5 — Deploy
+
+There is **one safe, scripted path**. It refuses volume-deleting flags, makes a
+pre-deploy database backup, pulls fast-forward only, rebuilds with both compose files
+and the pinned project name, and smoke-tests `/health`:
+
+```bash
+bash scripts/deploy.sh
+```
+
+- First deploy on a fresh server? `deploy.sh` auto-runs `scripts/adopt-volumes.sh` to
+  create the protected `sm_pgdata` / `sm_redisdata` volumes (and rescue data from any
+  old, differently-named volume if one exists).
+- Rebuild current code without pulling: `bash scripts/deploy.sh --no-pull`.
+
+If you ever need to run it manually, it is exactly:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+**Watch the output.** If a secret is still weak you'll see:
 
 ```
 [BOOT][FATAL] Refusing to start in production with insecure configuration:
   - SECRET_KEY is still the default development value
 ```
 
-If you see this: **the app did not start**. Go back to Step 2, fix the variable it names
-in the appropriate `.env` file, and re-run `docker-compose up --build`. The app is
-protecting you — it is not a bug.
+The app did **not** start. Fix the named variable in the right `.env` (Step 2) and
+re-run. The app is protecting you.
 
-If the boot succeeds, you will see the normal startup logs and the containers will come up.
+### About build time
+
+The build was tuned for speed **without trading away encode quality** — we kept
+Debian's VAAPI-enabled `ffmpeg` so the AMD GPU path and all codecs are unchanged.
+
+- Dropped `gcc` and `libpq-dev` — every Python dependency installs from a prebuilt
+  wheel (we use `asyncpg`, never `psycopg2`), so the compiler toolchain was dead weight.
+- `apt`, `pip`, and `npm` now use **BuildKit cache mounts**, so a rebuild reuses the
+  packages already downloaded on this machine instead of fetching them again.
+
+What to actually expect:
+
+- **First build on a clean machine: ~3 minutes.** Most of it is apt downloading
+  `ffmpeg` + the VAAPI driver once. Keeping hardware-encode quality means this download
+  can't be skipped on a cold machine — this is the deliberate trade-off.
+- **Every rebuild after that (the normal case for `deploy.sh`): a few seconds to under
+  a minute,** because the cache mounts mean apt/pip/npm re-download nothing unless you
+  actually change `requirements.txt` / `package*.json`.
+
+So the day-to-day redeploys your team runs are fast; only the very first build on a
+fresh box pays the one-time download cost. BuildKit is on by default under Compose v2;
+if you're on an old Docker that errors on `--mount=type=cache`, see Troubleshooting.
 
 ---
 
-## Step 5 — Smoke test (confirm the site is working)
+## Step 6 — Smoke test
 
-After the containers are up, quickly verify the critical path works:
+After the containers are up:
 
-1. Open the site in a browser. The homepage should load.
-2. Log in as a student. The dashboard should load.
-3. Open the admin panel. It should require the new `MASTER_ADMIN_PASSWORD` you set.
-4. Check that `/api/docs` returns **404** (not the Swagger UI — in production this is
-   hidden on purpose).
-5. Try accessing a receipt URL directly in the browser — something like
-   `https://yourdomain.com/uploads/receipts/anything.pdf`. It should return **404**.
-   If it returns a file, stop and contact Siddh — something is wrong with the nginx config.
+1. **Homepage** loads in a browser.
+2. **Student login** → dashboard loads.
+3. **Admin panel** requires the new `MASTER_ADMIN_PASSWORD`.
+4. `https://yourdomain.com/api/docs` returns **404** (Swagger hidden in production).
+5. A direct receipt URL like `https://yourdomain.com/uploads/receipts/anything.pdf`
+   returns **404**. If it returns a file, **stop** and contact Siddh — nginx is
+   misconfigured.
 
----
+### GPU encode check (if the host has a GPU)
 
-## Step 6 — Install the nightly backup
-
-**This is the single most important thing that can't be undone later.** If the server's
-disk fails before a backup is installed, every payment record, certificate, and enrollment
-is permanently gone. There is no recovery. Installing this takes two minutes.
-
-The backup script lives at `ops/backup.sh` in the repository. It dumps the database,
-archives the uploaded files and videos, and sends them to Oracle Object Storage every night.
-
-**One-time setup:**
+Confirm the worker can actually reach the GPU and that VAAPI H.264 is available:
 
 ```bash
-# Make the script executable
-chmod +x /path/to/repo/ops/backup.sh
+# 1. The driver sees the GPU and lists encode entrypoints (look for VAEntrypointEncSlice):
+docker exec sm_worker vainfo
 
-# Set the required environment variables the script needs.
-# Add these to the server's environment or to a wrapper script.
-export OCI_BUCKET=sm-backups          # your Oracle bucket name
-export OCI_NAMESPACE=your-namespace   # your Oracle namespace
-export OCI_PREFIX=silicon-mango       # prefix for the files inside the bucket
+# 2. ffmpeg in the worker was built with the VAAPI H.264 encoder:
+docker exec sm_worker ffmpeg -hide_banner -encoders | grep h264_vaapi
+```
 
-# Install the cron job (edit your crontab)
+- Both succeed → uploads encode on the GPU (`VIDEO_ENCODER=vaapi`).
+- `vainfo` fails or the encoder is missing → the worker **automatically falls back to
+  CPU** (`libx264`). Output quality is identical; encoding is just slower. If you
+  expected the GPU to work, re-check Step 4 and the `/dev/dri` mapping.
+
+To watch a real encode pick its path, upload a video and tail the worker:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f worker
+# look for a line like:  [FFMPEG] encoder=vaapi rendition=720p ...
+```
+
+---
+
+## Step 7 — Backups (do NOT skip)
+
+**This is the single most important thing that can't be undone later.** If the disk
+fails before a backup exists, every payment record, certificate, and enrollment is
+gone permanently.
+
+The backup script dumps Postgres to a compressed, rotated file in `./backups/`:
+
+```bash
+# Run once by hand and confirm it works:
+bash scripts/backup.sh
+```
+
+You should see:
+
+```
+[backup] Dumping database 'silicon_mango' → backups/silicon_mango_<stamp>.dump ...
+[backup] ✓ Backup written: backups/silicon_mango_<stamp>.dump (4.2M)
+[backup] ✓ Done.
+```
+
+**Schedule it daily via cron** (2:17 AM shown; off the round hour on purpose):
+
+```bash
 crontab -e
 ```
 
-Inside the crontab editor, add this line at the bottom:
+Add:
 
 ```
-17 2 * * *  DB_PASSWORD=yourpassword OCI_BUCKET=sm-backups OCI_NAMESPACE=yournamespace OCI_PREFIX=silicon-mango /path/to/repo/ops/backup.sh >> /var/log/sm-backup.log 2>&1
+17 2 * * *  cd /full/path/to/repo && bash scripts/backup.sh >> backups/backup.log 2>&1
 ```
 
-(Replace the variable values with the real ones. The `17 2 * * *` means "2:17 AM every day".)
+> **Off-site copy:** `scripts/backup.sh` writes to local disk only. A backup that lives
+> on the same disk as the database does not survive a disk failure. Copy `./backups/`
+> off the box regularly (rsync/scp to another machine, or sync to object storage).
+> Confirm with Siddh where these should be shipped.
 
-**Run it once by hand immediately and confirm it works:**
-
-```bash
-DB_PASSWORD=yourpassword OCI_BUCKET=sm-backups OCI_NAMESPACE=yournamespace \
-  OCI_PREFIX=silicon-mango /path/to/repo/ops/backup.sh
-```
-
-You should see log lines like:
-```
-[2026-06-16T...] Starting Postgres dump...
-[2026-06-16T...] Postgres dump complete: 4.2M
-[2026-06-16T...] Snapshotting media and uploads...
-[2026-06-16T...] Uploaded: postgres-....dump
-[2026-06-16T...] Backup complete.
-```
-
-Then go to the Oracle Object Storage console and confirm the files are there.
-
-**If the backup script fails:** do not launch the live site until it works. An untested
-backup is not a backup.
+**Recovery**, if ever needed, is `bash scripts/restore.sh` (restores the newest dump;
+read its header for options). An untested backup is not a backup — verify a dump
+restores into a throwaway database at least once.
 
 ---
 
-## Troubleshooting common errors
+## Troubleshooting
 
-**"DB_PASSWORD must be set in .env"**
-The root `.env` file is missing `DB_PASSWORD` or it is empty. Add the variable and re-run.
+**`[BOOT][FATAL] Refusing to start ... insecure configuration`**
+A secret is still its weak default. The log names the variable — fix it in the right
+`.env` (Step 2) and re-run `bash scripts/deploy.sh`.
 
-**"connection refused" or "could not connect to server"**
-The database password in `.env` does not match what Postgres has internally. This means
-Step 1 was either skipped or the password values don't match. Re-run the `ALTER USER`
-command from Step 1 and make sure the password is exactly the same in both places.
+**`DB_PASSWORD must be set in .env`**
+Root `.env` is missing `DB_PASSWORD` or it's empty. Add it and re-run.
 
-**"host not found in upstream backend" from nginx**
-The backend container crashed at startup. Run `docker-compose logs backend` to see why.
-Usually a missing `.env` variable or a weak-secret boot guard rejection.
+**`connection refused` / `could not connect to server` (backend → db)**
+The `.env` `DB_PASSWORD` doesn't match what Postgres stores internally. Re-do Step 1's
+`ALTER USER` so both sides agree.
 
-**"origin.pem: No such file or directory"**
-The certificates in `certs/` are missing. See Step 3.
+**`host not found in upstream backend` (from nginx)**
+The backend crashed at startup. Check `docker compose ... logs backend` — usually a
+missing `.env` var or the weak-secret boot guard.
 
-**The site loads but CSS/JS is missing**
-The frontend build failed. Run `docker-compose logs frontend` to see the build error.
+**`origin.pem: No such file or directory`**
+Certs missing from `certs/`. See Step 3.
 
-**"[BOOT][FATAL] Refusing to start in production with insecure configuration"**
-A secret is still set to its known-weak default value. The log line will name which
-variable. Fix that variable in the appropriate `.env` file and re-run `docker-compose up --build`.
+**Site loads but CSS/JS missing**
+Frontend build failed. Check `docker compose ... logs frontend`.
+
+**Encoding always runs on CPU even though the box has an AMD GPU**
+`docker exec sm_worker vainfo` will say why. Common causes: `/dev/dri` not mapped
+(check the `worker.devices` entry in `docker-compose.prod.yml`), render node at a
+non-default path, or the host kernel/driver not exposing the render node. The app keeps
+working on CPU meanwhile.
+
+**Build fails on `--mount=type=cache` / "Dockerfile parse error"**
+The Docker daemon is too old or has BuildKit disabled. With Compose v2 it's on by
+default; if not, prefix the build: `DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1
+docker compose -f docker-compose.yml -f docker-compose.prod.yml build`, or upgrade
+Docker Engine to 20.10+.
 
 ---
 
 ## Summary checklist
 
-Before calling the deploy done, confirm each item:
-
-- [ ] Postgres password rotated with `ALTER USER` while the old containers were still running
-- [ ] Root `.env` has strong values for `DB_PASSWORD`, `REDIS_PASSWORD`, `SEGMENT_SIGNING_SECRET`, `SERVER_NAME`
-- [ ] `backend/.env` has strong values for `SECRET_KEY`, `MASTER_ADMIN_PASSWORD`, and `ENVIRONMENT=production`
-- [ ] `certs/` directory contains all three certificate files
-- [ ] `docker-compose down && git pull && docker-compose up --build` completed without FATAL errors
-- [ ] Homepage loads in a browser
-- [ ] Admin panel requires the new admin password
-- [ ] `/api/docs` returns 404
-- [ ] A direct `/uploads/receipts/anything` URL returns 404
-- [ ] Backup script ran by hand and files appeared in Oracle Object Storage
-- [ ] Backup cron installed in crontab
+- [ ] Postgres password rotated with `ALTER USER` while the old stack was up (skip on a brand-new server)
+- [ ] Root `.env`: strong `DB_PASSWORD`, `REDIS_PASSWORD`, `SEGMENT_SIGNING_SECRET`, `ORIGIN_SHARED_SECRET`, `SERVER_NAME`
+- [ ] `backend/.env`: strong `SECRET_KEY`, `MASTER_ADMIN_PASSWORD`, `ENVIRONMENT=production`
+- [ ] `certs/` has all three certificate files
+- [ ] `/dev/dri` present on the host (or accept CPU encoding)
+- [ ] `bash scripts/deploy.sh` finished with no `[BOOT][FATAL]` and a healthy backend
+- [ ] Homepage loads; student login works; admin panel requires the new password
+- [ ] `/api/docs` returns 404; a direct `/uploads/receipts/...` URL returns 404
+- [ ] `docker exec sm_worker vainfo` + `... ffmpeg -encoders | grep h264_vaapi` confirm the GPU (or confirmed CPU fallback)
+- [ ] `bash scripts/backup.sh` ran by hand and produced a `.dump` in `backups/`
+- [ ] Daily backup cron installed; off-site copy destination agreed with Siddh
