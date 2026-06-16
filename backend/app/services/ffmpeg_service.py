@@ -48,27 +48,68 @@ def rendition_for(source_height: int) -> Rendition:
     )
 
 
-@lru_cache(maxsize=1)
-def has_nvenc() -> bool:
-    """Detect NVENC support. Cached for the worker process lifetime.
+# Hardware-encoder device nodes. VAAPI (AMD/Intel) exposes a render node under
+# /dev/dri; NVIDIA exposes /dev/nvidia0. A present node is necessary but not
+# sufficient — ffmpeg must also be built with the matching encoder.
+VAAPI_DEVICE = "/dev/dri/renderD128"
+NVIDIA_DEVICE = "/dev/nvidia0"
 
-    True only if:
-      - ENABLE_GPU is set, AND
-      - /dev/nvidia0 exists, AND
-      - ffmpeg reports h264_nvenc in its encoders list.
-    """
-    if not settings.ENABLE_GPU:
-        return False
-    if not os.path.exists("/dev/nvidia0"):
-        return False
+
+@lru_cache(maxsize=None)
+def _ffmpeg_has_encoder(name: str) -> bool:
+    """True if `ffmpeg -encoders` lists the given encoder (e.g. 'h264_vaapi')."""
     try:
         out = subprocess.run(
             ["ffmpeg", "-hide_banner", "-encoders"],
             capture_output=True, text=True, timeout=10
         )
-        return "h264_nvenc" in (out.stdout + out.stderr)
+        return name in (out.stdout + out.stderr)
     except (FileNotFoundError, subprocess.SubprocessError):
         return False
+
+
+def _vaapi_available() -> bool:
+    """AMD/Intel hardware H.264 via VAAPI: render node present AND ffmpeg built with it."""
+    return os.path.exists(VAAPI_DEVICE) and _ffmpeg_has_encoder("h264_vaapi")
+
+
+def _nvenc_available() -> bool:
+    """NVIDIA hardware H.264 via NVENC: device present AND ffmpeg built with it."""
+    return os.path.exists(NVIDIA_DEVICE) and _ffmpeg_has_encoder("h264_nvenc")
+
+
+@lru_cache(maxsize=1)
+def select_encoder() -> str:
+    """Choose the H.264 encoder. Returns one of 'vaapi' | 'nvenc' | 'libx264'.
+
+    GPU-FIRST by design — the GPU does the work whenever it's reachable, and the
+    CPU (libx264) is reserved as a fallback. Driven by settings.VIDEO_ENCODER:
+
+      - 'auto' (default): prefer AMD/Intel VAAPI, then NVIDIA NVENC, else CPU.
+                          A GPU encoder is chosen only when its device + ffmpeg
+                          support are actually present, so a CPU-only box (e.g. a
+                          Linux container under Docker Desktop on Windows) goes
+                          straight to libx264 — no wasted failed attempt.
+      - 'vaapi'/'nvenc' : FORCE that GPU encoder (recommended in production so the
+                          GPU always does the work). Selection does NOT pre-check
+                          the device; run_encode() still falls back to libx264 at
+                          runtime if the GPU encode fails, so a transient GPU
+                          issue can never drop a video.
+      - 'cpu'           : force libx264.
+
+    Cached for the worker process lifetime.
+    """
+    pref = (settings.VIDEO_ENCODER or "auto").strip().lower()
+    if pref == "cpu":
+        return "libx264"
+    if pref in ("vaapi", "nvenc"):
+        return pref
+    # auto — GPU-first detection with CPU fallback.
+    if _vaapi_available():
+        return "vaapi"
+    if _nvenc_available():
+        return "nvenc"
+    return "libx264"
 
 
 def ffmpeg_available() -> bool:
@@ -123,45 +164,65 @@ def ffprobe(source_path: str) -> ProbeResult:
     )
 
 
-def build_hls_command(source: str, out_dir: str, rendition: Rendition, use_nvenc: bool, has_audio: bool) -> list[str]:
+def build_hls_command(source: str, out_dir: str, rendition: Rendition, encoder: str, has_audio: bool) -> list[str]:
     """Single ffmpeg invocation producing master.m3u8 + one 720p variant playlist.
 
-    One decode pass, one scaled output. The master playlist is kept (with a single
+    `encoder` is one of 'vaapi' | 'nvenc' | 'libx264' (see select_encoder). One
+    decode pass, one scaled output. The master playlist is kept (with a single
     entry) so the student streaming path — manifest → variant → segment — stays
-    byte-for-byte identical regardless of how many qualities exist.
+    byte-for-byte identical regardless of which encoder produced it.
     """
-    codec = "h264_nvenc" if use_nvenc else "libx264"
+    cmd: list[str] = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "warning"]
 
-    cmd: list[str] = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "warning", "-i", source]
-    cmd += ["-map", "0:v:0"]
+    if encoder == "vaapi":
+        # Bind the AMD/Intel render node for hardware scale + encode.
+        cmd += ["-vaapi_device", VAAPI_DEVICE]
+
+    cmd += ["-i", source, "-map", "0:v:0"]
     if has_audio:
         cmd += ["-map", "0:a:0?"]
 
-    cmd += ["-vf", f"scale=-2:{rendition.height}"]
-    if use_nvenc:
-        # NVENC: constant-quality (-cq mirrors CRF), capped by -maxrate.
+    if encoder == "vaapi":
+        # AMD/Intel hardware H.264. Upload frames to the GPU as NV12, scale on the
+        # GPU, encode with h264_vaapi. VBR with a target just under the cap keeps
+        # the 720p stream streaming-friendly while -maxrate/-bufsize bound the peak
+        # so a high-bitrate source can't blow past the rung. No -pix_fmt yuv420p:
+        # the frames live on GPU surfaces, not in software pixel formats.
+        cmd += ["-vf", f"format=nv12,hwupload,scale_vaapi=-2:{rendition.height}"]
         cmd += [
-            "-c:v", codec,
+            "-c:v", "h264_vaapi",
+            "-rc_mode", "VBR",
+            "-b:v", f"{int(rendition.bitrate_kbps * 0.85)}k",
+            "-maxrate", f"{rendition.bitrate_kbps}k",
+            "-bufsize", f"{rendition.bitrate_kbps * 2}k",
+        ]
+    elif encoder == "nvenc":
+        # NVIDIA hardware H.264: constant-quality (-cq mirrors CRF), capped by -maxrate.
+        cmd += ["-vf", f"scale=-2:{rendition.height}"]
+        cmd += [
+            "-c:v", "h264_nvenc",
             "-preset", "p4",
             "-rc", "vbr",
             "-cq", str(rendition.crf),
             "-b:v", "0",
             "-maxrate", f"{rendition.bitrate_kbps}k",
             "-bufsize", f"{rendition.bitrate_kbps * 2}k",
+            "-pix_fmt", "yuv420p",
         ]
     else:
-        # libx264: CRF quality target, capped by -maxrate so we never exceed the rung.
+        # libx264 (CPU): CRF quality target, capped by -maxrate so we never exceed
+        # the rung. Thread-capped so a daytime encode can't grab both cores and
+        # starve the API on a 2 vCPU box.
+        cmd += ["-vf", f"scale=-2:{rendition.height}"]
         cmd += [
-            "-c:v", codec,
+            "-c:v", "libx264",
             "-preset", "veryfast",
             "-crf", str(rendition.crf),
             "-maxrate", f"{rendition.bitrate_kbps}k",
             "-bufsize", f"{rendition.bitrate_kbps * 2}k",
-            # Cap CPU encoder threads so a daytime encode can't grab both cores
-            # and starve the API on a 2 vCPU box.
             "-threads", str(max(1, settings.FFMPEG_THREADS)),
+            "-pix_fmt", "yuv420p",
         ]
-    cmd += ["-pix_fmt", "yuv420p"]
 
     if has_audio:
         cmd += ["-c:a", "aac", "-b:a", f"{rendition.audio_kbps}k", "-ac", "2", "-ar", "48000"]
@@ -194,35 +255,58 @@ def _priority_prefix() -> list[str]:
     return prefix
 
 
-def run_encode(source_path: str, out_dir: str, rendition: Rendition, has_audio: bool) -> None:
+def run_encode(source_path: str, out_dir: str, rendition: Rendition, has_audio: bool) -> str:
     """Synchronously encode the source into a single 720p HLS variant under out_dir.
 
-    Runs the encoder niced/io-throttled and with a hard timeout so a corrupt or
-    huge upload can't pin the worker (and the box) indefinitely.
+    GPU-FIRST with a guaranteed CPU fallback: tries the selected encoder; if it is
+    a hardware encoder (vaapi/nvenc) and ffmpeg fails or times out, the output dir
+    is wiped and the encode is retried once on libx264 — so a video is NEVER
+    dropped because of a GPU hiccup. Runs niced/io-throttled with a hard timeout so
+    a corrupt/huge upload can't pin the worker (and the box) indefinitely.
 
-    Raises RuntimeError(stderr) on non-zero exit or timeout.
+    Returns the encoder that actually produced the output ('vaapi'|'nvenc'|'libx264').
+    Raises RuntimeError(stderr) only if even the CPU fallback fails.
     """
-    # makedirs creates out_dir as well as the rendition subfolder ffmpeg writes into.
-    os.makedirs(os.path.join(out_dir, rendition.name), exist_ok=True)
+    from shutil import rmtree
 
-    use_nvenc = has_nvenc()
-    cmd = _priority_prefix() + build_hls_command(source_path, out_dir, rendition, use_nvenc, has_audio)
+    chosen = select_encoder()
     timeout_s = max(60, settings.ENCODE_TIMEOUT_SECONDS)
-    print(
-        f"[FFMPEG] encoder={'NVENC' if use_nvenc else 'libx264'} "
-        f"rendition={rendition.name}@{rendition.height}p audio={has_audio} "
-        f"threads={settings.FFMPEG_THREADS} timeout={timeout_s}s"
-    )
-    try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
-    except subprocess.TimeoutExpired:
-        raise RuntimeError(
-            f"ffmpeg timed out after {timeout_s}s — source too large/long or stalled"
+
+    # Try the chosen encoder, then libx264 as a safety net (unless already CPU).
+    attempts = [chosen] if chosen == "libx264" else [chosen, "libx264"]
+
+    last_err = ""
+    for idx, enc in enumerate(attempts):
+        is_fallback = idx > 0
+        # Each attempt starts from a clean output dir: a failed HW attempt may have
+        # left a partial master.m3u8 / segments behind. makedirs also creates the
+        # rendition subfolder ffmpeg writes into.
+        rmtree(out_dir, ignore_errors=True)
+        os.makedirs(os.path.join(out_dir, rendition.name), exist_ok=True)
+
+        cmd = _priority_prefix() + build_hls_command(source_path, out_dir, rendition, enc, has_audio)
+        label = enc if not is_fallback else f"{enc} (CPU fallback after {chosen} failure)"
+        print(
+            f"[FFMPEG] encoder={label} rendition={rendition.name}@{rendition.height}p "
+            f"audio={has_audio} threads={settings.FFMPEG_THREADS} timeout={timeout_s}s"
         )
-    if proc.returncode != 0:
-        # Truncate to avoid massive DB strings
-        err = (proc.stderr or proc.stdout or "")[-2000:]
-        raise RuntimeError(f"ffmpeg failed (exit {proc.returncode}): {err}")
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
+        except subprocess.TimeoutExpired:
+            last_err = f"ffmpeg timed out after {timeout_s}s — source too large/long or stalled"
+            print(f"[FFMPEG] {enc} timed out after {timeout_s}s.")
+            if not is_fallback and enc != "libx264":
+                print("[FFMPEG] Falling back to CPU (libx264).")
+            continue
+        if proc.returncode == 0:
+            return enc
+        # Truncate to avoid massive DB strings.
+        last_err = (proc.stderr or proc.stdout or "")[-2000:]
+        print(f"[FFMPEG] {enc} failed (exit {proc.returncode}).")
+        if not is_fallback and enc != "libx264":
+            print("[FFMPEG] Falling back to CPU (libx264).")
+
+    raise RuntimeError(f"ffmpeg failed (encoder={chosen}, CPU fallback exhausted): {last_err}")
 
 
 def safe_segment_path(hls_dir: str, rendition: str, seg_name: str) -> Optional[str]:

@@ -322,18 +322,55 @@ The audio map/codec/`a:0` in `-var_stream_map` are omitted automatically when th
 | `-hls_time 6` | 6-second segments | Balance between startup time and seeking |
 | `-hls_playlist_type vod` | VOD (not live) | Pre-built playlist; no live stream overhead |
 
-**GPU detection:**
+**GPU-first encoder selection (AMD VAAPI / NVIDIA NVENC / CPU):**
+
+Encoding is GPU-first — the GPU does the work whenever it's reachable; the CPU
+(`libx264`) is reserved as a fallback. `select_encoder()` picks the encoder based on
+the `VIDEO_ENCODER` env var:
 
 ```python
-def has_nvenc() -> bool:
-    if not settings.ENABLE_GPU: return False
-    if not os.path.exists("/dev/nvidia0"): return False
-    # Check if ffmpeg can see the GPU encoder
-    result = subprocess.run(["ffmpeg", "-encoders"], ...)
-    return "h264_nvenc" in result.stdout
+# VIDEO_ENCODER: auto | vaapi | nvenc | cpu   (default: auto)
+def select_encoder() -> str:
+    pref = settings.VIDEO_ENCODER.lower()
+    if pref == "cpu":   return "libx264"
+    if pref in ("vaapi", "nvenc"): return pref   # FORCE a GPU (runtime fallback still applies)
+    # auto: prefer AMD/Intel VAAPI, then NVIDIA NVENC, else CPU
+    if _vaapi_available():  return "vaapi"   # /dev/dri/renderD128 + ffmpeg has h264_vaapi
+    if _nvenc_available():  return "nvenc"   # /dev/nvidia0       + ffmpeg has h264_nvenc
+    return "libx264"
 ```
 
-If GPU is available, `-c:v:N libx264` is replaced with `-c:v:N h264_nvenc`. GPU encoding is 3–5× faster.
+The encoder determines the ffmpeg flags:
+- **AMD/Intel (VAAPI):** `-vaapi_device /dev/dri/renderD128 … -vf format=nv12,hwupload,scale_vaapi=-2:720 -c:v h264_vaapi -rc_mode VBR …`
+- **NVIDIA (NVENC):** `-c:v h264_nvenc -preset p4 -rc vbr -cq 23 …`
+- **CPU:** `-c:v libx264 -preset veryfast -crf 23 …`
+
+**Guaranteed CPU fallback (never drops a video):** `run_encode()` tries the selected
+encoder; if it is a GPU encoder and ffmpeg fails or times out, it wipes the output and
+retries **once on `libx264`**. So a transient GPU failure can never lose a video — the
+log shows `encoder=libx264 (CPU fallback after vaapi failure)`.
+
+**Enabling the AMD GPU in production (VAAPI).** The encoder runs inside the Linux
+`worker` container, so the GPU must be exposed to it. On a **native Linux host** with the
+AMD GPU:
+
+1. Install Mesa VA drivers in the worker image (`apt-get install mesa-va-drivers libva2`).
+2. Pass the render node + groups into the `worker` service (in `docker-compose.prod.yml`,
+   NOT the base compose — `/dev/dri` does not exist on Windows/WSL2 and would break it):
+   ```yaml
+   worker:
+     devices: ["/dev/dri:/dev/dri"]
+     group_add: ["video", "render"]
+   ```
+3. Set `VIDEO_ENCODER=vaapi` in `backend/.env`.
+
+Verify the GPU is doing the work: `docker compose logs worker | grep FFMPEG` shows
+`encoder=vaapi` (not `libx264`), and `radeontop` shows the GPU encode engine active.
+
+> **Docker Desktop on Windows:** an AMD GPU cannot be passed into the Linux worker
+> (no VAAPI via WSL2), so `auto`/`vaapi` resolve to CPU there. This is expected — the
+> pipeline still produces correct 720p HLS; it just runs on CPU until deployed on a
+> Linux GPU host.
 
 #### Step 5 — After encoding succeeds
 
@@ -549,7 +586,7 @@ Videos use a separate 500 MB limit enforced inside `video_service.py`.
 | `app/models/video.py` | `Video` and `VideoRendition` SQLAlchemy models |
 | `app/alembic/versions/0002_videos.py` | Database migration that creates `videos` + `video_renditions` tables |
 | `app/services/video_service.py` | Saves uploads, creates DB rows, deletes videos |
-| `app/services/ffmpeg_service.py` | Probes source file, builds the ffmpeg command, detects NVENC (GPU) |
+| `app/services/ffmpeg_service.py` | Probes source file, selects encoder (GPU-first: VAAPI/NVENC → CPU), builds the ffmpeg command, runs it with CPU fallback |
 | `app/services/stream_token_service.py` | Issues and verifies HMAC-signed tokens for streaming |
 | `app/celery_app.py` | Celery configuration + midnight Beat schedule |
 | `app/tasks/encoding.py` | The encoding task — picks pending videos, encodes, marks ready/failed |

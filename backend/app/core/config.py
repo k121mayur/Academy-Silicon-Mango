@@ -83,6 +83,15 @@ class Settings(BaseSettings):
     STREAM_TOKEN_TTL_SECONDS: int = 120
     SEGMENT_TOKEN_TTL_SECONDS: int = 30
     HLS_SEGMENT_SECONDS: int = 6
+    # Video encoder selection (GPU-first). See ffmpeg_service.select_encoder():
+    #   auto  → prefer AMD/Intel VAAPI, then NVIDIA NVENC, else CPU (libx264)
+    #   vaapi → FORCE AMD/Intel GPU (recommended in production so the GPU does the
+    #           work; run_encode still falls back to CPU at runtime if it fails)
+    #   nvenc → FORCE NVIDIA GPU (same runtime fallback)
+    #   cpu   → force libx264 (CPU)
+    VIDEO_ENCODER: str = "auto"
+    # Deprecated: superseded by VIDEO_ENCODER. Kept so older .env files still parse;
+    # no longer consulted for encoder selection.
     ENABLE_GPU: bool = False
 
     # CDN-cacheable segment URLs (nginx secure_link, time-bucketed).

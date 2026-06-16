@@ -151,7 +151,7 @@ async def _encode_one(video_id, Session: async_sessionmaker) -> tuple[bool, Opti
         out_dir.mkdir(parents=True, exist_ok=True)
 
         try:
-            ff.run_encode(src_path, str(out_dir), rendition, probe.has_audio)
+            encoder_used = ff.run_encode(src_path, str(out_dir), rendition, probe.has_audio)
         except Exception as exc:
             return False, f"ffmpeg failed: {exc}"
 
@@ -192,7 +192,10 @@ async def _encode_one(video_id, Session: async_sessionmaker) -> tuple[bool, Opti
                     print(f"[ENCODING] Failed to delete source {video.source_path}: {exc}")
             await db.commit()
 
-        print(f"[ENCODING] video={video_id} OK — {rendition.name}@{rendition.height}p duration={probe.duration_seconds}s")
+        print(
+            f"[ENCODING] video={video_id} OK — encoder={encoder_used} "
+            f"{rendition.name}@{rendition.height}p duration={probe.duration_seconds}s"
+        )
         return True, None
     except Exception as exc:
         return False, f"unexpected: {exc}"
