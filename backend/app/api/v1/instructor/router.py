@@ -860,6 +860,12 @@ async def download_submission_file(
     return FileResponse(str(path), filename=path.name)
 
 
+class GradeSubmission(BaseModel):
+    score: Optional[float] = None
+    feedback: Optional[str] = None
+    status: Optional[str] = None
+
+
 @router.put("/submissions/{submission_id}")
 async def grade_submission(
     submission_id: str,
