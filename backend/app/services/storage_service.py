@@ -151,3 +151,26 @@ async def save_bytes(
 
     print(f"[STORAGE] Saved bytes {rel} ({len(data)} bytes)")
     return f"/uploads/{rel}"
+
+
+def resolve_upload_path(url_or_rel: str) -> Path:
+    """Map a stored upload URL/relative path (e.g. '/uploads/receipts/x.pdf') to the
+    absolute file on disk, with path-traversal protection. Raises 404 APIError if the
+    path escapes the uploads root or the file is missing. Used by authenticated
+    download endpoints that stream private files (receipts, submissions)."""
+    rel = url_or_rel
+    if rel.startswith("/uploads/"):
+        rel = rel[len("/uploads/"):]
+    elif rel.startswith("uploads/"):
+        rel = rel[len("uploads/"):]
+    rel = rel.lstrip("/")
+
+    base = Path(settings.UPLOAD_DIR).resolve()
+    candidate = (base / rel).resolve()
+    # Reject anything that resolves outside the uploads root (path traversal).
+    if base != candidate and base not in candidate.parents:
+        raise APIError(code="NOT_FOUND", message="File not found", status_code=404)
+    if not candidate.is_file():
+        raise APIError(code="NOT_FOUND", message="File not found", status_code=404)
+    return candidate
+

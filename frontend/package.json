@@ -20,6 +20,7 @@
     "@tiptap/starter-kit": "^3.23.6",
     "axios": "^1.7.7",
     "clsx": "^2.1.1",
+    "dompurify": "^3.1.7",
     "hls.js": "^1.6.16",
     "pdfjs-dist": "^4.7.76",
     "qrcode.react": "^4.1.0",
@@ -32,6 +33,7 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@types/dompurify": "^3.0.5",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.2",

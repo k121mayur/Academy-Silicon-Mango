@@ -11,7 +11,7 @@ from app.core.exceptions import (
     err_token_blacklisted,
     err_token_expired,
 )
-from app.core.redis import is_blacklisted
+from app.core.redis import is_blacklisted, password_changed_after
 from app.core.security import decode_token
 from app.db.session import get_db
 from app.models.user import User, UserRole
@@ -34,6 +34,12 @@ async def get_current_user(
 
     sub = payload.get("sub")
     if not sub:
+        raise err_token_expired()
+
+    # Reject tokens issued before the user's last password change (invalidates
+    # every pre-change session on any device, including a stolen one).
+    iat = payload.get("iat")
+    if iat and await password_changed_after(sub, iat):
         raise err_token_expired()
 
     user = await get_user_by_id(db, sub)

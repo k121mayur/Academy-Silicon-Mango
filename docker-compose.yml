@@ -21,7 +21,7 @@ services:
     environment:
       POSTGRES_DB: silicon_mango
       POSTGRES_USER: sm_user
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-sm_secure_pass_2024}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
     # Tuned for a small shared box. We do NOT use the classic "25% of RAM"
     # rule because Postgres is only one tenant here.
     command:
@@ -73,14 +73,14 @@ services:
     # REDIS_PASSWORD is also placed in the container env so the healthcheck can
     # authenticate with the SAME password (not just the build-time default).
     environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-sm_redis_pass_2024}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
     # maxmemory caps RAM; noeviction means a full cache fails writes loudly
     # rather than silently dropping QUEUED CELERY JOBS (broker lives in db1).
     # AOF + RDB make the queue survive a reboot. App cache keys (db0) all carry
     # TTLs so the cache stays self-bounding well under the cap.
     command: >
       redis-server
-      --requirepass ${REDIS_PASSWORD:-sm_redis_pass_2024}
+      --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
       --maxmemory 256mb
       --maxmemory-policy noeviction
       --appendonly yes
@@ -113,7 +113,7 @@ services:
         condition: service_healthy
     env_file: ./backend/.env
     environment:
-      DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD:-sm_secure_pass_2024}@postgres:5432/silicon_mango
+      DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD:?DB_PASSWORD must be set in .env}@postgres:5432/silicon_mango
     command: ["alembic", "upgrade", "head"]
     restart: "no"
     networks:
@@ -135,13 +135,13 @@ services:
     env_file: ./backend/.env
     environment:
       # Inside Docker, connect to the `postgres`/`redis` services (NOT host).
-      DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD:-sm_secure_pass_2024}@postgres:5432/silicon_mango
-      REDIS_URL: redis://:${REDIS_PASSWORD:-sm_redis_pass_2024}@redis:6379/0
-      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-sm_redis_pass_2024}@redis:6379/1
-      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-sm_redis_pass_2024}@redis:6379/2
+      DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD:?DB_PASSWORD must be set in .env}@postgres:5432/silicon_mango
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis:6379/0
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis:6379/2
       # Shared HMAC secret for nginx secure_link segment URLs (MUST match the
       # frontend container's SM_SEGMENT_SECRET below).
-      SEGMENT_SIGNING_SECRET: ${SEGMENT_SIGNING_SECRET:-dev_segment_secret_change_me}
+      SEGMENT_SIGNING_SECRET: ${SEGMENT_SIGNING_SECRET:?SEGMENT_SIGNING_SECRET must be set in .env}
     ports:
       # Loopback-only: reachable on the VM for debugging, never from the public
       # internet. nginx talks to the backend over the docker network (backend:8085),
@@ -182,10 +182,10 @@ services:
         condition: service_completed_successfully
     env_file: ./backend/.env
     environment:
-      DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD:-sm_secure_pass_2024}@postgres:5432/silicon_mango
-      REDIS_URL: redis://:${REDIS_PASSWORD:-sm_redis_pass_2024}@redis:6379/0
-      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-sm_redis_pass_2024}@redis:6379/1
-      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-sm_redis_pass_2024}@redis:6379/2
+      DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD:?DB_PASSWORD must be set in .env}@postgres:5432/silicon_mango
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis:6379/0
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis:6379/2
     command: celery -A app.celery_app.celery worker -Q encoding --concurrency=1 --loglevel=info
     volumes:
       - ./backend/uploads:/app/uploads
@@ -218,10 +218,10 @@ services:
         condition: service_completed_successfully
     env_file: ./backend/.env
     environment:
-      DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD:-sm_secure_pass_2024}@postgres:5432/silicon_mango
-      REDIS_URL: redis://:${REDIS_PASSWORD:-sm_redis_pass_2024}@redis:6379/0
-      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-sm_redis_pass_2024}@redis:6379/1
-      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-sm_redis_pass_2024}@redis:6379/2
+      DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD:?DB_PASSWORD must be set in .env}@postgres:5432/silicon_mango
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis:6379/0
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis:6379/2
     command: celery -A app.celery_app.celery beat --loglevel=info
     healthcheck:
       test: ["CMD-SHELL", "pgrep -f 'celery.*beat' > /dev/null || exit 1"]
@@ -254,10 +254,10 @@ services:
         condition: service_completed_successfully
     env_file: ./backend/.env
     environment:
-      DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD:-sm_secure_pass_2024}@postgres:5432/silicon_mango
-      REDIS_URL: redis://:${REDIS_PASSWORD:-sm_redis_pass_2024}@redis:6379/0
-      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-sm_redis_pass_2024}@redis:6379/1
-      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-sm_redis_pass_2024}@redis:6379/2
+      DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD:?DB_PASSWORD must be set in .env}@postgres:5432/silicon_mango
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis:6379/0
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis:6379/2
     command: celery -A app.celery_app.celery worker -Q webinars --concurrency=2 --loglevel=info
     healthcheck:
       test: ["CMD-SHELL", "pgrep -f 'celery.*worker' > /dev/null || exit 1"]
@@ -289,7 +289,7 @@ services:
       # like $uri / $arg_e are left intact).
       NGINX_ENVSUBST_FILTER: "^SM_"
       SM_SERVER_NAME: ${SERVER_NAME:-_}
-      SM_SEGMENT_SECRET: ${SEGMENT_SIGNING_SECRET:-dev_segment_secret_change_me}
+      SM_SEGMENT_SECRET: ${SEGMENT_SIGNING_SECRET:?SEGMENT_SIGNING_SECRET must be set in .env}
     ports:
       - "5185:80"
     volumes:

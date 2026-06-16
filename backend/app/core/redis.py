@@ -51,6 +51,32 @@ async def is_blacklisted(jti: str, kind: str = "access") -> bool:
     return bool(exists)
 
 
+# ---------------- Password-change session invalidation ----------------
+# When a user changes their password we stamp pw_changed:<user_id> with the
+# current epoch second. Every authenticated request then rejects any token
+# whose `iat` (issued-at) is older than that stamp — so ALL sessions issued
+# before the change (on any device, including a stolen one) stop working.
+
+async def mark_password_changed(user_id: str, ttl_seconds: int) -> None:
+    r = await get_redis()
+    await r.set(f"pw_changed:{user_id}", str(int(time.time())), ex=max(ttl_seconds, 1))
+    print(f"[REDIS] Marked password changed for user={user_id} ttl={ttl_seconds}s")
+
+
+async def password_changed_after(user_id: str, issued_at: int) -> bool:
+    """True if the user changed their password AFTER the given token iat, meaning
+    the token must be rejected. Fail-open (returns False) if Redis is unreachable
+    or the value is malformed — availability over this single defence-in-depth."""
+    try:
+        r = await get_redis()
+        val = await r.get(f"pw_changed:{user_id}")
+        if not val:
+            return False
+        return int(val) > int(issued_at)
+    except Exception:
+        return False
+
+
 # ---------------- Rate Limiting (sliding window) ----------------
 
 async def rate_limit_check(key: str, limit: int, window_seconds: int) -> tuple[bool, int]:

@@ -17,7 +17,7 @@ from sqlalchemy.exc import TimeoutError as SAPoolTimeout
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.v1.router import api_router
-from app.core.config import settings
+from app.core.config import assert_safe_production_config, settings
 from app.core.exceptions import APIError
 from app.core.redis import close_redis, get_redis
 from app.db.seed import seed_master_admin
@@ -38,6 +38,10 @@ async def lifespan(app: FastAPI):
     print(f"[BOOT] Environment: {settings.ENVIRONMENT}")
     print(f"[BOOT] Frontend URL: {settings.FRONTEND_URL}")
     print("=" * 60)
+
+    # Safety net: in production, refuse to start if any known-weak default secret
+    # is still active. Aborts the process with a clear message before anything else.
+    assert_safe_production_config()
 
     ensure_dirs()
     try:

@@ -22,12 +22,12 @@ jobs:
 
       - name: Build updated images
         shell: bash
-        run: docker compose build --no-cache backend frontend
+        run: docker compose -f docker-compose.yml -f docker-compose.prod.yml build --no-cache backend frontend
 
       # Rolling restart: leaves postgres and redis untouched
       - name: Restart application services
         shell: bash
-        run: docker compose up -d --no-deps backend frontend
+        run: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-deps backend frontend
 
       - name: Remove dangling images
         shell: bash

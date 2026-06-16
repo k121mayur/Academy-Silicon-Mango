@@ -37,6 +37,17 @@ from app.models.user import (
 from app.services.email_service import render_otp_email, send_email
 
 
+def _mask_email(email: str) -> str:
+    """Redact an email for logs: 'student@example.com' -> 'st***@example.com'.
+    Keeps just enough to correlate during debugging without logging full PII."""
+    try:
+        local, domain = email.split("@", 1)
+    except ValueError:
+        return "***"
+    prefix = local[:2] if len(local) > 2 else local[:1]
+    return f"{prefix}***@{domain}"
+
+
 async def get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
     stmt = (
         select(User)
@@ -60,20 +71,20 @@ async def get_user_by_id(db: AsyncSession, user_id: str) -> Optional[User]:
 async def authenticate_user(db: AsyncSession, email: str, password: str) -> User:
     user = await get_user_by_email(db, email)
     if not user:
-        print(f"[AUTH] Login failed — email not found: {email}")
+        print(f"[AUTH] Login failed — email not found: {_mask_email(email)}")
         raise err_invalid_credentials()
 
     if user.auth_provider == AuthProvider.google:
         raise err_provider_mismatch_google()
 
     if not user.hashed_password or not verify_password(password, user.hashed_password):
-        print(f"[AUTH] Login failed — bad password for: {email}")
+        print(f"[AUTH] Login failed — bad password for: {_mask_email(email)}")
         raise err_invalid_credentials()
 
     if not user.is_active:
         raise err_account_inactive()
 
-    print(f"[AUTH] Login OK for {email} (role={user.role.value})")
+    print(f"[AUTH] Login OK for {_mask_email(email)} (role={user.role.value})")
     return user
 
 
@@ -108,7 +119,7 @@ async def request_signup_otp(db: AsyncSession, email: str) -> int:
 
     subject, html, text = render_otp_email(otp, minutes=5)
     await send_email(email, subject, html, text)
-    print(f"[AUTH] OTP issued for {email} (expires in 5 min)")
+    print(f"[AUTH] OTP issued for {_mask_email(email)} (expires in 5 min)")
     return 300
 
 
@@ -147,7 +158,7 @@ async def verify_signup_otp_and_create(
     if not verify_otp(otp, record.hashed_code):
         record.attempts += 1
         await db.commit()
-        print(f"[AUTH] Invalid OTP attempt {record.attempts}/5 for {email}")
+        print(f"[AUTH] Invalid OTP attempt {record.attempts}/5 for {_mask_email(email)}")
         raise err_otp_invalid()
 
     # Double-check email isn't already registered
@@ -182,7 +193,7 @@ async def verify_signup_otp_and_create(
     # Re-fetch with relationships eagerly loaded so the response handler
     # doesn't trigger an async lazy-load.
     user = await get_user_by_email(db, email)
-    print(f"[AUTH] Student account created via OTP: {email}")
+    print(f"[AUTH] Student account created via OTP: {_mask_email(email)}")
     return user
 
 
@@ -222,7 +233,7 @@ async def get_or_create_google_user(db: AsyncSession, *, email: str, google_id: 
     await db.commit()
 
     user = await get_user_by_email(db, email)
-    print(f"[AUTH] Google student account created: {email}")
+    print(f"[AUTH] Google student account created: {_mask_email(email)}")
     return user
 
 

@@ -7,6 +7,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,7 +42,7 @@ from app.services.email_service import (
     render_session_changed_email,
     send_email,
 )
-from app.services.storage_service import save_upload
+from app.services.storage_service import resolve_upload_path, save_upload
 
 router = APIRouter(prefix="/instructor", tags=["instructor"])
 
@@ -822,7 +823,7 @@ async def list_submissions(
                 "student_name": prof.display_name if prof and prof.display_name else user.email,
                 "student_email": user.email,
                 "content": sub.content,
-                "file_url": sub.file_url,
+                "file_url": (f"/api/v1/instructor/submissions/{sub.id}/file" if sub.file_url else None),
                 "score": float(sub.score) if sub.score is not None else None,
                 "feedback": sub.feedback,
                 "status": sub.status.value,
@@ -836,10 +837,27 @@ async def list_submissions(
     return {"success": True, "data": items}
 
 
-class GradeSubmission(BaseModel):
-    score: Optional[float] = None
-    feedback: Optional[str] = None
-    status: Optional[str] = None
+@router.get("/submissions/{submission_id}/file")
+async def download_submission_file(
+    submission_id: str,
+    instructor: User = Depends(require_instructor),
+    db: AsyncSession = Depends(get_db),
+):
+    """Stream a student's submitted file to the instructor — but only if the
+    instructor is assigned to the batch the submission belongs to. Replaces the
+    old public /uploads/submissions/<id> path."""
+    sub = await db.get(Submission, submission_id)
+    if not sub:
+        raise APIError(code="NOT_FOUND", message="Submission not found", status_code=404)
+    assignment = await db.get(Assignment, sub.assignment_id)
+    if not assignment:
+        raise APIError(code="NOT_FOUND", message="Submission not found", status_code=404)
+    # Ownership: instructor must be assigned to this submission's batch.
+    await _assert_batch_assigned(db, instructor, str(assignment.batch_id))
+    if not sub.file_url:
+        raise APIError(code="NOT_FOUND", message="No file on this submission", status_code=404)
+    path = resolve_upload_path(sub.file_url)
+    return FileResponse(str(path), filename=path.name)
 
 
 @router.put("/submissions/{submission_id}")
@@ -1035,6 +1053,7 @@ async def complete_students(
         select(Enrollment).where(
             Enrollment.batch_id == batch.id,
             Enrollment.student_id.in_(payload.student_ids),
+            Enrollment.status == EnrollmentStatus.active,
         )
     )
     enrollments = list(enr_res.scalars().all())

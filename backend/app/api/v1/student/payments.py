@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +30,7 @@ from app.services.payment_service import (
     verify_razorpay_signature,
 )
 from app.services.receipt_service import generate_and_store_receipt
+from app.services.storage_service import resolve_upload_path
 
 router = APIRouter(prefix="/student", tags=["student:payments"])
 
@@ -132,7 +134,10 @@ async def create_order(
             razorpay_payment_id=tag,
         )
         await db.commit()
-        receipt_url = await _issue_receipt(db, payment, student, batch)
+        await _issue_receipt(db, payment, student, batch)
+        receipt_url = (
+            f"/api/v1/student/receipts/{payment.id}" if payment.receipt_url else None
+        )
         return {
             "success": True,
             "data": {
@@ -189,7 +194,15 @@ async def create_order(
     }
 
 
-def _success(enr: Enrollment, payment: Optional[Payment], receipt_url: Optional[str] = None) -> dict:
+def _success(enr: Enrollment, payment: Optional[Payment]) -> dict:
+    # Receipts are private (contain student PII), so expose the AUTHENTICATED
+    # download route, never the raw /uploads/ path. The browser sends the auth
+    # cookie automatically when the link is opened.
+    receipt_url = (
+        f"/api/v1/student/receipts/{payment.id}"
+        if (payment and payment.receipt_url)
+        else None
+    )
     return {
         "success": True,
         "data": {
@@ -197,7 +210,7 @@ def _success(enr: Enrollment, payment: Optional[Payment], receipt_url: Optional[
             "batch_id": str(enr.batch_id),
             "status": enr.status.value,
             "payment_id": str(payment.id) if payment else None,
-            "receipt_url": receipt_url if receipt_url is not None else (payment.receipt_url if payment else None),
+            "receipt_url": receipt_url,
         },
     }
 
@@ -206,6 +219,28 @@ async def _payment_for_enrollment(db: AsyncSession, enrollment_id) -> Optional[P
     return (
         await db.execute(select(Payment).where(Payment.enrollment_id == enrollment_id))
     ).scalars().first()
+
+
+@router.get("/receipts/{payment_id}")
+async def download_receipt(
+    payment_id: str,
+    student: User = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """Stream a payment receipt PDF, but ONLY to the student who owns it. Replaces
+    the old public /uploads/receipts/<id>.pdf path (which leaked PII to anyone with
+    the URL). The browser sends the auth cookie automatically when the link opens."""
+    payment = await db.get(Payment, payment_id)
+    if not payment or payment.student_id != student.id:
+        raise APIError(code="NOT_FOUND", message="Receipt not found", status_code=404)
+    if not payment.receipt_url:
+        raise APIError(code="NOT_FOUND", message="Receipt not available", status_code=404)
+    path = resolve_upload_path(payment.receipt_url)
+    return FileResponse(
+        str(path),
+        media_type="application/pdf",
+        filename=f"receipt-{payment.id}.pdf",
+    )
 
 
 @router.post("/payment/verify-signature")
@@ -286,6 +321,7 @@ async def verify_signature(
             return _success(existing, pay)
         raise APIError(code="ENROLL_FAILED", message="Could not complete enrollment", status_code=409)
 
-    # 4. Best-effort receipt + email (after the durable commit)
-    receipt_url = await _issue_receipt(db, payment, student, batch)
-    return _success(enr, payment, receipt_url)
+    # 4. Best-effort receipt + email (after the durable commit). This sets
+    #    payment.receipt_url; _success() turns it into an authenticated link.
+    await _issue_receipt(db, payment, student, batch)
+    return _success(enr, payment)

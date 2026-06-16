@@ -1,3 +1,4 @@
+import DOMPurify from "dompurify";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -6,16 +7,12 @@ interface Props {
   fallback?: string;
 }
 
-const SAFE_TAG_PATTERN =
-  /<(?!\/?(?:p|br|strong|b|em|i|u|s|h1|h2|h3|h4|ul|ol|li|blockquote|code|pre|span)\b)[^>]*>/gi;
-const EVENT_HANDLER_PATTERN = / on[a-z]+\s*=\s*"[^"]*"/gi;
-const JAVASCRIPT_HREF_PATTERN = /(href|src)\s*=\s*"\s*javascript:[^"]*"/gi;
-
 function sanitize(input: string): string {
-  return input
-    .replace(SAFE_TAG_PATTERN, "")
-    .replace(EVENT_HANDLER_PATTERN, "")
-    .replace(JAVASCRIPT_HREF_PATTERN, "$1=\"#\"");
+  return DOMPurify.sanitize(input, {
+    ALLOWED_TAGS: ["p", "br", "strong", "b", "em", "i", "u", "s", "h1", "h2", "h3", "h4", "ul", "ol", "li", "blockquote", "code", "pre", "span", "a"],
+    ALLOWED_ATTR: ["href", "target", "rel", "class"],
+    ALLOW_DATA_ATTR: false,
+  });
 }
 
 export function RichTextView({ html, className, fallback = "—" }: Props) {

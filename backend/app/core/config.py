@@ -1,10 +1,20 @@
 from __future__ import annotations
 
+import sys
 from functools import lru_cache
 from typing import Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Known-weak values that ship as defaults in this repo (config.py / docker-compose.yml).
+# If any of these are still active when ENVIRONMENT=production, the app refuses to start.
+# This converts a silent, invisible security hole into a loud, obvious boot failure.
+_WEAK_SECRET_KEY = "change-me-in-production-this-is-a-dev-key-only"
+_WEAK_ADMIN_PASSWORD = "Admin@12345"
+_WEAK_DB_PASSWORD = "sm_secure_pass_2024"
+_WEAK_REDIS_PASSWORD = "sm_redis_pass_2024"
+_WEAK_SEGMENT_SECRET = "dev_segment_secret_change_me"
 
 
 class Settings(BaseSettings):
@@ -148,6 +158,62 @@ class Settings(BaseSettings):
         """True if BOTH keys for the given mode are present in the env."""
         kid, ksec = self.razorpay_keys(mode)
         return bool(kid and ksec)
+
+    def production_secret_problems(self) -> list[str]:
+        """Return a list of human-readable problems with the production secret
+        configuration. Empty list == safe to boot. Only meaningful in production.
+
+        We check the *effective* values (after .env overrides) against the
+        known-weak defaults that ship in this repo, plus a basic length floor on
+        the JWT signing key. This is the single safety net that makes a missing or
+        incomplete server .env fail loudly instead of silently running on public
+        credentials."""
+        problems: list[str] = []
+
+        if self.SECRET_KEY == _WEAK_SECRET_KEY:
+            problems.append(
+                "SECRET_KEY is still the public default. Set a strong random value "
+                '(python -c "import secrets; print(secrets.token_hex(32))").'
+            )
+        elif len(self.SECRET_KEY) < 32:
+            problems.append("SECRET_KEY is too short (need >= 32 chars).")
+
+        if self.MASTER_ADMIN_PASSWORD == _WEAK_ADMIN_PASSWORD:
+            problems.append("MASTER_ADMIN_PASSWORD is still the public default 'Admin@12345'.")
+
+        # These appear inside the connection URLs; substring match is the reliable check.
+        if _WEAK_DB_PASSWORD in self.DATABASE_URL:
+            problems.append("DATABASE_URL still uses the public default DB password.")
+        if _WEAK_REDIS_PASSWORD in self.REDIS_URL:
+            problems.append("REDIS_URL still uses the public default Redis password.")
+
+        if self.SEGMENT_SIGNING_SECRET == _WEAK_SEGMENT_SECRET:
+            problems.append("SEGMENT_SIGNING_SECRET is still the public default.")
+        elif not self.SEGMENT_SIGNING_SECRET:
+            problems.append("SEGMENT_SIGNING_SECRET is empty — video segment URLs cannot be signed.")
+
+        return problems
+
+
+def assert_safe_production_config() -> None:
+    """Refuse to start the app in production when any known-weak default secret is
+    still active. No-op outside production so local development stays friction-free.
+    Called at the very top of the FastAPI lifespan, before any seeding."""
+    if not settings.is_production:
+        return
+    problems = settings.production_secret_problems()
+    if not problems:
+        return
+    print("=" * 70)
+    print("[BOOT][FATAL] Refusing to start in production with insecure configuration:")
+    for p in problems:
+        print(f"  - {p}")
+    print(
+        "Fix these in the server .env (and rotate the Postgres password with "
+        "ALTER USER, not just the env var), then redeploy."
+    )
+    print("=" * 70)
+    sys.exit(1)
 
 
 @lru_cache

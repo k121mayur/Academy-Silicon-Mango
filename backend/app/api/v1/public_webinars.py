@@ -254,6 +254,17 @@ async def register(
         raise APIError(code="WEBINAR_FULL", message="This webinar is full.", status_code=400)
     will_waitlist = state == "waitlist"
 
+    # Paid webinars do not yet have a payment flow wired (no Razorpay order is
+    # created here), so accepting a registration would admit the user for free
+    # and email them a confirmation for something they never paid for. Block it
+    # explicitly until the paid flow is built. Free webinars are unaffected.
+    if not webinar.is_free:
+        raise APIError(
+            code="PAYMENT_REQUIRED",
+            message="Paid webinar registration is not available yet. Please check back soon.",
+            status_code=503,
+        )
+
     # 4) Duplicate check
     existing = (
         await db.execute(
@@ -332,6 +343,15 @@ async def verify_registration(payload: RegistrationVerify, db: AsyncSession = De
     webinar = await db.get(Webinar, reg.webinar_id)
     if not webinar:
         raise APIError(code="NOT_FOUND", message="Webinar not found", status_code=404)
+
+    # A confirmation link emailed before the webinar was cancelled must not be
+    # able to upgrade the registration to 'registered' after cancellation.
+    if webinar.is_cancelled:
+        raise APIError(
+            code="WEBINAR_CANCELLED",
+            message="This webinar has been cancelled.",
+            status_code=410,
+        )
 
     already = reg.verified_at is not None
     if not already:

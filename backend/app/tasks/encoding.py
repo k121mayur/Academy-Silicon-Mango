@@ -124,6 +124,10 @@ async def _encode_one(video_id, Session: async_sessionmaker) -> tuple[bool, Opti
                 return False, "Video row vanished"
             if not video.source_path or not os.path.isfile(video.source_path):
                 return False, "Source file missing"
+            if video.uploaded_by is None:
+                # Uploader was deleted; we cannot build the uploader-namespaced
+                # output path. Fail cleanly instead of writing to a 'None' dir.
+                return False, "Uploader account no longer exists; cannot determine output path"
             src_path = video.source_path
             uploader_id = str(video.uploaded_by)
 

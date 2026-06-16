@@ -15,6 +15,8 @@ from app.core.security import hash_password
 from app.db.session import get_db
 from app.dependencies.auth import require_admin
 from app.models.batch import Enrollment
+from app.models.certificate import Certificate
+from app.models.payment import Payment, PaymentStatus
 from app.models.user import (
     AuthProvider,
     InstructorProfile,
@@ -22,6 +24,7 @@ from app.models.user import (
     User,
     UserRole,
 )
+from app.models.video import Video
 from app.schemas.user import (
     InstructorCreate,
     InstructorPublic,
@@ -39,6 +42,60 @@ def _random_password(length: int = 12) -> str:
     alphabet = string.ascii_letters + string.digits
     pwd = "".join(secrets.choice(alphabet) for _ in range(length))
     return pwd + "1A!"
+
+
+async def _assert_user_deletable(db: AsyncSession, user: User) -> None:
+    """Refuse to hard-delete a user when doing so would destroy financial,
+    academic, or video records via CASCADE foreign keys. The admin should
+    deactivate (is_active=False) such accounts instead. Raises 409 on conflict."""
+    paid = (
+        await db.execute(
+            select(func.count(Payment.id)).where(
+                Payment.student_id == user.id,
+                Payment.status == PaymentStatus.paid,
+            )
+        )
+    ).scalar_one()
+    if paid:
+        raise APIError(
+            code="USER_HAS_PAYMENTS",
+            message=(
+                "This user has paid payment records and cannot be deleted "
+                "(it would destroy financial history). Deactivate the account instead."
+            ),
+            status_code=409,
+        )
+
+    certs = (
+        await db.execute(
+            select(func.count(Certificate.id)).where(Certificate.student_id == user.id)
+        )
+    ).scalar_one()
+    if certs:
+        raise APIError(
+            code="USER_HAS_CERTIFICATES",
+            message=(
+                "This user has issued certificates and cannot be deleted "
+                "(it would destroy credential records). Deactivate the account instead."
+            ),
+            status_code=409,
+        )
+
+    videos = (
+        await db.execute(
+            select(func.count(Video.id)).where(Video.uploaded_by == user.id)
+        )
+    ).scalar_one()
+    if videos:
+        raise APIError(
+            code="USER_HAS_VIDEOS",
+            message=(
+                "This instructor has uploaded videos and cannot be deleted "
+                "(it would break video playback). Reassign or remove the videos first, "
+                "or deactivate the account instead."
+            ),
+            status_code=409,
+        )
 
 
 # ---------------- Instructors ----------------
@@ -137,11 +194,14 @@ async def create_instructor(
             "user_id": str(user.id),
             "email": email,
             "display_name": payload.display_name,
-            "temporary_password": password,
             "email_sent": email_sent,
         },
     }
     if not email_sent:
+        # The welcome email failed, so the admin needs the password to relay it
+        # manually. Only then do we expose it in the response body (it otherwise
+        # lands in proxy/access logs and browser history for no reason).
+        result["data"]["temporary_password"] = password
         result["warning"] = (
             "Account created, but the welcome email could not be delivered. "
             "Share the login email and temporary password with the instructor manually, "
@@ -215,6 +275,7 @@ async def delete_instructor(
     user = await db.get(User, user_id)
     if not user or user.role != UserRole.instructor:
         raise APIError(code="USER_002", message="Instructor not found", status_code=404)
+    await _assert_user_deletable(db, user)
     email = user.email
     await db.delete(user)
     await db.commit()
@@ -407,6 +468,7 @@ async def delete_student(
     user = await db.get(User, user_id)
     if not user or user.role != UserRole.student:
         raise APIError(code="USER_002", message="Student not found", status_code=404)
+    await _assert_user_deletable(db, user)
     email = user.email
     await db.delete(user)
     await db.commit()

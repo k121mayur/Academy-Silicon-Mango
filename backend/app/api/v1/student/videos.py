@@ -14,7 +14,7 @@ from app.core.exceptions import APIError
 from app.core.redis import get_redis
 from app.db.session import get_db
 from app.dependencies.auth import require_student
-from app.models.batch import Enrollment
+from app.models.batch import Enrollment, EnrollmentStatus
 from app.models.session import Session as ClassSession, SessionResource
 from app.models.user import StudentProfile, User
 from app.models.video import Video, VideoStatus
@@ -63,6 +63,7 @@ async def _resolve_video_for_student(db: AsyncSession, student: User, video_id: 
             select(Enrollment).where(
                 Enrollment.batch_id == session.batch_id,
                 Enrollment.student_id == student.id,
+                Enrollment.status != EnrollmentStatus.dropped,
             )
         )
     ).scalar_one_or_none()
@@ -165,6 +166,15 @@ def _rewrite_variant(text: str, *, video: Video, rendition: str, ip: str, user_i
 
         return _URI_LINE_PATTERN.sub(repl_dev, text)
 
+    if video.uploaded_by is None:
+        # Uploader was deleted: the segment path is uploader-namespaced, so we
+        # cannot build valid signed URLs. Surface a clear error instead of
+        # emitting '/media/seg/None/...' which would 404 and look like a random break.
+        raise APIError(
+            code="VIDEO_UNAVAILABLE",
+            message="This video is temporarily unavailable.",
+            status_code=409,
+        )
     inst = str(video.uploaded_by)
     vid = str(video.id)
     exp = tok.segment_url_expiry()  # bucketed → identical for all concurrent viewers

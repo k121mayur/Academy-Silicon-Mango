@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +20,7 @@ from app.models.course import Course
 from app.models.session import Session as ClassSession, SessionResource, SessionStatus
 from app.models.user import InstructorProfile, User
 from app.models.video import Video
-from app.services.storage_service import save_upload
+from app.services.storage_service import resolve_upload_path, save_upload
 
 router = APIRouter(prefix="/student", tags=["student"])
 
@@ -71,7 +72,7 @@ async def my_batch_sessions(
     # ensure enrolled
     enr = (
         await db.execute(
-            select(Enrollment).where(Enrollment.batch_id == batch_id, Enrollment.student_id == student.id)
+            select(Enrollment).where(Enrollment.batch_id == batch_id, Enrollment.student_id == student.id, Enrollment.status != EnrollmentStatus.dropped)
         )
     ).scalar_one_or_none()
     if not enr:
@@ -136,6 +137,23 @@ async def my_batch_sessions(
     return {"success": True, "data": items}
 
 
+@router.get("/submissions/{submission_id}/file")
+async def download_my_submission(
+    submission_id: str,
+    student: User = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """Stream a student's own submitted file. Replaces the old public
+    /uploads/submissions/<id> path so only the owner can fetch it."""
+    sub = await db.get(Submission, submission_id)
+    if not sub or sub.student_id != student.id:
+        raise APIError(code="NOT_FOUND", message="Submission not found", status_code=404)
+    if not sub.file_url:
+        raise APIError(code="NOT_FOUND", message="No file on this submission", status_code=404)
+    path = resolve_upload_path(sub.file_url)
+    return FileResponse(str(path), filename=path.name)
+
+
 @router.get("/batches/{batch_id}/assignments")
 async def my_batch_assignments(
     batch_id: str,
@@ -144,7 +162,7 @@ async def my_batch_assignments(
 ):
     enr = (
         await db.execute(
-            select(Enrollment).where(Enrollment.batch_id == batch_id, Enrollment.student_id == student.id)
+            select(Enrollment).where(Enrollment.batch_id == batch_id, Enrollment.student_id == student.id, Enrollment.status != EnrollmentStatus.dropped)
         )
     ).scalar_one_or_none()
     if not enr:
@@ -178,7 +196,7 @@ async def my_batch_assignments(
                 "submission": {
                     "id": str(sub.id),
                     "content": sub.content,
-                    "file_url": sub.file_url,
+                    "file_url": (f"/api/v1/student/submissions/{sub.id}/file" if sub.file_url else None),
                     "score": float(sub.score) if sub.score is not None else None,
                     "feedback": sub.feedback,
                     "status": sub.status.value,
@@ -207,7 +225,7 @@ async def submit_assignment(
     # student must be enrolled in the batch
     enr = (
         await db.execute(
-            select(Enrollment).where(Enrollment.batch_id == a.batch_id, Enrollment.student_id == student.id)
+            select(Enrollment).where(Enrollment.batch_id == a.batch_id, Enrollment.student_id == student.id, Enrollment.status != EnrollmentStatus.dropped)
         )
     ).scalar_one_or_none()
     if not enr:
@@ -283,7 +301,7 @@ async def submit_assignment(
 async def _ensure_enrolled(db: AsyncSession, batch_id: str, student_id) -> Enrollment:
     enr = (
         await db.execute(
-            select(Enrollment).where(Enrollment.batch_id == batch_id, Enrollment.student_id == student_id)
+            select(Enrollment).where(Enrollment.batch_id == batch_id, Enrollment.student_id == student_id, Enrollment.status != EnrollmentStatus.dropped)
         )
     ).scalar_one_or_none()
     if not enr:

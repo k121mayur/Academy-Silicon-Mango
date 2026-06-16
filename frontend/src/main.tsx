@@ -15,6 +15,7 @@ import App from "./App";
 if (typeof window !== "undefined") {
   window.addEventListener("auth:logout", () => {
     queryClient.clear();
+    localStorage.removeItem("smango-rq-cache");
   });
 }
 

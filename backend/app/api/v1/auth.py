@@ -19,8 +19,10 @@ from app.core.redis import (
     blacklist_token,
     is_blacklisted,
     login_rate_limit,
+    mark_password_changed,
     otp_ip_rate_limit,
     otp_rate_limit,
+    password_changed_after,
 )
 from app.core.utils import get_client_ip
 from app.core.security import (
@@ -151,6 +153,12 @@ async def refresh(
     if not sub:
         raise err_token_expired()
 
+    # Reject a refresh token issued before the user's last password change, so a
+    # stolen refresh token cannot mint fresh access tokens after a password reset.
+    iat = payload.get("iat")
+    if iat and await password_changed_after(sub, iat):
+        raise err_token_expired()
+
     from app.services.auth_service import get_user_by_id
 
     user = await get_user_by_id(db, sub)
@@ -205,9 +213,17 @@ class ChangePasswordPayload(BaseModel):
 @router.post("/change-password", response_model=MessageResponse)
 async def change_password(
     payload: ChangePasswordPayload,
+    request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # Rate-limit by IP (reuse the login limiter) so the current-password check
+    # below cannot be used to brute-force or to burn CPU on bcrypt verifies.
+    ip = get_client_ip(request)
+    allowed, reset_in = await login_rate_limit(ip)
+    if not allowed:
+        raise err_login_rate_limited(reset_in)
+
     if not user.hashed_password:
         raise APIError(
             code="VALIDATION",
@@ -231,6 +247,12 @@ async def change_password(
 
     user.hashed_password = hash_password(payload.new_password)
     await db.commit()
+
+    # Invalidate every session issued before now (all devices, including any
+    # stolen token). The marker must outlive the longest-lived refresh token.
+    pw_marker_ttl = settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60 + 60
+    await mark_password_changed(str(user.id), pw_marker_ttl)
+
     return MessageResponse(message="Password changed")
 
 

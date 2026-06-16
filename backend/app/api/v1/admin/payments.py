@@ -6,6 +6,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -123,9 +124,19 @@ async def update_payment_settings(
     if s is None:
         s = PaymentSettings(mode=mode)
         db.add(s)
+        try:
+            await db.commit()
+        except IntegrityError:
+            # A concurrent request inserted the singleton row first (blocked by
+            # the uq_payment_settings_singleton index). Roll back and update the
+            # existing row instead.
+            await db.rollback()
+            s = (await db.execute(select(PaymentSettings).limit(1))).scalar_one()
+            s.mode = mode
+            await db.commit()
     else:
         s.mode = mode
-    await db.commit()
+        await db.commit()
     print(f"[ADMIN] Payment mode switched to {mode.value}")
     return _settings_public(mode.value)
 
