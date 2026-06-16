@@ -189,7 +189,7 @@ export function PaymentModal({ open, onClose, courseId, courseTitle, batch, paya
               className="mt-4 inline-flex items-center gap-2 px-4 h-10 rounded-md bg-surface-containerLow hover:bg-surface-container border border-ink-outlineVariant text-body-sm font-medium text-ink"
             >
               <span className="icon text-[18px]">receipt_long</span>
-              Receipt generated — download ↗
+              View your receipt ↗
             </a>
           )}
           <Button fullWidth className="mt-4" rightIcon="arrow_forward" onClick={goToMyCourses}>

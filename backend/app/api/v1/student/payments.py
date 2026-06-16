@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -227,15 +227,21 @@ async def download_receipt(
     student: User = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ):
-    """Stream a payment receipt PDF, but ONLY to the student who owns it. Replaces
-    the old public /uploads/receipts/<id>.pdf path (which leaked PII to anyone with
-    the URL). The browser sends the auth cookie automatically when the link opens."""
+    """Serve a payment receipt, but ONLY to the student who owns it. Receipts are
+    private (they contain PII), so this authenticated route replaces the old public
+    /uploads/receipts/<id> path. The browser sends the auth cookie automatically
+    when the link opens.
+
+    New receipts are stored as a printable HTML page and rendered inline; legacy
+    PDF receipts are still streamed for download."""
     payment = await db.get(Payment, payment_id)
     if not payment or payment.student_id != student.id:
         raise APIError(code="NOT_FOUND", message="Receipt not found", status_code=404)
     if not payment.receipt_url:
         raise APIError(code="NOT_FOUND", message="Receipt not available", status_code=404)
     path = resolve_upload_path(payment.receipt_url)
+    if path.suffix.lower() == ".html":
+        return HTMLResponse(content=path.read_text(encoding="utf-8"))
     return FileResponse(
         str(path),
         media_type="application/pdf",
