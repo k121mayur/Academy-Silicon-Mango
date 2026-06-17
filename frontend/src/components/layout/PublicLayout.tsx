@@ -6,11 +6,19 @@ import { RouteFallback } from "./RouteFallback";
 import { cn } from "@/lib/utils";
 
 const NAV_LINKS = [
-  { label: "Courses", href: "/courses", route: "/courses", internal: true },
-  { label: "Webinars", href: "/webinars", route: "/webinars", internal: true },
-  { label: "Blog", href: "/blog", route: "/blog", internal: true },
-  { label: "Instructors", href: "/#instructors", route: "/" },
-  { label: "How it works", href: "/#how-it-works", route: "/" },
+  { label: "Explore Courses", href: "/courses", route: "/courses", internal: true },
+  { label: "Blogs", href: "/blog", route: "/blog", internal: true },
+  { label: "About Us", href: "/#about", route: "/" },
+  { label: "Contact", href: "mailto:hello@siliconmango.com", route: "/", external: true },
+];
+
+// Community / social links shown in the footer.
+// TODO: Replace hrefs with real brand handles when they are live.
+const SOCIAL_LINKS = [
+  { label: "WhatsApp community", slug: "whatsapp", href: "https://wa.me/" },
+  { label: "Instagram", slug: "instagram", href: "https://instagram.com/" },
+  { label: "LinkedIn", slug: "linkedin", href: "https://linkedin.com/" },
+  { label: "YouTube", slug: "youtube", href: "https://youtube.com/" },
 ];
 
 export default function PublicLayout() {
@@ -81,25 +89,31 @@ export default function PublicLayout() {
             <span className="font-display font-extrabold text-title-md text-ink">Silicon Mango</span>
           </Link>
 
-          <nav className="hidden md:flex items-center gap-1 text-body-sm">
+          <nav className="hidden md:flex items-center gap-0.5 text-body-sm">
             {NAV_LINKS.map((l) => {
               const active = l.internal && loc.pathname.startsWith(l.route) && l.route !== "/";
-              return l.internal ? (
-                <Link
-                  key={l.label}
-                  to={l.href}
-                  className={cn(
-                    "px-3 py-2 rounded-lg transition-colors duration-200 ease-out",
-                    active ? "text-ink font-semibold bg-surface-container" : "text-ink-variant hover:text-ink hover:bg-surface-container/70"
-                  )}
-                >
-                  {l.label}
-                </Link>
-              ) : (
+              if (l.internal) {
+                return (
+                  <Link
+                    key={l.label}
+                    to={l.href}
+                    className={cn(
+                      "px-3 py-2 rounded-lg transition-colors duration-200 ease-out whitespace-nowrap",
+                      active
+                        ? "text-ink font-semibold bg-surface-container"
+                        : "text-ink-variant hover:text-ink hover:bg-surface-container/70"
+                    )}
+                  >
+                    {l.label}
+                  </Link>
+                );
+              }
+              return (
                 <a
                   key={l.label}
                   href={l.href}
-                  className="px-3 py-2 rounded-lg text-ink-variant hover:text-ink hover:bg-surface-container/70 transition-colors duration-200 ease-out"
+                  {...(l.external ? { target: "_blank", rel: "noreferrer" } : {})}
+                  className="px-3 py-2 rounded-lg text-ink-variant hover:text-ink hover:bg-surface-container/70 transition-colors duration-200 ease-out whitespace-nowrap"
                 >
                   {l.label}
                 </a>
@@ -114,6 +128,17 @@ export default function PublicLayout() {
               </Button>
             ) : (
               <>
+                {/* Free Class pill — low-commitment CTA next to the primary enrol button */}
+                {loc.pathname !== "/webinars" && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => nav("/webinars")}
+                    className="hidden lg:inline-flex border border-ink-outlineVariant/60"
+                  >
+                    Free Class
+                  </Button>
+                )}
                 {loc.pathname !== "/login" && (
                   <Button variant="ghost" size="sm" onClick={() => nav("/login")} className="hidden sm:inline-flex">
                     Sign In
@@ -171,7 +196,7 @@ export default function PublicLayout() {
                       Sign In
                     </Button>
                     <Button fullWidth onClick={() => nav("/signup")} rightIcon="arrow_forward">
-                      Get Started
+                      Enrol now
                     </Button>
                   </>
                 )}
@@ -197,28 +222,57 @@ export default function PublicLayout() {
               <span className="font-display font-extrabold">Silicon Mango</span>
             </div>
             <p className="text-body-sm text-surface-containerHigh/70 max-w-xs">
-              Learn. Build. Get Certified. Live cohorts, self-paced tracks, and expert webinars.
+              Affordable, job-ready courses in Excel, Python, SQL, and AI, built for working
+              professionals across India.
             </p>
+            <div className="flex items-center gap-2.5 mt-5">
+              {SOCIAL_LINKS.map((s) => (
+                <a
+                  key={s.slug}
+                  href={s.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={s.label}
+                  className="w-9 h-9 grid place-items-center rounded-lg bg-white/10 hover:bg-white/20 transition-colors press"
+                >
+                  <img
+                    src={`https://cdn.simpleicons.org/${s.slug}/ffffff`}
+                    alt=""
+                    width={16}
+                    height={16}
+                    className="w-4 h-4 opacity-90"
+                    loading="lazy"
+                  />
+                </a>
+              ))}
+            </div>
           </div>
           <div>
             <p className="text-label uppercase tracking-wider text-surface-containerHigh/60 mb-3">Learn</p>
             <ul className="space-y-2.5 text-body-sm">
-              <li><Link to="/courses" className="text-surface-containerHigh/80 hover:text-white transition-colors">Live cohorts</Link></li>
+              <li><Link to="/courses" className="text-surface-containerHigh/80 hover:text-white transition-colors">Courses</Link></li>
+              <li><Link to="/webinars" className="text-surface-containerHigh/80 hover:text-white transition-colors">Live Classes</Link></li>
               <li><Link to="/courses" className="text-surface-containerHigh/80 hover:text-white transition-colors">Self-paced</Link></li>
-              <li><Link to="/webinars" className="text-surface-containerHigh/80 hover:text-white transition-colors">Webinars</Link></li>
+              <li><Link to="/webinars" className="text-surface-containerHigh/80 hover:text-white transition-colors">Free Sample Class</Link></li>
             </ul>
           </div>
           <div>
             <p className="text-label uppercase tracking-wider text-surface-containerHigh/60 mb-3">Company</p>
             <ul className="space-y-2.5 text-body-sm">
               <li><a href="/#about" className="text-surface-containerHigh/80 hover:text-white transition-colors">About</a></li>
-              <li><a href="/#instructors" className="text-surface-containerHigh/80 hover:text-white transition-colors">Instructors</a></li>
+              <li><Link to="/blog" className="text-surface-containerHigh/80 hover:text-white transition-colors">Blog</Link></li>
+              <li><a href="mailto:careers@siliconmango.com" className="text-surface-containerHigh/80 hover:text-white transition-colors">Careers</a></li>
             </ul>
           </div>
           <div>
             <p className="text-label uppercase tracking-wider text-surface-containerHigh/60 mb-3">Support</p>
             <ul className="space-y-2.5 text-body-sm">
               <li><a href="mailto:hello@siliconmango.com" className="text-surface-containerHigh/80 hover:text-white transition-colors">Contact</a></li>
+              <li>
+                {/* TODO: Replace with real WhatsApp community link */}
+                <a href="https://wa.me/" target="_blank" rel="noreferrer" className="text-surface-containerHigh/80 hover:text-white transition-colors">WhatsApp Community</a>
+              </li>
+              <li><a href="/#faq" className="text-surface-containerHigh/80 hover:text-white transition-colors">FAQs</a></li>
               <li><Link to="/login" className="text-surface-containerHigh/80 hover:text-white transition-colors">Sign In</Link></li>
             </ul>
           </div>
