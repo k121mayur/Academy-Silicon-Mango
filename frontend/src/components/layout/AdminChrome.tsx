@@ -42,6 +42,10 @@ const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
     items: [{ label: "Webinars", to: "/admin/webinars", icon: "co_present" }],
   },
   {
+    title: "Content",
+    items: [{ label: "Blog Posts", to: "/admin/blog", icon: "article" }],
+  },
+  {
     title: "Finances",
     items: [
       { label: "Payments", to: "/admin/payments", icon: "payments" },

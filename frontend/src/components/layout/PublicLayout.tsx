@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 const NAV_LINKS = [
   { label: "Courses", href: "/courses", route: "/courses", internal: true },
   { label: "Webinars", href: "/webinars", route: "/webinars", internal: true },
+  { label: "Blog", href: "/blog", route: "/blog", internal: true },
   { label: "Instructors", href: "/#instructors", route: "/" },
   { label: "How it works", href: "/#how-it-works", route: "/" },
 ];
