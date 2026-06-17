@@ -23,6 +23,7 @@ SUBDIRS = (
     "webinar_flyers",
     "webinar_banners",
     "org_logos",
+    "blog_images",
 )
 
 
@@ -64,6 +65,7 @@ async def save_upload(
         "webinar_flyers",
         "webinar_banners",
         "org_logos",
+        "blog_images",
     ],
 ) -> str:
     """Save uploaded file under uploads/<subdir>/<uuid><ext>. Returns relative URL path.
@@ -131,6 +133,7 @@ async def save_bytes(
         "webinar_flyers",
         "webinar_banners",
         "org_logos",
+        "blog_images",
     ],
     extension: str = "pdf",
     filename: str | None = None,
