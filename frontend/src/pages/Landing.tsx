@@ -11,6 +11,8 @@ import { stripHtml } from "@/components/shared/RichTextView";
 import { formatCurrency } from "@/lib/utils";
 import { WebinarCard } from "@/components/webinar/WebinarCard";
 import { listPublicWebinars, type PublicWebinarListItem } from "@/services/webinar.service";
+import { BlogCard } from "@/components/blog/BlogCard";
+import { listPublicBlogs, type BlogCardDTO } from "@/services/blog.service";
 
 interface PublicCourse {
   id: string;
@@ -39,6 +41,7 @@ export default function Landing() {
   const [loadingCourses, setLoadingCourses] = useState(true);
   const [stats, setStats] = useState<Stats>({ students: 0, instructors: 0, courses: 0, certificates: 0 });
   const [webinars, setWebinars] = useState<PublicWebinarListItem[]>([]);
+  const [blogs, setBlogs] = useState<BlogCardDTO[]>([]);
 
   useEffect(() => {
     api
@@ -53,6 +56,9 @@ export default function Landing() {
     listPublicWebinars("upcoming")
       .then((w) => setWebinars(w.slice(0, 3)))
       .catch((e) => console.warn("[LANDING] Failed to load webinars", e));
+    listPublicBlogs()
+      .then((b) => setBlogs(b.slice(0, 3)))
+      .catch((e) => console.warn("[LANDING] Failed to load blogs", e));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -320,6 +326,35 @@ export default function Landing() {
             <div className="mt-6 md:hidden">
               <Link to="/webinars">
                 <Button variant="outline" fullWidth rightIcon="arrow_forward">View all webinars</Button>
+              </Link>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ─────────────────── Latest from the blog ─────────────────── */}
+      {blogs.length > 0 && (
+        <section id="blog" className="py-16 md:py-24 scroll-mt-20">
+          <div className="max-w-7xl mx-auto px-4 md:px-6">
+            <Reveal className="flex items-end justify-between mb-10 gap-4">
+              <div>
+                <p className="text-caption text-tertiary mb-2">BLOG</p>
+                <h2 className="font-display font-bold text-display-md md:text-display-lg text-ink">Latest from the blog</h2>
+              </div>
+              <Link to="/blog" className="text-body-sm text-primary font-semibold hover:underline hidden md:flex items-center gap-1 shrink-0">
+                View all <span className="icon text-[18px]">arrow_forward</span>
+              </Link>
+            </Reveal>
+            <div className="space-y-4 max-w-4xl">
+              {blogs.map((b, i) => (
+                <Reveal key={b.id} delay={(i % 3) * 70}>
+                  <BlogCard blog={b} />
+                </Reveal>
+              ))}
+            </div>
+            <div className="mt-6 md:hidden">
+              <Link to="/blog">
+                <Button variant="outline" fullWidth rightIcon="arrow_forward">View all posts</Button>
               </Link>
             </div>
           </div>
