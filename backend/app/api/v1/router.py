@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from app.api.v1 import auth as auth_router
 from app.api.v1.admin import (
     batches as admin_batches,
+    blogs as admin_blogs,
     certificates as admin_certificates,
     courses as admin_courses,
     dashboard as admin_dashboard,
@@ -23,11 +24,13 @@ from app.api.v1.student import (
 )
 from app.api.v1 import public as public_router
 from app.api.v1 import public_webinars as public_webinars_router
+from app.api.v1 import public_blogs as public_blogs_router
 
 api_router = APIRouter()
 api_router.include_router(auth_router.router)
 api_router.include_router(public_router.router)
 api_router.include_router(public_webinars_router.router)
+api_router.include_router(public_blogs_router.router)
 
 admin_router = APIRouter(prefix="/admin")
 admin_router.include_router(admin_dashboard.router)
@@ -39,6 +42,7 @@ admin_router.include_router(admin_certificates.router)
 admin_router.include_router(admin_payments.router)
 admin_router.include_router(admin_organizations.router)
 admin_router.include_router(admin_webinars.router)
+admin_router.include_router(admin_blogs.router)
 api_router.include_router(admin_router)
 
 api_router.include_router(instructor_router.router)
