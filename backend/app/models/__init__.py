@@ -10,6 +10,7 @@ from app.models.batch import (
     EnrollmentStatus,
     SlotType,
 )
+from app.models.blog import Blog, BlogStatus
 from app.models.certificate import Certificate, CertificateEmailStatus, CertificateTemplate
 from app.models.course import Course, CourseInstructor, CourseType, DurationUnit
 from app.models.otp import OTPPurpose, OTPRecord
@@ -58,6 +59,8 @@ __all__ = [
     "BatchPlan",
     "BatchScheduleSlot",
     "BatchStatus",
+    "Blog",
+    "BlogStatus",
     "Certificate",
     "CertificateEmailStatus",
     "CertificateTemplate",
