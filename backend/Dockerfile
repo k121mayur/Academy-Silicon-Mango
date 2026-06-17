@@ -56,6 +56,7 @@ RUN mkdir -p /app/uploads/course_banners \
     /app/uploads/certificate_templates \
     /app/uploads/certificates \
     /app/uploads/submissions \
+    /app/uploads/blog_images \
     /app/media/originals \
     /app/media/videos
 
