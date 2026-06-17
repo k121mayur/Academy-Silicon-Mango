@@ -6,6 +6,8 @@ export const ROUTES = {
     courses: "/courses",
     courseDetails: (idOrSlug: string) => `/courses/${idOrSlug}`,
     webinars: "/webinars",
+    blog: "/blog",
+    blogDetail: (slug: string) => `/blog/${slug}`,
   },
   admin: {
     root: "/admin",
@@ -25,6 +27,9 @@ export const ROUTES = {
     payments: "/admin/payments",
     paymentSettings: "/admin/payment-settings",
     catalogue: "/admin/catalogue",
+    blogs: "/admin/blog",
+    blogCreate: "/admin/blog/create",
+    blogEdit: (id: string) => `/admin/blog/${id}/edit`,
   },
   instructor: {
     dashboard: "/instructor/dashboard",
