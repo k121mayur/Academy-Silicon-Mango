@@ -21,6 +21,8 @@ const WebinarDetail = lazy(() => import("@/pages/WebinarDetail"));
 const WebinarRegister = lazy(() => import("@/pages/WebinarRegister"));
 const CoursesListing = lazy(() => import("@/pages/public/CoursesListing"));
 const PublicCourseDetails = lazy(() => import("@/pages/public/CourseDetailPublic"));
+const BlogListing = lazy(() => import("@/pages/public/BlogListing"));
+const BlogDetail = lazy(() => import("@/pages/public/BlogDetail"));
 const ChangePasswordPage = lazy(() => import("@/pages/account/ChangePassword"));
 
 // Admin
@@ -43,6 +45,8 @@ const AdminCatalogue = lazy(() => import("@/pages/admin/Catalogue"));
 const AdminWebinars = lazy(() => import("@/pages/admin/Webinars"));
 const WebinarForm = lazy(() => import("@/pages/admin/WebinarForm"));
 const WebinarDetailAdmin = lazy(() => import("@/pages/admin/WebinarDetailAdmin"));
+const AdminBlogs = lazy(() => import("@/pages/admin/Blogs"));
+const BlogForm = lazy(() => import("@/pages/admin/BlogForm"));
 
 // Student
 const StudentProfile = lazy(() => import("@/pages/student/Profile"));
@@ -74,6 +78,8 @@ export default function App() {
           <Route path="signup" element={<Signup />} />
           <Route path="courses" element={<CoursesListing />} />
           <Route path="courses/:courseId" element={<PublicCourseDetails />} />
+          <Route path="blog" element={<BlogListing />} />
+          <Route path="blog/:slug" element={<BlogDetail />} />
           <Route path="webinars" element={<WebinarListing />} />
           <Route path="webinars/:idOrSlug" element={<WebinarDetail />} />
           <Route path="webinars/:idOrSlug/register" element={<WebinarRegister />} />
@@ -105,6 +111,9 @@ export default function App() {
             <Route path="webinars/create" element={<WebinarForm />} />
             <Route path="webinars/:id/edit" element={<WebinarForm />} />
             <Route path="webinars/:id" element={<WebinarDetailAdmin />} />
+            <Route path="blog" element={<AdminBlogs />} />
+            <Route path="blog/create" element={<BlogForm />} />
+            <Route path="blog/:id/edit" element={<BlogForm />} />
           </Route>
         </Route>
 

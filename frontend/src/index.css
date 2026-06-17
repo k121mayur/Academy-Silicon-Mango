@@ -233,3 +233,45 @@
   overflow-x: auto;
 }
 .rich-text pre code { background: none; padding: 0; color: inherit; }
+.rich-text a { text-decoration: underline; text-underline-offset: 2px; }
+
+/* ── Blog media (only present when RichTextView allowMedia is on) ── */
+.rich-text img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+  margin: 0.75em 0;
+}
+.rich-text iframe {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  height: auto;
+  border: 0;
+  border-radius: 10px;
+  margin: 0.75em 0;
+}
+.rich-text div[data-youtube-video] {
+  width: 100%;
+  margin: 0.75em 0;
+}
+.rich-text div[data-youtube-video] iframe {
+  margin: 0;
+}
+
+/* ── Article reading layout (blog detail page) ── */
+.rich-text--article {
+  font-size: 1.0625rem;
+  line-height: 1.78;
+  color: #2b2620;
+}
+.rich-text--article p { margin: 1em 0; }
+.rich-text--article h1 { font-size: 30px; margin: 1.3em 0 0.5em; }
+.rich-text--article h2 { font-size: 24px; margin: 1.3em 0 0.5em; }
+.rich-text--article h3 { font-size: 19px; margin: 1.1em 0 0.4em; }
+.rich-text--article ul,
+.rich-text--article ol { margin: 1em 0; }
+.rich-text--article blockquote { margin: 1.3em 0; font-size: 1.0625rem; }
+.rich-text--article img,
+.rich-text--article iframe,
+.rich-text--article div[data-youtube-video] { margin: 1.5em 0; }
+.rich-text--article a { font-weight: 600; }
