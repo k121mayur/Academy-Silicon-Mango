@@ -122,7 +122,7 @@ services:
         condition: service_healthy
     env_file: ./backend/.env
     environment:
-      DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD:?DB_PASSWORD must be set in .env}@postgres:5432/silicon_mango
+      DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD_ENCODED:?DB_PASSWORD_ENCODED must be set in .env}@postgres:5432/silicon_mango
     command: ["alembic", "upgrade", "head"]
     restart: "no"
     networks:
@@ -144,7 +144,7 @@ services:
     env_file: ./backend/.env
     environment:
       # Inside Docker, connect to the `postgres`/`redis` services (NOT host).
-      DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD:?DB_PASSWORD must be set in .env}@postgres:5432/silicon_mango
+      DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD_ENCODED:?DB_PASSWORD_ENCODED must be set in .env}@postgres:5432/silicon_mango
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis:6379/0
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis:6379/1
       CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis:6379/2
@@ -191,7 +191,7 @@ services:
         condition: service_completed_successfully
     env_file: ./backend/.env
     environment:
-      DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD:?DB_PASSWORD must be set in .env}@postgres:5432/silicon_mango
+      DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD_ENCODED:?DB_PASSWORD_ENCODED must be set in .env}@postgres:5432/silicon_mango
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis:6379/0
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis:6379/1
       CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis:6379/2
@@ -227,7 +227,7 @@ services:
         condition: service_completed_successfully
     env_file: ./backend/.env
     environment:
-      DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD:?DB_PASSWORD must be set in .env}@postgres:5432/silicon_mango
+      DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD_ENCODED:?DB_PASSWORD_ENCODED must be set in .env}@postgres:5432/silicon_mango
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis:6379/0
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis:6379/1
       CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis:6379/2
@@ -263,7 +263,7 @@ services:
         condition: service_completed_successfully
     env_file: ./backend/.env
     environment:
-      DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD:?DB_PASSWORD must be set in .env}@postgres:5432/silicon_mango
+      DATABASE_URL: postgresql+asyncpg://sm_user:${DB_PASSWORD_ENCODED:?DB_PASSWORD_ENCODED must be set in .env}@postgres:5432/silicon_mango
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis:6379/0
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis:6379/1
       CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis:6379/2

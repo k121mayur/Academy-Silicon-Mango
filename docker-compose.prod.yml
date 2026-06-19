@@ -39,9 +39,9 @@ services:
       VIDEO_ENCODER: ${VIDEO_ENCODER:-vaapi}
 
   frontend:
-    ports:
-      - "80:80"
-      - "443:443"
+    # Port 80/443 are bound by the opensource project on this host.
+    # Use the base compose's port 5185 for Academy until that's resolved.
+    # Dev nginx config (baked-in) serves directly on :80 without TLS.
     environment:
       NGINX_ENVSUBST_FILTER: "^SM_"
       SM_SERVER_NAME: ${SERVER_NAME}
@@ -50,10 +50,6 @@ services:
     volumes:
       - ./backend/media:/app/media:ro
       - ./backend/uploads:/app/uploads:ro
-      # Production nginx config (TLS + Cloudflare lock-down) overrides the baked-in
-      # dev template. Rendered by the image's envsubst step at container start.
-      - ./frontend/nginx.prod.conf:/etc/nginx/templates/default.conf.template:ro
-      - ./certs:/etc/nginx/certs:ro
 
   # In production the app talks to the database over TLS via Cloudflare? No — the
   # DB stays internal. We simply ensure the backend is not directly reachable; it
