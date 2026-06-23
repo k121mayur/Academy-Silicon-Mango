@@ -136,7 +136,7 @@ export default function PublicLayout() {
                     onClick={() => nav("/webinars")}
                     className="hidden lg:inline-flex border border-ink-outlineVariant/60"
                   >
-                    Free Class
+                    Webinars
                   </Button>
                 )}
                 {loc.pathname !== "/login" && (
