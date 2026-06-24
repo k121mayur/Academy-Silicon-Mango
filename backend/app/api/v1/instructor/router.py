@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import date as date_type, datetime, time
+from datetime import date as date_type, datetime, time, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Optional
 
@@ -992,6 +992,17 @@ async def set_attendance(
         raise APIError(
             code="VALIDATION",
             message="Attendance is only available for live sessions",
+        )
+
+    # Attendance can only be marked for sessions that have already taken place —
+    # never for an upcoming session.
+    scheduled = session.scheduled_at
+    if scheduled.tzinfo is None:
+        scheduled = scheduled.replace(tzinfo=timezone.utc)
+    if scheduled > datetime.now(timezone.utc):
+        raise APIError(
+            code="VALIDATION",
+            message="Cannot mark attendance for a session that hasn't taken place yet",
         )
 
     enrolled_ids_res = await db.execute(

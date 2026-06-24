@@ -15,11 +15,14 @@ import {
   deleteResource,
   deleteSession,
   fetchBatches,
+  fetchBatchPlan,
   fetchSessions,
   updateSession,
   type InstructorBatch,
+  type InstructorPlanItem,
   type InstructorSession,
 } from "@/services/instructor.service";
+import { groupSessionsByWeekDay } from "@/lib/utils";
 import { VideoUpload } from "@/components/shared/VideoUpload";
 import { useSelectedBatch } from "@/features/instructor/selectedBatchStore";
 import { useVideoUploadStore } from "@/features/instructor/videoUploadStore";
@@ -45,6 +48,7 @@ const RESOURCE_TYPE_OPTS = [
 export default function SessionsResources() {
   const { selectedBatchId } = useSelectedBatch();
   const [sessions, setSessions] = useState<InstructorSession[]>([]);
+  const [plans, setPlans] = useState<InstructorPlanItem[]>([]);
   const [batch, setBatch] = useState<InstructorBatch | null>(null);
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState<InstructorSession | null>(null);
@@ -56,8 +60,13 @@ export default function SessionsResources() {
     if (!selectedBatchId) return;
     setLoading(true);
     try {
-      const [data, batches] = await Promise.all([fetchSessions(selectedBatchId), fetchBatches()]);
+      const [data, batches, planData] = await Promise.all([
+        fetchSessions(selectedBatchId),
+        fetchBatches(),
+        fetchBatchPlan(selectedBatchId),
+      ]);
       setSessions(data);
+      setPlans(planData);
       setBatch(batches.find((b) => b.id === selectedBatchId) || null);
     } catch (e) {
       toast.error(extractErrorMessage(e));
@@ -105,6 +114,116 @@ export default function SessionsResources() {
     }
   };
 
+  const grouping = groupSessionsByWeekDay(plans, sessions);
+
+  const renderSession = (s: InstructorSession, dayLabel?: string) => (
+    <Card key={s.id}>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            {dayLabel && <p className="text-label uppercase tracking-wide text-primary mb-0.5">{dayLabel}</p>}
+            <p className="font-semibold text-ink truncate">{s.title}</p>
+            <p className="text-label text-ink-outline">
+              {new Date(s.scheduled_at).toLocaleString()} · {s.duration_mins} mins
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <Badge tone="neutral">{s.session_type}</Badge>
+            <Badge tone={s.status === "completed" ? "success" : s.status === "cancelled" ? "danger" : "primary"}>
+              {s.status}
+            </Badge>
+            <Badge tone={s.origin === "manual" ? "tertiary" : "neutral"}>{s.origin}</Badge>
+          </div>
+        </div>
+      </CardHeader>
+      <CardBody className="space-y-3">
+        {s.description && <p className="text-body-sm text-ink-variant">{s.description}</p>}
+        <div className="grid md:grid-cols-2 gap-3 text-body-sm">
+          {s.meeting_link && (
+            <p className="truncate">
+              <span className="text-ink-outline">Meeting:</span>{" "}
+              <a href={s.meeting_link} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                {s.meeting_link}
+              </a>
+            </p>
+          )}
+          {s.recording_url && (
+            <p className="truncate">
+              <span className="text-ink-outline">Recording:</span>{" "}
+              <a href={s.recording_url} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                {s.recording_url}
+              </a>
+            </p>
+          )}
+        </div>
+
+        {s.resources.length > 0 && (
+          <div>
+            <p className="text-label uppercase tracking-wide text-ink-outline mb-1">Resources</p>
+            <ul className="space-y-1">
+              {s.resources.map((r) => {
+                const isVideo = r.resource_type === "video";
+                const videoStatus = r.status;
+                return (
+                  <li key={r.id} className="flex items-center justify-between gap-3 p-2 bg-surface-containerLow rounded-md">
+                    <div className="min-w-0 flex items-center gap-2 flex-1">
+                      <span className="icon text-ink-outline text-[18px]">
+                        {isVideo ? "play_circle" : r.resource_type === "link" ? "link" : "description"}
+                      </span>
+                      {isVideo ? (
+                        <div className="min-w-0 flex items-center gap-2 flex-wrap">
+                          <span className="truncate text-ink font-medium">{r.title}</span>
+                          {videoStatus === "ready" && <Badge tone="success">Ready</Badge>}
+                          {(videoStatus === "uploaded" || videoStatus === "queued") && (
+                            <Badge tone="warning">Pending optimization</Badge>
+                          )}
+                          {videoStatus === "processing" && <Badge tone="primary">Optimizing…</Badge>}
+                          {videoStatus === "failed" && <Badge tone="danger">Failed</Badge>}
+                          {videoStatus === "missing" && <Badge tone="danger">Missing</Badge>}
+                        </div>
+                      ) : (
+                        <a href={absoluteApiUrl(r.url)} target="_blank" rel="noreferrer" className="truncate text-primary hover:underline">
+                          {r.title}
+                        </a>
+                      )}
+                    </div>
+                    <button
+                      onClick={async () => {
+                        if (!confirm(`Delete resource "${r.title}"?`)) return;
+                        try {
+                          await deleteResource(r.id);
+                          toast.success("Resource removed");
+                          reload();
+                        } catch (e) {
+                          toast.error(extractErrorMessage(e));
+                        }
+                      }}
+                      className="icon text-danger hover:bg-danger-container/40 rounded p-1"
+                      title="Remove resource"
+                    >
+                      close
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" leftIcon="edit" onClick={() => setEditing(s)}>Edit</Button>
+          <Button size="sm" variant="outline" leftIcon="attach_file" onClick={() => setResourceModalFor(s)}>Add resource</Button>
+          {s.origin === "manual" && (
+            <Button size="sm" variant="danger" leftIcon="delete" onClick={() => setConfirmDelete(s)}>Delete</Button>
+          )}
+          {s.origin === "inherited" && (
+            <span className="text-label text-ink-outline self-center">Inherited — cancel via status edit, not delete</span>
+          )}
+        </div>
+      </CardBody>
+    </Card>
+  );
+
   return (
     <div className="space-y-5 max-w-6xl">
       <div className="flex items-center justify-between gap-3">
@@ -126,113 +245,30 @@ export default function SessionsResources() {
         </Card>
       )}
 
-      <div className="space-y-3">
-        {sessions.map((s) => (
-          <Card key={s.id}>
-            <CardHeader>
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="font-semibold text-ink truncate">{s.title}</p>
-                  <p className="text-label text-ink-outline">
-                    {new Date(s.scheduled_at).toLocaleString()} · {s.duration_mins} mins
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 flex-wrap justify-end">
-                  <Badge tone="neutral">{s.session_type}</Badge>
-                  <Badge tone={s.status === "completed" ? "success" : s.status === "cancelled" ? "danger" : "primary"}>
-                    {s.status}
-                  </Badge>
-                  <Badge tone={s.origin === "manual" ? "tertiary" : "neutral"}>{s.origin}</Badge>
-                </div>
-              </div>
-            </CardHeader>
-            <CardBody className="space-y-3">
-              {s.description && <p className="text-body-sm text-ink-variant">{s.description}</p>}
-              <div className="grid md:grid-cols-2 gap-3 text-body-sm">
-                {s.meeting_link && (
-                  <p className="truncate">
-                    <span className="text-ink-outline">Meeting:</span>{" "}
-                    <a href={s.meeting_link} target="_blank" rel="noreferrer" className="text-primary hover:underline">
-                      {s.meeting_link}
-                    </a>
-                  </p>
-                )}
-                {s.recording_url && (
-                  <p className="truncate">
-                    <span className="text-ink-outline">Recording:</span>{" "}
-                    <a href={s.recording_url} target="_blank" rel="noreferrer" className="text-primary hover:underline">
-                      {s.recording_url}
-                    </a>
-                  </p>
-                )}
-              </div>
-
-              {s.resources.length > 0 && (
-                <div>
-                  <p className="text-label uppercase tracking-wide text-ink-outline mb-1">Resources</p>
-                  <ul className="space-y-1">
-                    {s.resources.map((r) => {
-                      const isVideo = r.resource_type === "video";
-                      const videoStatus = r.status;
-                      return (
-                      <li key={r.id} className="flex items-center justify-between gap-3 p-2 bg-surface-containerLow rounded-md">
-                        <div className="min-w-0 flex items-center gap-2 flex-1">
-                          <span className="icon text-ink-outline text-[18px]">
-                            {isVideo ? "play_circle" : r.resource_type === "link" ? "link" : "description"}
-                          </span>
-                          {isVideo ? (
-                            <div className="min-w-0 flex items-center gap-2 flex-wrap">
-                              <span className="truncate text-ink font-medium">{r.title}</span>
-                              {videoStatus === "ready" && <Badge tone="success">Ready</Badge>}
-                              {(videoStatus === "uploaded" || videoStatus === "queued") && (
-                                <Badge tone="warning">Pending optimization</Badge>
-                              )}
-                              {videoStatus === "processing" && <Badge tone="primary">Optimizing…</Badge>}
-                              {videoStatus === "failed" && <Badge tone="danger">Failed</Badge>}
-                              {videoStatus === "missing" && <Badge tone="danger">Missing</Badge>}
-                            </div>
-                          ) : (
-                            <a href={absoluteApiUrl(r.url)} target="_blank" rel="noreferrer" className="truncate text-primary hover:underline">
-                              {r.title}
-                            </a>
-                          )}
-                        </div>
-                        <button
-                          onClick={async () => {
-                            if (!confirm(`Delete resource "${r.title}"?`)) return;
-                            try {
-                              await deleteResource(r.id);
-                              toast.success("Resource removed");
-                              reload();
-                            } catch (e) {
-                              toast.error(extractErrorMessage(e));
-                            }
-                          }}
-                          className="icon text-danger hover:bg-danger-container/40 rounded p-1"
-                          title="Remove resource"
-                        >
-                          close
-                        </button>
-                      </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              )}
-
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" leftIcon="edit" onClick={() => setEditing(s)}>Edit</Button>
-                <Button size="sm" variant="outline" leftIcon="attach_file" onClick={() => setResourceModalFor(s)}>Add resource</Button>
-                {s.origin === "manual" && (
-                  <Button size="sm" variant="danger" leftIcon="delete" onClick={() => setConfirmDelete(s)}>Delete</Button>
-                )}
-                {s.origin === "inherited" && (
-                  <span className="text-label text-ink-outline self-center">Inherited — cancel via status edit, not delete</span>
-                )}
-              </div>
-            </CardBody>
-          </Card>
+      <div className="space-y-6">
+        {grouping.weeks.map((wk) => (
+          <div key={wk.planId} className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Badge tone="primary">Week {wk.week}</Badge>
+              <p className="text-title-md font-semibold text-ink truncate">{wk.title || `Week ${wk.week}`}</p>
+            </div>
+            {wk.days.length === 0 ? (
+              <p className="text-body-sm text-ink-outline pl-1">No sessions scheduled this week.</p>
+            ) : (
+              wk.days.map((d) => renderSession(d.session, d.label))
+            )}
+          </div>
         ))}
+
+        {grouping.ungrouped.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Badge tone="tertiary">Other</Badge>
+              <p className="text-title-md font-semibold text-ink">Manual / unplanned sessions</p>
+            </div>
+            {grouping.ungrouped.map((s) => renderSession(s))}
+          </div>
+        )}
       </div>
 
       {editing && (
