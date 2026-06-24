@@ -39,6 +39,7 @@ export interface PublicCourseDetail {
   faqs: any[];
   certification_criteria: any[];
   syllabus_pdf_url: string | null;
+  demo_youtube_url: string | null;
   instructors: PublicInstructor[];
   certificate_template: PublicCertificateTemplate | null;
 }
