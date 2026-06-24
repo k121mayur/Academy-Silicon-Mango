@@ -36,8 +36,13 @@ from app.schemas.batch import (
     EnrollmentCreate,
     EnrollmentPublic,
 )
+from app.models.session import Session, SessionStatus
 from app.services.certificate_issue_service import issue_and_email_all_for_batch
 from app.services.planning_service import sync_inherited_sessions
+from app.services.scheduling_service import (
+    expand_slots_to_intervals,
+    find_instructor_conflict,
+)
 
 router = APIRouter(prefix="/batches", tags=["admin:batches"])
 
@@ -153,6 +158,10 @@ async def create_batch(
     if not course:
         raise APIError(code="NOT_FOUND", message="Course not found", status_code=404)
 
+    # A new batch must start today or in the future — never in the past.
+    if payload.start_date < date_type.today():
+        raise APIError(code="VALIDATION", message="Start date cannot be in the past")
+
     # End date is auto-calculated from the course duration when not supplied.
     end_date = payload.end_date or compute_end_date(course, payload.start_date)
 
@@ -170,6 +179,16 @@ async def create_batch(
         if not target or target.role != UserRole.instructor:
             raise APIError(code="USER_002", message="Instructor user not found", status_code=404)
         instructor_id = payload.instructor_id
+
+    # Reject the assignment if these sessions would clash with another batch the
+    # instructor already teaches (same wall-clock time on an overlapping date).
+    if instructor_id and mode == DeliveryMode.live:
+        intervals = expand_slots_to_intervals(
+            course, payload.start_date, end_date, payload.schedule_slots
+        )
+        conflict = await find_instructor_conflict(db, instructor_id, intervals)
+        if conflict:
+            raise APIError(code="SCHEDULE_CONFLICT", message=conflict)
 
     batch = Batch(
         course_id=course.id,
@@ -321,6 +340,26 @@ async def assign_instructor(
     target = await db.get(User, instructor_id)
     if not target or target.role != UserRole.instructor:
         raise APIError(code="USER_002", message="Instructor user not found", status_code=404)
+
+    # Reject if this batch's sessions clash with the target instructor's other
+    # batches. The batch already has its sessions generated, so derive intervals
+    # straight from them.
+    sess_rows = (
+        await db.execute(
+            select(Session).where(
+                Session.batch_id == batch.id, Session.status != SessionStatus.cancelled
+            )
+        )
+    ).scalars().all()
+    intervals = [
+        (s.scheduled_at, s.scheduled_at + timedelta(minutes=s.duration_mins or 0))
+        for s in sess_rows
+    ]
+    conflict = await find_instructor_conflict(
+        db, instructor_id, intervals, exclude_batch_id=batch.id
+    )
+    if conflict:
+        raise APIError(code="SCHEDULE_CONFLICT", message=conflict)
 
     batch.instructor_id = instructor_id
     await db.commit()
