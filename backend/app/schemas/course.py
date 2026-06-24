@@ -33,6 +33,7 @@ class CourseBase(BaseModel):
     duration_value: int = Field(ge=1, le=104)
     price: Decimal = Field(default=Decimal("0"), ge=0)
     discount: Decimal = Field(default=Decimal("0"), ge=0, le=100)  # percentage (0–100)
+    demo_youtube_url: Optional[str] = None
     tags: list[str] = []
     syllabus_items: list[SyllabusItem] = []
     faqs: list[FAQItem] = []
@@ -52,6 +53,7 @@ class CourseUpdate(BaseModel):
     duration_value: Optional[int] = None
     price: Optional[Decimal] = Field(default=None, ge=0)
     discount: Optional[Decimal] = Field(default=None, ge=0, le=100)  # percentage (0–100)
+    demo_youtube_url: Optional[str] = None
     tags: Optional[list[str]] = None
     syllabus_items: Optional[list[SyllabusItem]] = None
     faqs: Optional[list[FAQItem]] = None
@@ -76,6 +78,7 @@ class CoursePublic(BaseModel):
     certification_criteria: list[dict] = []
     banner_url: Optional[str] = None
     syllabus_pdf_url: Optional[str] = None
+    demo_youtube_url: Optional[str] = None
     is_published: bool = False
     batches_count: int = 0
     created_at: Optional[datetime] = None

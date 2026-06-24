@@ -46,6 +46,8 @@ class Course(Base):
     certification_criteria: Mapped[Optional[list]] = mapped_column(JSONB, default=list)
     banner_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     syllabus_pdf_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # Optional YouTube preview shown as a "Demo Session" tab on the course page.
+    demo_youtube_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     is_published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
