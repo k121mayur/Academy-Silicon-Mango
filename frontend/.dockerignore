@@ -1,0 +1,11 @@
+# node_modules is reinstalled inside the image via `npm ci`; dist is rebuilt by
+# `npm run build`. Keeping them out of the context speeds the build and avoids
+# overwriting the freshly installed tree with host artifacts.
+node_modules/
+dist/
+
+# Local tooling / noise
+.git/
+.gitignore
+*.log
+.DS_Store
