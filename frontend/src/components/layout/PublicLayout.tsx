@@ -9,16 +9,34 @@ const NAV_LINKS = [
   { label: "Explore Courses", href: "/courses", route: "/courses", internal: true },
   { label: "Blogs", href: "/blog", route: "/blog", internal: true },
   { label: "About Us", href: "/#about", route: "/" },
-  { label: "Contact", href: "mailto:hello@siliconmango.com", route: "/", external: true },
+  { label: "Contact", href: "mailto:palak@siliconmango.com", route: "/", external: true },
 ];
 
+// LinkedIn's logo is no longer hosted by Simple Icons (brand-policy removal),
+// so the CDN URL 404s — render it from an inline SVG instead.
+const LINKEDIN_SVG =
+  "M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z";
+
 // Community / social links shown in the footer.
-// TODO: Replace hrefs with real brand handles when they are live.
-const SOCIAL_LINKS = [
-  { label: "WhatsApp community", slug: "whatsapp", href: "https://wa.me/" },
-  { label: "Instagram", slug: "instagram", href: "https://instagram.com/" },
-  { label: "LinkedIn", slug: "linkedin", href: "https://linkedin.com/" },
-  { label: "YouTube", slug: "youtube", href: "https://youtube.com/" },
+const SOCIAL_LINKS: {
+  label: string;
+  slug: string;
+  href: string;
+  svg?: string;
+}[] = [
+  {
+    label: "WhatsApp community",
+    slug: "whatsapp",
+    href: "https://chat.whatsapp.com/D9Zjxrevph6Fb1GCRq8IJf",
+  },
+  { label: "Instagram", slug: "instagram", href: "https://www.instagram.com/siliconmango" },
+  {
+    label: "LinkedIn",
+    slug: "linkedin",
+    href: "https://www.linkedin.com/company/silicon-mango",
+    svg: LINKEDIN_SVG,
+  },
+  { label: "YouTube", slug: "youtube", href: "https://www.youtube.com/@siliconmango" },
 ];
 
 export default function PublicLayout() {
@@ -128,7 +146,7 @@ export default function PublicLayout() {
               </Button>
             ) : (
               <>
-                {/* Free Class pill — low-commitment CTA next to the primary enrol button */}
+                {/* Webinar pill — low-commitment CTA next to the primary enrol button */}
                 {loc.pathname !== "/webinars" && (
                   <Button
                     variant="ghost"
@@ -196,7 +214,7 @@ export default function PublicLayout() {
                       Sign In
                     </Button>
                     <Button fullWidth onClick={() => nav("/signup")} rightIcon="arrow_forward">
-                      Enrol now
+                      Enroll Now
                     </Button>
                   </>
                 )}
@@ -235,14 +253,27 @@ export default function PublicLayout() {
                   aria-label={s.label}
                   className="w-9 h-9 grid place-items-center rounded-lg bg-white/10 hover:bg-white/20 transition-colors press"
                 >
-                  <img
-                    src={`https://cdn.simpleicons.org/${s.slug}/ffffff`}
-                    alt=""
-                    width={16}
-                    height={16}
-                    className="w-4 h-4 opacity-90"
-                    loading="lazy"
-                  />
+                  {s.svg ? (
+                    <svg
+                      viewBox="0 0 24 24"
+                      width={16}
+                      height={16}
+                      fill="currentColor"
+                      aria-hidden
+                      className="w-4 h-4 opacity-90 text-white"
+                    >
+                      <path d={s.svg} />
+                    </svg>
+                  ) : (
+                    <img
+                      src={`https://cdn.simpleicons.org/${s.slug}/ffffff`}
+                      alt=""
+                      width={16}
+                      height={16}
+                      className="w-4 h-4 opacity-90"
+                      loading="lazy"
+                    />
+                  )}
                 </a>
               ))}
             </div>
@@ -253,7 +284,7 @@ export default function PublicLayout() {
               <li><Link to="/courses" className="text-surface-containerHigh/80 hover:text-white transition-colors">Courses</Link></li>
               <li><Link to="/webinars" className="text-surface-containerHigh/80 hover:text-white transition-colors">Live Classes</Link></li>
               <li><Link to="/courses" className="text-surface-containerHigh/80 hover:text-white transition-colors">Self-paced</Link></li>
-              <li><Link to="/webinars" className="text-surface-containerHigh/80 hover:text-white transition-colors">Free Sample Class</Link></li>
+              <li><Link to="/webinars" className="text-surface-containerHigh/80 hover:text-white transition-colors">Webinars</Link></li>
             </ul>
           </div>
           <div>
@@ -267,10 +298,10 @@ export default function PublicLayout() {
           <div>
             <p className="text-label uppercase tracking-wider text-surface-containerHigh/60 mb-3">Support</p>
             <ul className="space-y-2.5 text-body-sm">
-              <li><a href="mailto:hello@siliconmango.com" className="text-surface-containerHigh/80 hover:text-white transition-colors">Contact</a></li>
+              <li><a href="mailto:palak@siliconmango.com" className="text-surface-containerHigh/80 hover:text-white transition-colors">palak@siliconmango.com</a></li>
+              <li><a href="tel:+918446359728" className="text-surface-containerHigh/80 hover:text-white transition-colors">+91 84463 59728</a></li>
               <li>
-                {/* TODO: Replace with real WhatsApp community link */}
-                <a href="https://wa.me/" target="_blank" rel="noreferrer" className="text-surface-containerHigh/80 hover:text-white transition-colors">WhatsApp Community</a>
+                <a href="https://chat.whatsapp.com/D9Zjxrevph6Fb1GCRq8IJf" target="_blank" rel="noreferrer" className="text-surface-containerHigh/80 hover:text-white transition-colors">WhatsApp Community</a>
               </li>
               <li><a href="/#faq" className="text-surface-containerHigh/80 hover:text-white transition-colors">FAQs</a></li>
               <li><Link to="/login" className="text-surface-containerHigh/80 hover:text-white transition-colors">Sign In</Link></li>
@@ -279,7 +310,7 @@ export default function PublicLayout() {
         </div>
         <div className="border-t border-white/10 relative">
           <div className="max-w-7xl mx-auto px-4 md:px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-2 text-label text-surface-containerHigh/60">
-            <p>© {new Date().getFullYear()} Silicon Mango Academy. All rights reserved.</p>
+            <p>© {new Date().getFullYear()} Silicon Mango. All rights reserved.</p>
             <div className="flex gap-4">
               <a href="#" className="hover:text-white transition-colors">Privacy</a>
               <a href="#" className="hover:text-white transition-colors">Terms</a>

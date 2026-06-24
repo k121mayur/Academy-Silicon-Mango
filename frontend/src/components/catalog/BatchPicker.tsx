@@ -74,8 +74,6 @@ function BatchOption({
               <Badge tone="danger">Full</Badge>
             ) : closed ? (
               <Badge tone="neutral">Enrollment closed</Badge>
-            ) : batch.seats_left != null ? (
-              <Badge tone="neutral">{batch.seats_left} seats left</Badge>
             ) : null}
           </div>
           <p className="text-body-sm text-ink-variant mt-1 flex items-center gap-1.5">
