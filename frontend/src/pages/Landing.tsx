@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Reveal } from "@/components/ui/Reveal";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { Img } from "@/components/ui/Img";
+import { FloatingWhatsApp } from "@/components/public/FloatingWhatsApp";
 import { formatCurrency } from "@/lib/utils";
 
 interface PublicCourse {
@@ -61,6 +62,8 @@ export default function Landing() {
     ) ?? (courses[0] || null);
 
   const displayCourse = liveCourse ?? EXCEL_FALLBACK;
+  // Deep-link to the flagship course's Demo Session tab for the "watch the demo" CTAs.
+  const demoHref = `/courses/${displayCourse.slug || displayCourse.id}?tab=demo`;
 
   return (
     <div className="bg-surface overflow-x-clip">
@@ -126,16 +129,16 @@ export default function Landing() {
           >
             <Link to="/signup">
               <Button size="lg" rightIcon="arrow_forward" className="shadow-glow w-full sm:w-auto">
-                Enrol for ₹399
+                Enroll Now
               </Button>
             </Link>
-            <Link to="/webinars">
+            <Link to={demoHref}>
               <button
                 type="button"
                 className="inline-flex items-center justify-center gap-2 h-12 px-6 rounded-xl text-title-md font-medium text-white bg-white/10 hover:bg-white/20 border border-white/25 backdrop-blur-md transition-all duration-200 ease-out active:scale-[0.98] w-full sm:w-auto"
               >
                 <span className="icon text-[20px]">play_circle</span>
-                Watch a free class first
+                Watch the demo
               </button>
             </Link>
           </div>
@@ -431,19 +434,12 @@ export default function Landing() {
           </Reveal>
           <Reveal delay={120}>
             <div className="bg-gradient-to-br from-primary-container/40 to-tertiary-container/30 rounded-3xl p-6 md:p-8 hover-lift">
-              <div className="bg-surface-lowest rounded-2xl shadow-modal p-8 aspect-[4/3] flex flex-col items-center justify-center text-center relative overflow-hidden">
-                <div className="absolute inset-0 grid-pattern opacity-30" />
-                <span className="icon text-[44px] text-primary mb-2 relative" style={{ fontVariationSettings: "'FILL' 1" }}>workspace_premium</span>
-                <p className="text-caption text-ink-outline relative">CERTIFICATE OF COMPLETION</p>
-                <p className="font-display font-bold text-title-lg text-ink mt-2 relative">
-                  Excel Mastery: Beginner to Pro
-                </p>
-                <p className="text-body-sm text-ink-variant mt-1 relative">Awarded to Your Name</p>
-                <div className="mt-3 w-32 h-px bg-primary-fill relative" />
-                <p className="text-label text-ink-outline mt-1 relative">
-                  Silicon Mango Academy · ID SMA-2026-0001
-                </p>
-              </div>
+              <img
+                src="/certificate-sample.webp"
+                alt="Silicon Mango certificate of completion"
+                className="w-full rounded-2xl shadow-modal"
+                loading="lazy"
+              />
             </div>
           </Reveal>
         </div>
@@ -475,10 +471,10 @@ export default function Landing() {
               <div className="absolute -bottom-20 -left-10 w-64 h-64 rounded-full bg-primary-fill/15 blur-3xl" />
               <div className="relative max-w-2xl mx-auto">
                 <h2 className="font-display font-extrabold text-display-md md:text-display-lg mb-3 text-balance">
-                  Next batch starts 1 July. 30 seats only.
+                  Next batch starts 6 July 2026.
                 </h2>
                 <p className="text-body-lg text-white/85 mb-8">
-                  Excel Mastery · 7 weeks · Live classes + mentor support + certificate.
+                  Excel Mastery · 8 weeks · Live classes + mentor support + certificate.
                   All for ₹399 - less than a textbook.
                 </p>
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -488,14 +484,14 @@ export default function Landing() {
                       rightIcon="arrow_forward"
                       className="bg-primary-fill text-primary-on hover:bg-primary-fillHover shadow-glow"
                     >
-                      Enrol for ₹399 - before seats fill up
+                      Enroll Now
                     </Button>
                   </Link>
                   <Link
-                    to="/webinars"
+                    to={demoHref}
                     className="text-body-sm text-white/80 hover:text-white underline underline-offset-2 transition-colors"
                   >
-                    Not ready? Watch a free sample class first
+                    Not ready? Watch the course demo first
                   </Link>
                 </div>
                 <p className="text-body-sm text-white/70 mt-6">
@@ -506,6 +502,8 @@ export default function Landing() {
           </Reveal>
         </div>
       </section>
+
+      <FloatingWhatsApp />
     </div>
   );
 }
@@ -567,7 +565,7 @@ function ExcelCourseCard({ course: c }: { course: PublicCourse }) {
       </div>
       {/* Body */}
       <div className="p-5 flex flex-col flex-1">
-        <p className="text-label text-ink-outline mb-1">7-week live cohort · Batch starts 1 July 2025</p>
+        <p className="text-label text-ink-outline mb-1">8-week live cohort · Batch starts 6 July 2026</p>
         <h3 className="font-display font-semibold text-title-lg text-ink mb-3">{c.title}</h3>
         <ul className="space-y-2 mb-5 flex-1">
           {features.map((f) => (
@@ -592,7 +590,7 @@ function ExcelCourseCard({ course: c }: { course: PublicCourse }) {
           </div>
           <Link to={`/courses/${c.slug || c.id}`}>
             <Button size="sm" rightIcon="arrow_forward">
-              Enrol now
+              Enroll Now
             </Button>
           </Link>
         </div>
@@ -620,7 +618,7 @@ function PythonComingSoon() {
         <div className="mt-5 pt-3 border-t border-ink-outlineVariant/30">
           <Link to="/signup">
             <Button variant="outline" fullWidth leftIcon="notifications">
-              Notify me when open
+              Get Notified
             </Button>
           </Link>
         </div>
@@ -650,7 +648,7 @@ function RoadmapTeaserCard() {
         <div className="mt-5 pt-3 border-t border-ink-outlineVariant/30">
           <Link to="/signup">
             <Button variant="ghost" fullWidth leftIcon="notifications">
-              Get notified
+              Get Notified
             </Button>
           </Link>
         </div>
