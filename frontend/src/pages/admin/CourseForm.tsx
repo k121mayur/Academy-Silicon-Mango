@@ -17,6 +17,7 @@ import {
 import { FileUpload } from "@/components/shared/FileUpload";
 import { RichTextEditor } from "@/components/shared/RichTextEditor";
 import { formatCurrency } from "@/lib/utils";
+import { isYouTubeUrl } from "@/lib/media";
 
 interface CourseFormProps {
   initial?: any;
@@ -45,6 +46,7 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
   const [syllabusFile, setSyllabusFile] = useState<File | null>(null);
   const [bannerUrl, setBannerUrl] = useState<string | null>(initial?.banner_url || null);
   const [syllabusUrl, setSyllabusUrl] = useState<string | null>(initial?.syllabus_pdf_url || null);
+  const [demoUrl, setDemoUrl] = useState<string>(initial?.demo_youtube_url || "");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const clearErr = (field: string) => setErrors((prev) => { const n = { ...prev }; delete n[field]; return n; });
 
@@ -85,6 +87,10 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
 
     if (!bannerFile && !bannerUrl) e.banner = "Banner image is required";
     if (!syllabusFile && !syllabusUrl) e.syllabusPdf = "Syllabus PDF is required";
+
+    if (demoUrl.trim() && !isYouTubeUrl(demoUrl.trim())) {
+      e.demoUrl = "Enter a valid YouTube URL (or leave blank)";
+    }
 
     if (tags.length === 0) e.tags = "At least one tag is required";
 
@@ -130,6 +136,7 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
         duration_value: durationValue,
         price: price || "0",
         discount: discount || "0",
+        demo_youtube_url: demoUrl.trim() || null,
         tags,
         syllabus_items: syllabus.map((s, i) => ({ order: i, title: s.title, description: s.description || "" })),
         faqs: faqs.map((f, i) => ({ order: i, question: f.question, answer: f.answer })),
@@ -247,6 +254,16 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
             />
             {errors.syllabusPdf && <p className="text-label text-danger mt-1">{errors.syllabusPdf}</p>}
           </div>
+          <Input
+            label="Demo Session YouTube URL"
+            value={demoUrl}
+            onChange={(e) => { setDemoUrl(e.target.value); clearErr("demoUrl"); }}
+            placeholder="https://youtu.be/…  (optional course preview)"
+            leftIcon="play_circle"
+            containerClassName="md:col-span-2"
+            hint="Shown as a 'Demo Session' tab on the course page. Leave blank to hide the tab."
+            error={errors.demoUrl}
+          />
         </CardBody>
       </Card>
 

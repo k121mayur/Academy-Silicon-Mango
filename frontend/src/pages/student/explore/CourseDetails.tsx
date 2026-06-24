@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 
@@ -18,6 +18,7 @@ import {
 } from "@/components/admin/CertificatePreview";
 import { useAuthStore } from "@/features/auth/stores/authStore";
 import { formatCurrency } from "@/lib/utils";
+import { extractYouTubeId, youtubeEmbedUrl } from "@/lib/media";
 import { absoluteApiUrl } from "@/lib/api";
 import { queryClient } from "@/lib/queryClient";
 import { qk } from "@/lib/queryKeys";
@@ -29,12 +30,13 @@ import {
   type PublicCourseDetail,
 } from "@/services/public.service";
 
-type Tab = "overview" | "syllabus" | "batches" | "certificate" | "faqs";
+type Tab = "overview" | "syllabus" | "demo" | "batches" | "certificate" | "faqs";
 
 export default function CourseDetails() {
   const { courseId = "" } = useParams();
   const navigate = useNavigate();
   const { user } = useAuthStore();
+  const [searchParams] = useSearchParams();
   const [tab, setTab] = useState<Tab>("overview");
   const [authPrompt, setAuthPrompt] = useState(false);
 
@@ -44,6 +46,15 @@ export default function CourseDetails() {
     staleTime: 5 * 60_000,
     enabled: !!courseId,
   });
+
+  // Allow deep-linking to a specific tab, e.g. `?tab=demo` from the landing page.
+  const demoVideoId = course?.demo_youtube_url
+    ? extractYouTubeId(course.demo_youtube_url)
+    : null;
+  useEffect(() => {
+    const requested = searchParams.get("tab");
+    if (requested === "demo" && demoVideoId) setTab("demo");
+  }, [searchParams, demoVideoId]);
 
   const prefetchBatches = () =>
     queryClient.prefetchQuery({
@@ -138,6 +149,9 @@ export default function CourseDetails() {
             {[
               { id: "overview" as const, label: "Overview", icon: "info" },
               { id: "syllabus" as const, label: "Syllabus", icon: "list_alt" },
+              ...(demoVideoId
+                ? [{ id: "demo" as const, label: "Demo Session", icon: "play_circle" }]
+                : []),
               { id: "batches" as const, label: "Batches", icon: "groups" },
               {
                 id: "certificate" as const,
@@ -162,6 +176,7 @@ export default function CourseDetails() {
           <div className="animate-fade-in">
             {tab === "overview" && <OverviewTab course={course} />}
             {tab === "syllabus" && <SyllabusTab course={course} />}
+            {tab === "demo" && demoVideoId && <DemoSessionTab videoId={demoVideoId} />}
             {tab === "batches" && (
               <BatchesTab
                 course={course}
@@ -298,6 +313,28 @@ function SyllabusTab({ course }: { course: PublicCourseDetail }) {
           </div>
         </details>
       ))}
+    </div>
+  );
+}
+
+function DemoSessionTab({ videoId }: { videoId: string }) {
+  return (
+    <div className="space-y-3">
+      <div>
+        <h3 className="text-title-md font-semibold text-ink">Demo session</h3>
+        <p className="text-body-sm text-ink-variant">
+          Watch this free preview to see the teaching style and what the course covers before you enrol.
+        </p>
+      </div>
+      <div className="relative w-full overflow-hidden rounded-2xl border border-ink-outlineVariant/40 bg-black aspect-video">
+        <iframe
+          src={youtubeEmbedUrl(videoId)}
+          title="Course demo session"
+          className="absolute inset-0 w-full h-full"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+        />
+      </div>
     </div>
   );
 }
