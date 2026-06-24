@@ -34,6 +34,17 @@ export default function BatchCreate() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const clearErr = (field: string) => setErrors((prev) => { const n = { ...prev }; delete n[field]; return n; });
 
+  // Today's local date as YYYY-MM-DD — the earliest a new batch may start.
+  const today = (() => {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  })();
+
+  const isWeekBased = course?.duration_unit === "weeks";
+
   useEffect(() => {
     listCourses({ limit: 100 }).then((r) => setCourses(r.data)).catch(() => {});
     listInstructors({ limit: 100 }).then((r) => setInstructors(r.data)).catch(() => setInstructors([]));
@@ -79,7 +90,15 @@ export default function BatchCreate() {
   const addSlot = () => {
     if (!course) return;
     if (course.duration_unit === "weeks") {
-      setSlots([...slots, { slot_type: "weekday", weekday: 0, start_time: "10:00", end_time: "11:30" }]);
+      // A week has only 7 days — never add more than 7 weekday slots, and
+      // auto-advance to the next unused weekday (Mon, Tue, Wed, …).
+      const used = new Set(slots.map((s) => s.weekday));
+      const next = [0, 1, 2, 3, 4, 5, 6].find((d) => !used.has(d));
+      if (next === undefined) {
+        toast.error("All 7 weekdays are already scheduled");
+        return;
+      }
+      setSlots([...slots, { slot_type: "weekday", weekday: next, start_time: "10:00", end_time: "11:30" }]);
     } else {
       setSlots([...slots, { slot_type: "date_based", slot_date: startDate, start_time: "10:00", end_time: "11:30" }]);
     }
@@ -101,6 +120,7 @@ export default function BatchCreate() {
       if (isNaN(capNum) || capNum < 1) e.capacity = "Capacity must be a positive number";
     }
     if (!startDate) e.startDate = "Start date is required";
+    else if (startDate < today) e.startDate = "Start date cannot be in the past";
     if (!endDate) e.endDate = "End date is required";
     if (startDate && endDate && endDate < startDate) e.endDate = "End date must be after start date";
     if (!instructorId) e.instructorId = "Instructor is required";
@@ -108,6 +128,14 @@ export default function BatchCreate() {
       slots.forEach((s, i) => {
         if (s.start_time >= s.end_time) e[`slot_${i}`] = `Slot ${i + 1}: end time must be after start time`;
       });
+      if (isWeekBased) {
+        const seen = new Set<number>();
+        slots.forEach((s, i) => {
+          const wd = s.weekday ?? 0;
+          if (seen.has(wd)) e[`slotwd_${i}`] = `${WEEKDAY_LABELS[wd]} is already scheduled`;
+          seen.add(wd);
+        });
+      }
     }
     setErrors(e);
     if (Object.keys(e).length > 0) {
@@ -169,7 +197,7 @@ export default function BatchCreate() {
             error={errors.deliveryMode}
           />
           <Input label="Capacity" type="number" min={1} value={capacity} onChange={(e) => { setCapacity(e.target.value); clearErr("capacity"); }} error={errors.capacity} />
-          <Input label="Start date" type="date" value={startDate} onChange={(e) => { setStartDate(e.target.value); clearErr("startDate"); }} error={errors.startDate} />
+          <Input label="Start date" type="date" min={today} value={startDate} onChange={(e) => { setStartDate(e.target.value); clearErr("startDate"); }} error={errors.startDate} />
           <div>
             <Input
               label="End date (auto-calculated)"
@@ -197,7 +225,16 @@ export default function BatchCreate() {
                 {course.duration_unit === "weeks" ? "Pick weekdays + time slots" : "Pick session dates + times"}
               </p>
             </div>
-            <Button type="button" size="sm" variant="outline" leftIcon="add" onClick={addSlot}>Add slot</Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              leftIcon="add"
+              onClick={addSlot}
+              disabled={isWeekBased && slots.length >= 7}
+            >
+              Add slot
+            </Button>
           </CardHeader>
           <CardBody className="space-y-3">
             {slots.length === 0 && <p className="text-body-sm text-ink-outline">No slots yet</p>}
@@ -207,8 +244,9 @@ export default function BatchCreate() {
                   <Select
                     label="Weekday"
                     value={String(s.weekday ?? 0)}
-                    onChange={(e) => updateSlot(i, { weekday: parseInt(e.target.value) })}
+                    onChange={(e) => { updateSlot(i, { weekday: parseInt(e.target.value) }); clearErr(`slotwd_${i}`); }}
                     options={WEEKDAY_LABELS.map((w, idx) => ({ value: String(idx), label: w }))}
+                    error={errors[`slotwd_${i}`]}
                   />
                 ) : (
                   <Input label="Date" type="date" value={s.slot_date || ""} onChange={(e) => updateSlot(i, { slot_date: e.target.value })} />
