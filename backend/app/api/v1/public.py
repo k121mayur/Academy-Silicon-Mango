@@ -36,6 +36,7 @@ def _course_detail_dict(c: Course, instructors: list[dict], certificate_template
         "faqs": c.faqs or [],
         "certification_criteria": c.certification_criteria or [],
         "syllabus_pdf_url": c.syllabus_pdf_url,
+        "demo_youtube_url": c.demo_youtube_url,
         "instructors": instructors,
         "certificate_template": certificate_template,
     }
