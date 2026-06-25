@@ -125,3 +125,36 @@ async def login_rate_limit(ip: str) -> tuple[bool, int]:
     """Per-IP login attempt cap: 20 per 15 min. Generous enough for a shared
     classroom/office NAT, tight enough to blunt online password guessing."""
     return await rate_limit_check(f"login:{ip}", limit=20, window_seconds=900)
+
+
+# ---------------- Newsletter double opt-in OTP ----------------
+# A newsletter subscription is low-stakes, so its pending OTP lives in Redis
+# (auto-expiring) rather than the otp_records table — no migration, no cleanup.
+
+def _newsletter_otp_key(email: str) -> str:
+    return f"newsletter:otp:{email.lower()}"
+
+
+async def store_newsletter_otp(email: str, hashed_code: str, ttl_seconds: int = 300) -> None:
+    r = await get_redis()
+    key = _newsletter_otp_key(email)
+    await r.delete(key)
+    await r.hset(key, mapping={"code": hashed_code, "attempts": "0"})
+    await r.expire(key, max(ttl_seconds, 1))
+
+
+async def get_newsletter_otp(email: str) -> Optional[dict]:
+    """Returns {"code": <hash>, "attempts": <str>} or None if expired/absent."""
+    r = await get_redis()
+    data = await r.hgetall(_newsletter_otp_key(email))
+    return data or None
+
+
+async def incr_newsletter_otp_attempts(email: str) -> int:
+    r = await get_redis()
+    return int(await r.hincrby(_newsletter_otp_key(email), "attempts", 1))
+
+
+async def clear_newsletter_otp(email: str) -> None:
+    r = await get_redis()
+    await r.delete(_newsletter_otp_key(email))

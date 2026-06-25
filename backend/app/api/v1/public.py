@@ -3,16 +3,20 @@ from __future__ import annotations
 import uuid as uuid_lib
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import APIError
+from app.core.exceptions import APIError, err_otp_rate_limited
+from app.core.redis import otp_ip_rate_limit, otp_rate_limit
+from app.core.utils import get_client_ip
 from app.db.session import get_db
 from app.models.batch import Batch, BatchScheduleSlot, BatchStatus, Enrollment, EnrollmentStatus
 from app.models.course import Course, CourseInstructor
 from app.models.user import InstructorProfile, StudentProfile, User, UserRole
 from app.models.certificate import Certificate, CertificateTemplate
+from app.schemas.newsletter import NewsletterRequest, NewsletterVerify
+from app.services.newsletter_service import request_newsletter_otp, verify_newsletter_otp
 from app.services.payment_service import enrollment_window_end, is_enrollment_open
 
 router = APIRouter(prefix="/public", tags=["public"])
@@ -293,4 +297,50 @@ async def verify_certificate(cert_id: str, db: AsyncSession = Depends(get_db)):
             "batch_end": batch.end_date.isoformat() if batch.end_date else None,
             "issued_at": cert.issued_at.isoformat() if cert.issued_at else None,
         },
+    }
+
+
+@router.post("/newsletter/request")
+async def newsletter_request(
+    payload: NewsletterRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Step 1 of double opt-in: email a confirmation OTP. Rate-limited per-email
+    (anti email-bombing) and per-IP (anti enumeration), reusing the OTP limiters."""
+    allowed, reset_in = await otp_rate_limit(payload.email)
+    if not allowed:
+        raise err_otp_rate_limited(reset_in)
+    ip = get_client_ip(request)
+    allowed_ip, reset_ip = await otp_ip_rate_limit(ip)
+    if not allowed_ip:
+        raise err_otp_rate_limited(reset_ip)
+
+    expires_in, already = await request_newsletter_otp(db, payload.email)
+    if already:
+        return {
+            "success": True,
+            "data": {
+                "message": "You're already subscribed to our newsletter.",
+                "already_subscribed": True,
+                "expires_in": 0,
+            },
+        }
+    return {
+        "success": True,
+        "data": {
+            "message": "We've sent a confirmation code to your email.",
+            "already_subscribed": False,
+            "expires_in": expires_in,
+        },
+    }
+
+
+@router.post("/newsletter/verify")
+async def newsletter_verify(payload: NewsletterVerify, db: AsyncSession = Depends(get_db)):
+    """Step 2 of double opt-in: validate the OTP and confirm the subscription."""
+    await verify_newsletter_otp(db, payload.email, payload.otp)
+    return {
+        "success": True,
+        "data": {"message": "Subscribed successfully", "subscribed": True},
     }

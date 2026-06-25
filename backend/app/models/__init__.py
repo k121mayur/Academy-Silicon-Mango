@@ -13,6 +13,7 @@ from app.models.batch import (
 from app.models.blog import Blog, BlogStatus
 from app.models.certificate import Certificate, CertificateEmailStatus, CertificateTemplate
 from app.models.course import Course, CourseInstructor, CourseType, DurationUnit
+from app.models.newsletter import NewsletterSubscriber
 from app.models.otp import OTPPurpose, OTPRecord
 from app.models.payment import Payment, PaymentMode, PaymentSettings, PaymentStatus
 from app.models.session import (
@@ -72,6 +73,7 @@ __all__ = [
     "Enrollment",
     "EnrollmentStatus",
     "InstructorProfile",
+    "NewsletterSubscriber",
     "OccupationType",
     "OTPPurpose",
     "OTPRecord",
