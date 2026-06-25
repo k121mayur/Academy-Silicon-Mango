@@ -540,9 +540,18 @@ function FilledStars({
 function ExcelCourseCard({ course: c }: { course: PublicCourse }) {
   const features = ["60+ functions", "Dashboard project", "Certificate"];
   const price = Math.max(c.price - (c.price * (c.discount || 0)) / 100, 0);
+  const detailHref = `/courses/${c.slug || c.id}`;
 
+  // The whole card is a link to the course detail page, so a click anywhere
+  // opens the full details — not just the CTA button. The "Enroll Now" pill is
+  // rendered as a non-interactive element so we don't nest a button inside a
+  // link (invalid markup); the parent link handles the navigation.
   return (
-    <div className="group bg-surface-lowest rounded-2xl border border-primary/30 shadow-card overflow-hidden h-full flex flex-col ring-1 ring-primary/10">
+    <Link
+      to={detailHref}
+      aria-label={`View details for ${c.title}`}
+      className="group bg-surface-lowest rounded-2xl border border-primary/30 shadow-card overflow-hidden h-full flex flex-col ring-1 ring-primary/10 transition-all duration-300 hover:-translate-y-1 hover:shadow-modal hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+    >
       {/* Banner */}
       <div className="h-32 relative overflow-hidden">
         {c.banner_url ? (
@@ -563,11 +572,15 @@ function ExcelCourseCard({ course: c }: { course: PublicCourse }) {
         <span className="absolute top-3 right-3 px-2.5 py-1 text-label rounded-full bg-ink/80 text-white backdrop-blur-sm font-semibold">
           87% off
         </span>
+        {/* Reveal-on-hover cue that the whole card opens the course details. */}
+        <div className="absolute inset-x-0 bottom-0 translate-y-full group-hover:translate-y-0 transition-transform duration-300 bg-black/55 backdrop-blur-sm text-white text-body-sm font-medium py-1.5 text-center">
+          View details →
+        </div>
       </div>
       {/* Body */}
       <div className="p-5 flex flex-col flex-1">
         <p className="text-label text-ink-outline mb-1">8-week live cohort · Batch starts 6 July 2026</p>
-        <h3 className="font-display font-semibold text-title-lg text-ink mb-3">{c.title}</h3>
+        <h3 className="font-display font-semibold text-title-lg text-ink mb-3 group-hover:text-primary transition-colors">{c.title}</h3>
         <ul className="space-y-2 mb-5 flex-1">
           {features.map((f) => (
             <li key={f} className="flex items-center gap-2 text-body-sm text-ink">
@@ -589,14 +602,13 @@ function ExcelCourseCard({ course: c }: { course: PublicCourse }) {
               </span>
             </div>
           </div>
-          <Link to={`/courses/${c.slug || c.id}`}>
-            <Button size="sm" rightIcon="arrow_forward">
-              Enroll Now
-            </Button>
-          </Link>
+          <span className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-md bg-primary-fill text-primary-on text-body-sm font-medium shadow-sm transition-colors duration-200 group-hover:bg-primary-fillHover">
+            Enroll Now
+            <span className="icon text-[18px]">arrow_forward</span>
+          </span>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }
 
