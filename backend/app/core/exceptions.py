@@ -92,3 +92,23 @@ def err_login_rate_limited(retry_in: int) -> APIError:
         status_code=429,
         details={"retry_after": retry_in},
     )
+
+
+def err_newsletter_otp_expired() -> APIError:
+    return APIError(
+        code="NEWS_001",
+        message="Your confirmation code expired. Please request a new one.",
+        status_code=400,
+    )
+
+
+def err_newsletter_otp_invalid() -> APIError:
+    return APIError(code="NEWS_002", message="Invalid confirmation code.", status_code=400)
+
+
+def err_newsletter_otp_max_attempts() -> APIError:
+    return APIError(
+        code="NEWS_003",
+        message="Too many invalid attempts. Please request a new code.",
+        status_code=400,
+    )
