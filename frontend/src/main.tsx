@@ -8,6 +8,7 @@ import "./index.css";
 import { API_BASE_URL } from "@/lib/api";
 import { APP_CACHE_VERSION, persister, queryClient, shouldPersistQuery } from "@/lib/queryClient";
 import { useAuthStore } from "@/features/auth/stores/authStore";
+import { Analytics } from "@/components/Analytics";
 import App from "./App";
 
 // Drop any cached/persisted data the moment a session ends so one user's data
@@ -31,6 +32,7 @@ function Root() {
 
   return (
     <BrowserRouter>
+      <Analytics />
       <Routes>
         <Route path="/*" element={<App />} />
       </Routes>
