@@ -200,17 +200,17 @@ export default function BatchCreate() {
           <Input label="Start date" type="date" min={today} value={startDate} onChange={(e) => { setStartDate(e.target.value); clearErr("startDate"); }} error={errors.startDate} />
           <div>
             <Input
-              label="End date (auto-calculated)"
+              label="End date"
               type="date"
+              min={startDate || today}
               value={endDate}
-              readOnly
-              disabled
+              onChange={(e) => { setEndDate(e.target.value); clearErr("endDate"); }}
               error={errors.endDate}
             />
             <p className="text-label text-ink-outline mt-1">
               {course
-                ? `Auto-set from the course's ${course.duration_value} ${course.duration_unit} duration.`
-                : "Select a course and start date — the end date is calculated automatically."}
+                ? `Auto-set from the course's ${course.duration_value} ${course.duration_unit} duration — you can adjust it if this batch runs longer or shorter.`
+                : "Select a course and start date — the end date is calculated automatically, and you can adjust it."}
             </p>
           </div>
         </CardBody>

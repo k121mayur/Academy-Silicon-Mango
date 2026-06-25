@@ -8,6 +8,7 @@ import { SkeletonCard } from "@/components/ui/Skeleton";
 import { Img } from "@/components/ui/Img";
 import { FloatingWhatsApp } from "@/components/public/FloatingWhatsApp";
 import { formatCurrency } from "@/lib/utils";
+import { DEMO_YOUTUBE_URL } from "@/lib/media";
 
 interface PublicCourse {
   id: string;
@@ -62,8 +63,6 @@ export default function Landing() {
     ) ?? (courses[0] || null);
 
   const displayCourse = liveCourse ?? EXCEL_FALLBACK;
-  // Deep-link to the flagship course's Demo Session tab for the "watch the demo" CTAs.
-  const demoHref = `/courses/${displayCourse.slug || displayCourse.id}?tab=demo`;
 
   return (
     <div className="bg-surface overflow-x-clip">
@@ -132,7 +131,7 @@ export default function Landing() {
                 Enroll Now
               </Button>
             </Link>
-            <Link to={demoHref}>
+            <a href={DEMO_YOUTUBE_URL} target="_blank" rel="noreferrer">
               <button
                 type="button"
                 className="inline-flex items-center justify-center gap-2 h-12 px-6 rounded-xl text-title-md font-medium text-white bg-white/10 hover:bg-white/20 border border-white/25 backdrop-blur-md transition-all duration-200 ease-out active:scale-[0.98] w-full sm:w-auto"
@@ -140,7 +139,7 @@ export default function Landing() {
                 <span className="icon text-[20px]">play_circle</span>
                 Watch the demo
               </button>
-            </Link>
+            </a>
           </div>
         </div>
 
@@ -487,12 +486,14 @@ export default function Landing() {
                       Enroll Now
                     </Button>
                   </Link>
-                  <Link
-                    to={demoHref}
+                  <a
+                    href={DEMO_YOUTUBE_URL}
+                    target="_blank"
+                    rel="noreferrer"
                     className="text-body-sm text-white/80 hover:text-white underline underline-offset-2 transition-colors"
                   >
                     Not ready? Watch the course demo first
-                  </Link>
+                  </a>
                 </div>
                 <p className="text-body-sm text-white/70 mt-6">
                   No hidden fees · Cancel before class starts for a full refund · Certificate issued on completion
