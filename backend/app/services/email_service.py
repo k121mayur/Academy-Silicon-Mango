@@ -95,6 +95,30 @@ def render_otp_email(otp: str, minutes: int = 5) -> tuple[str, str, str]:
     return subject, html, text
 
 
+def render_newsletter_otp_email(otp: str, minutes: int = 5) -> tuple[str, str, str]:
+    subject = "Confirm your Silicon Mango newsletter subscription"
+    text = (
+        f"Your newsletter confirmation code is: {otp}\n\n"
+        f"Enter it on the website to confirm your subscription. This code expires in {minutes} minutes.\n\n"
+        "If you didn't request this, you can safely ignore this email.\n\n"
+        "— Silicon Mango Academy"
+    )
+    html = f"""
+    <!doctype html><html><body style="font-family:Inter,system-ui,sans-serif;background:#f8f9fa;padding:32px;">
+      <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;box-shadow:0 1px 3px rgba(124,88,0,0.08);">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:24px;">
+          <span style="font-family:Manrope,sans-serif;font-weight:800;font-size:20px;color:#7c5800;">Silicon Mango Academy</span>
+        </div>
+        <h2 style="font-family:Manrope,sans-serif;color:#191c1d;font-size:24px;margin:0 0 16px;">Confirm your subscription</h2>
+        <p style="color:#514532;line-height:1.5;">Use this 6-digit code to confirm your newsletter subscription and start receiving course updates, offers, and learning tips.</p>
+        <div style="background:#ffb800;color:#6b4c00;font-family:'JetBrains Mono',monospace;font-size:32px;font-weight:700;letter-spacing:8px;text-align:center;padding:20px;border-radius:12px;margin:24px 0;">{otp}</div>
+        <p style="color:#837560;font-size:14px;">This code expires in {minutes} minutes. If you didn't request this, ignore this email.</p>
+      </div>
+    </body></html>
+    """
+    return subject, html, text
+
+
 def render_student_welcome_email(
     display_name: str,
     email: str,
