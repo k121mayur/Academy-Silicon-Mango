@@ -34,6 +34,12 @@ export function normalizeImageUrl(url: string): string {
 }
 
 /**
+ * Canonical demo-class video shown behind every "Watch the demo" CTA across the
+ * site. Centralised here so a single edit updates all demo links/embeds.
+ */
+export const DEMO_YOUTUBE_URL = "https://youtu.be/glAt1BfVo78?si=u22DD6krqmQxkMqW";
+
+/**
  * Extract the 11-char YouTube video id from any common YouTube URL form
  * (watch?v=, youtu.be/, /embed/, /shorts/). Returns null if not a YouTube URL.
  */

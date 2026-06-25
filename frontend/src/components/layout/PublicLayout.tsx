@@ -2,6 +2,7 @@ import { Suspense, useEffect, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/features/auth/stores/authStore";
 import { Button } from "@/components/ui/Button";
+import { NewsletterSignup } from "@/components/public/NewsletterSignup";
 import { RouteFallback } from "./RouteFallback";
 import { cn } from "@/lib/utils";
 
@@ -233,6 +234,20 @@ export default function PublicLayout() {
       <footer className="bg-ink text-surface-containerHigh mt-16 relative overflow-hidden">
         {/* Brand glow bleeding in from the top edge */}
         <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-[640px] h-48 bg-primary-container/20 blur-[80px] pointer-events-none" />
+
+        {/* Newsletter band — double opt-in (email → OTP → subscribed) */}
+        <div className="border-b border-white/10 relative">
+          <div className="max-w-7xl mx-auto px-4 md:px-6 py-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+            <div className="max-w-md">
+              <h3 className="font-display font-bold text-title-lg text-white">Subscribe to our newsletter</h3>
+              <p className="text-body-sm text-surface-containerHigh/70 mt-1">
+                New batches, course drops, and learning tips — straight to your inbox. No spam.
+              </p>
+            </div>
+            <NewsletterSignup />
+          </div>
+        </div>
+
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-14 grid grid-cols-2 md:grid-cols-4 gap-8 relative">
           <div className="col-span-2 md:col-span-1">
             <div className="flex items-center gap-2 mb-3">
