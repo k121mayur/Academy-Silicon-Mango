@@ -41,13 +41,15 @@ export function Modal({ open, onClose, title, description, children, footer, siz
         onClick={(e) => e.stopPropagation()}
         className={cn(
           // Modals scale in from centre (they aren't anchored to a trigger).
+          // Flex column so the header/footer stay pinned and only the body scrolls
+          // — on short viewports a long body no longer pushes the footer off-screen.
           "bg-surface-lowest rounded-2xl shadow-modal w-full overflow-hidden animate-scale-in",
-          "max-h-[90vh] overflow-y-auto scrollbar-thin",
+          "max-h-[90vh] flex flex-col",
           sizes[size]
         )}
       >
         {(title || closable) && (
-          <div className="flex items-start justify-between p-5 border-b border-ink-outlineVariant/30">
+          <div className="shrink-0 flex items-start justify-between p-5 border-b border-ink-outlineVariant/30">
             <div>
               {title && <h3 className="text-headline text-ink font-display font-semibold">{title}</h3>}
               {description && <p className="text-body-sm text-ink-variant mt-1">{description}</p>}
@@ -63,8 +65,8 @@ export function Modal({ open, onClose, title, description, children, footer, siz
             )}
           </div>
         )}
-        <div className="p-5">{children}</div>
-        {footer && <div className="p-5 border-t border-ink-outlineVariant/30 flex justify-end gap-2">{footer}</div>}
+        <div className="p-5 flex-1 min-h-0 overflow-y-auto scrollbar-thin">{children}</div>
+        {footer && <div className="shrink-0 p-5 border-t border-ink-outlineVariant/30 flex justify-end gap-2">{footer}</div>}
       </div>
     </div>
   );
