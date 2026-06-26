@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 import anyio
 from sqlalchemy import func, select
@@ -22,6 +23,10 @@ from app.models.user import User
 # Weeks-based courses stay open through their first week; days-based courses a couple of days.
 LATE_ENROLL_GRACE_DAYS = {DurationUnit.weeks: 7, DurationUnit.days: 2}
 
+# Batch dates are India-local; evaluate "today" in IST so the window doesn't flip a
+# day early/late on a UTC server around midnight.
+IST = ZoneInfo("Asia/Kolkata")
+
 
 def enrollment_window_end(course: Course, batch: Batch) -> date:
     """Last day (inclusive) a student may self-enroll in this batch."""
@@ -31,7 +36,7 @@ def enrollment_window_end(course: Course, batch: Batch) -> date:
 
 def is_enrollment_open(course: Course, batch: Batch) -> bool:
     """Upcoming batches are always open; once started, the grace window applies."""
-    return date.today() <= enrollment_window_end(course, batch)
+    return datetime.now(IST).date() <= enrollment_window_end(course, batch)
 
 
 # ---- enrollment / capacity helpers (shared by admin-enroll and self-enroll) ----
@@ -44,6 +49,22 @@ async def active_enrollment_count(db: AsyncSession, batch_id) -> int:
             )
         )
     ).scalar_one()
+
+
+async def acquire_seat_or_raise(db: AsyncSession, batch: Batch) -> None:
+    """Race-free capacity gate for the IMMEDIATE-insert path (free / dev-mock enroll).
+
+    Locks the batch row (FOR UPDATE), then counts, so two distinct students can't
+    both pass the check and take the last seat — the unique constraint only stops
+    the SAME student twice. The lock is held until the caller commits, which here
+    is a few statements later (no network in between), so contention is minimal.
+    """
+    if batch.capacity is None:
+        return
+    await db.execute(select(Batch.id).where(Batch.id == batch.id).with_for_update())
+    cnt = await active_enrollment_count(db, batch.id)
+    if cnt >= batch.capacity:
+        raise APIError(code="BATCH_FULL", message="This batch is full", status_code=409)
 
 
 async def get_existing_enrollment(db: AsyncSession, batch_id, student_id) -> Optional[Enrollment]:
@@ -80,6 +101,11 @@ async def assert_enrollable(db: AsyncSession, batch: Batch, student: User) -> De
     if await get_existing_enrollment(db, batch.id, student.id):
         raise APIError(code="BATCH_002", message="You are already enrolled in this batch")
     if batch.capacity is not None:
+        # Best-effort pre-check (unlocked) so an obviously-full batch is rejected
+        # before we ever call Razorpay. The AUTHORITATIVE, race-free capacity gate
+        # is acquire_seat_or_raise(), used right before the immediate free/mock
+        # insert — we deliberately do NOT hold a row lock here because on the paid
+        # path this runs before a multi-second Razorpay round-trip.
         cnt = await active_enrollment_count(db, batch.id)
         if cnt >= batch.capacity:
             raise APIError(code="BATCH_FULL", message="This batch is full", status_code=409)

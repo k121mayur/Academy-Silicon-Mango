@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends
@@ -21,6 +21,7 @@ from app.schemas.student import CreateOrderIn, VerifyPaymentIn
 from app.services.auth_service import is_profile_complete
 from app.services.email_service import render_payment_receipt_email, send_email
 from app.services.payment_service import (
+    acquire_seat_or_raise,
     assert_enrollable,
     create_enrollment_with_payment,
     create_razorpay_order,
@@ -54,7 +55,7 @@ async def _issue_receipt(db: AsyncSession, payment: Payment, student: User, batc
             student_email=student.email,
             course_title=course_title,
             batch_name=batch.name,
-            paid_at=datetime.utcnow(),
+            paid_at=datetime.now(timezone.utc),
         )
         await db.commit()
     except Exception as exc:  # noqa: BLE001
@@ -123,6 +124,8 @@ async def create_order(
 
     # 4. Free course OR dev bypass → enroll directly, no Razorpay
     if payable <= 0 or is_dev_mock:
+        # Authoritative, race-free capacity check immediately before the insert.
+        await acquire_seat_or_raise(db, batch)
         tag = "FREE_ENROLL" if payable <= 0 else "DEV_MOCK"
         enr, payment = await create_enrollment_with_payment(
             db,
