@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 from datetime import date as date_type
 from datetime import timedelta
@@ -7,6 +8,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -45,6 +47,8 @@ from app.services.scheduling_service import (
 )
 
 router = APIRouter(prefix="/batches", tags=["admin:batches"])
+
+logger = logging.getLogger(__name__)
 
 
 async def _enriched_batch(db: AsyncSession, batch: Batch) -> BatchPublic:
@@ -460,16 +464,33 @@ async def enroll_student(
             )
         ).scalar_one()
         if cnt >= batch.capacity:
-            print(f"[ADMIN] Capacity warning: {cnt}/{batch.capacity} for batch {batch.id} — admin override")
+            logger.warning(
+                "Admin capacity override: enrolling into full batch %s (%s/%s)",
+                batch.id, cnt, batch.capacity,
+            )
 
     enr = Enrollment(batch_id=batch.id, student_id=student.id, status=EnrollmentStatus.active)
     db.add(enr)
-    await db.commit()
-    await db.refresh(enr)
+    try:
+        await db.commit()
+        await db.refresh(enr)
+    except IntegrityError:
+        # Double-submit / concurrent enroll hit the unique (batch_id, student_id)
+        # constraint — return the existing enrollment instead of erroring.
+        await db.rollback()
+        enr = (
+            await db.execute(
+                select(Enrollment).where(
+                    Enrollment.batch_id == batch.id, Enrollment.student_id == student.id
+                )
+            )
+        ).scalar_one_or_none()
+        if not enr:
+            raise APIError(code="ENROLL_FAILED", message="Could not complete enrollment", status_code=409)
 
     prof_res = await db.execute(select(StudentProfile).where(StudentProfile.user_id == student.id))
     prof = prof_res.scalar_one_or_none()
-    print(f"[ADMIN] Enrolled student {student.email} in batch {batch.name}")
+    logger.info("Admin-enrolled student %s in batch %s", student.email, batch.name)
     return EnrollmentPublic(
         id=str(enr.id),
         student_id=str(student.id),

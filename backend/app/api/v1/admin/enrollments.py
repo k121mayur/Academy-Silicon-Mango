@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import logging
 import math
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import APIError
@@ -17,6 +19,8 @@ from app.schemas.batch import EnrollmentCreate
 from app.services.payment_service import create_enrollment_with_payment, payable_amount
 
 router = APIRouter(prefix="/enrollments", tags=["admin:enrollments"])
+
+logger = logging.getLogger(__name__)
 
 
 @router.get("")
@@ -94,17 +98,35 @@ async def admin_enroll_student(
             )
         ).scalar_one()
         if cnt >= batch.capacity:
-            print(f"[ADMIN] Capacity warning override on enroll: batch {batch.id}")
+            logger.warning(
+                "Admin capacity override: enrolling into full batch %s (%s/%s)",
+                batch.id, cnt, batch.capacity,
+            )
 
     course = await db.get(Course, batch.course_id)
-    enr, _payment = await create_enrollment_with_payment(
-        db,
-        batch=batch,
-        student=student,
-        amount=payable_amount(course),
-        status=PaymentStatus.paid,
-        razorpay_order_id="ADMIN_ENROLL",
-    )
-    await db.commit()
-    print(f"[ADMIN] Admin-enrolled student {student.email} in {batch.name}")
+    try:
+        enr, _payment = await create_enrollment_with_payment(
+            db,
+            batch=batch,
+            student=student,
+            amount=payable_amount(course),
+            status=PaymentStatus.paid,
+            razorpay_order_id="ADMIN_ENROLL",
+        )
+        await db.commit()
+    except IntegrityError:
+        # Double-submit / concurrent enroll hit the unique (batch_id, student_id)
+        # constraint — treat as success and return the existing enrollment.
+        await db.rollback()
+        existing = (
+            await db.execute(
+                select(Enrollment).where(
+                    Enrollment.batch_id == batch.id, Enrollment.student_id == student.id
+                )
+            )
+        ).scalar_one_or_none()
+        if existing:
+            return {"success": True, "data": {"enrollment_id": str(existing.id)}}
+        raise APIError(code="ENROLL_FAILED", message="Could not complete enrollment", status_code=409)
+    logger.info("Admin-enrolled student %s in batch %s", student.email, batch.name)
     return {"success": True, "data": {"enrollment_id": str(enr.id)}}
