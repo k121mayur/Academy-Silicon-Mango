@@ -6,6 +6,7 @@ import { SearchableSelect } from "@/components/ui/SearchableSelect";
 import { Table, THead, TR, TH, TD } from "@/components/ui/Table";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { QueryErrorState } from "@/components/student/QueryErrorState";
 import { extractErrorMessage } from "@/lib/api";
 import { adminEnroll, listAllBatches, listAllEnrollments, listAllStudents, BatchDTO, StudentDTO } from "@/services/admin.service";
 import { formatDate } from "@/lib/utils";
@@ -13,15 +14,17 @@ import { formatDate } from "@/lib/utils";
 export default function AdminEnrollments() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<unknown>(null);
   const [open, setOpen] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await listAllEnrollments();
       setItems(res.data);
     } catch (e) {
-      toast.error(extractErrorMessage(e));
+      setError(e);
     } finally {
       setLoading(false);
     }
@@ -41,6 +44,8 @@ export default function AdminEnrollments() {
 
       {loading ? (
         <p className="text-body-sm text-ink-outline">Loading…</p>
+      ) : error ? (
+        <QueryErrorState error={error} onRetry={fetchData} title="Couldn't load enrollments" />
       ) : items.length === 0 ? (
         <EmptyState title="No enrollments yet" icon="how_to_reg" />
       ) : (
