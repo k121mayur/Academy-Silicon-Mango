@@ -108,23 +108,13 @@ async def _dispatch_reminders() -> dict:
                 if not due:
                     continue
 
-                regs = (
-                    await db.execute(
-                        select(WebinarRegistration).where(
-                            WebinarRegistration.webinar_id == w.id,
-                            WebinarRegistration.status == WebinarRegistrationStatus.registered,
-                            WebinarRegistration.verified_at.is_not(None),
-                        )
-                    )
-                ).scalars().all()
-                if not regs:
-                    continue
-
                 when_str = wsvc.format_local(w.start_at, w.timezone)
                 detail_url = _detail_url(w)
 
-                for rtype, label in due:
-                    already = set(
+                # Already-dispatched registration IDs per due reminder type (IDs only — cheap).
+                already_by_type = {}
+                for rtype, _label in due:
+                    already_by_type[rtype] = set(
                         (
                             await db.execute(
                                 select(WebinarReminderDispatch.registration_id).where(
@@ -134,25 +124,52 @@ async def _dispatch_reminders() -> dict:
                             )
                         ).scalars().all()
                     )
-                    for r in regs:
-                        if r.id in already:
-                            continue
-                        subject, html, text = render_webinar_reminder_email(
-                            r.full_name, w.title, label, when_str, detail_url, w.meeting_url
+
+                # Stream registrations in keyset-paginated chunks so a webinar with
+                # thousands of sign-ups never loads them all into memory at once.
+                CHUNK = 200
+                last_id = None
+                while True:
+                    q = (
+                        select(WebinarRegistration)
+                        .where(
+                            WebinarRegistration.webinar_id == w.id,
+                            WebinarRegistration.status == WebinarRegistrationStatus.registered,
+                            WebinarRegistration.verified_at.is_not(None),
                         )
-                        ok = await send_email(r.email, subject, html, text)
-                        if not ok:
-                            continue
-                        db.add(
-                            WebinarReminderDispatch(
-                                webinar_id=w.id, registration_id=r.id, reminder_type=rtype
+                        .order_by(WebinarRegistration.id)
+                        .limit(CHUNK)
+                    )
+                    if last_id is not None:
+                        q = q.where(WebinarRegistration.id > last_id)
+                    chunk = (await db.execute(q)).scalars().all()
+                    if not chunk:
+                        break
+                    last_id = chunk[-1].id
+
+                    for r in chunk:
+                        for rtype, label in due:
+                            if r.id in already_by_type[rtype]:
+                                continue
+                            subject, html, text = render_webinar_reminder_email(
+                                r.full_name, w.title, label, when_str, detail_url, w.meeting_url
                             )
-                        )
-                        try:
-                            await db.commit()
-                            sent += 1
-                        except IntegrityError:
-                            await db.rollback()
+                            ok = await send_email(r.email, subject, html, text)
+                            if not ok:
+                                continue
+                            db.add(
+                                WebinarReminderDispatch(
+                                    webinar_id=w.id, registration_id=r.id, reminder_type=rtype
+                                )
+                            )
+                            try:
+                                await db.commit()
+                                sent += 1
+                            except IntegrityError:
+                                await db.rollback()
+
+                    if len(chunk) < CHUNK:
+                        break
     finally:
         await engine.dispose()
     print(f"[WEBINAR] reminder dispatch done — sent={sent}")
