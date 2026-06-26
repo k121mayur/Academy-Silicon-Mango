@@ -19,17 +19,40 @@
       content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
     <meta name="theme-color" content="#ffb800" />
+    <meta name="author" content="Silicon Mango Academy" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta
+      name="keywords"
+      content="Silicon Mango Academy, online courses India, Excel course, Python course, SQL, AI, live cohort, self-paced, webinars, verifiable certificate"
+    />
+    <!-- ~146 chars — within the 130–160 SEO sweet spot. -->
     <meta
       name="description"
-      content="Silicon Mango Academy — live instructor-led cohorts, self-paced tracks, and expert webinars. Build a portfolio, earn a verifiable certificate, and level up your career."
+      content="Silicon Mango Academy: live instructor-led cohorts, self-paced tracks & expert webinars in Excel, Python, SQL & AI. Earn a verifiable certificate."
     />
+    <link rel="canonical" href="https://academy.siliconmango.in/" />
+
+    <!-- Open Graph (Facebook, LinkedIn, WhatsApp link previews) -->
+    <meta property="og:site_name" content="Silicon Mango Academy" />
     <meta property="og:title" content="Silicon Mango Academy — Learn. Build. Get Certified." />
     <meta
       property="og:description"
-      content="Live cohorts, self-paced tracks, and expert webinars from industry practitioners."
+      content="Live instructor-led cohorts, self-paced tracks & expert webinars in Excel, Python, SQL & AI. Earn a verifiable certificate."
     />
     <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://academy.siliconmango.in/" />
+    <meta property="og:image" content="https://academy.siliconmango.in/Logo1.png" />
+    <meta property="og:image:alt" content="Silicon Mango Academy" />
+    <meta property="og:locale" content="en_IN" />
+
+    <!-- Twitter / X card -->
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Silicon Mango Academy — Learn. Build. Get Certified." />
+    <meta
+      name="twitter:description"
+      content="Live cohorts, self-paced tracks & expert webinars in Excel, Python, SQL & AI. Earn a verifiable certificate."
+    />
+    <meta name="twitter:image" content="https://academy.siliconmango.in/Logo1.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -41,9 +64,152 @@
       rel="stylesheet"
     />
     <title>Silicon Mango Academy — Learn. Build. Get Certified.</title>
+
+    <!-- Structured data (schema.org) — organisation, site, and FAQ rich results.
+         The FAQ entries mirror the visible FAQ on the landing page. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "EducationalOrganization",
+            "@id": "https://academy.siliconmango.in/#organization",
+            "name": "Silicon Mango Academy",
+            "alternateName": "Silicon Mango",
+            "url": "https://academy.siliconmango.in/",
+            "logo": "https://academy.siliconmango.in/Logo1.png",
+            "image": "https://academy.siliconmango.in/Logo1.png",
+            "description": "Affordable, job-ready online courses in Excel, Python, SQL, and AI — live instructor-led cohorts, self-paced tracks, and expert webinars for working professionals across India.",
+            "email": "palak@siliconmango.com",
+            "telephone": "+91-84463-59728",
+            "areaServed": "IN",
+            "sameAs": [
+              "https://www.instagram.com/siliconmango",
+              "https://www.linkedin.com/company/silicon-mango",
+              "https://www.youtube.com/@siliconmango"
+            ]
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://academy.siliconmango.in/#website",
+            "name": "Silicon Mango Academy",
+            "url": "https://academy.siliconmango.in/",
+            "inLanguage": "en",
+            "publisher": { "@id": "https://academy.siliconmango.in/#organization" }
+          },
+          {
+            "@type": "FAQPage",
+            "@id": "https://academy.siliconmango.in/#faq",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "Is this suitable for complete beginners?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes, completely. We start from the very basics - no prior Excel knowledge is needed. The course is designed for people who use computers every day but have never gone deep into spreadsheets."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What if I miss a live session?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Every live class is recorded and posted the same day. You can watch it on your own time and bring your questions to the next week's session."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Is the certificate job-ready?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. Each certificate has a unique verification ID and a public URL that employers can check instantly. It is issued only after you complete the capstone project and a mentor review - so it means something."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Can I get a refund?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "If you cancel before your batch starts, you get a full refund - no questions asked. Once classes begin, refunds are not available, so if you are unsure, check out a free class first."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How much time per week does this require?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Plan for around 4 to 5 hours a week: one live class plus a short assignment. Most of our learners fit it around a full-time job without any trouble."
+                }
+              }
+            ]
+          }
+        ]
+      }
+    </script>
   </head>
   <body style="background:#f8f9fa">
-    <div id="root"></div>
+    <div id="root">
+      <!-- Static, crawlable splash shown until the React app mounts — React
+           replaces #root on load. It gives search-engine crawlers and no-JS
+           visitors a real heading, descriptive copy, and internal links instead
+           of an empty page, and doubles as a branded loading state for everyone. -->
+      <div
+        style="min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px;text-align:center;background:#f8f9fa;color:#3d2b00;font-family:Inter,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif"
+      >
+        <img src="/Logo1.png" alt="Silicon Mango Academy logo" width="64" height="64" style="object-fit:contain" />
+        <h1 style="margin:0;max-width:22ch;font-size:1.7rem;line-height:1.15;font-weight:800">
+          Silicon Mango Academy — Learn. Build. Get Certified.
+        </h1>
+        <p style="margin:0;max-width:56ch;font-size:1.02rem;line-height:1.55;color:#6b5a3a">
+          Live instructor-led cohorts, self-paced tracks, and expert webinars in Excel, Python, SQL,
+          and AI. Get mentor-reviewed feedback, build a real portfolio project, and earn a verifiable
+          certificate — built for working professionals across India.
+        </p>
+        <nav
+          aria-label="Primary"
+          style="display:flex;flex-wrap:wrap;gap:10px 18px;justify-content:center;font-size:.98rem;font-weight:600"
+        >
+          <a href="/courses" style="color:#a85f00;text-decoration:none">Explore Courses</a>
+          <a href="/webinars" style="color:#a85f00;text-decoration:none">Webinars</a>
+          <a href="/blog" style="color:#a85f00;text-decoration:none">Blog</a>
+          <a href="/signup" style="color:#a85f00;text-decoration:none">Sign Up</a>
+          <a href="/login" style="color:#a85f00;text-decoration:none">Sign In</a>
+        </nav>
+        <!-- SMIL-animated SVG spinner — no CSS keyframes, so Vite doesn't try to
+             extract it as an inline-CSS proxy module (which breaks the build). -->
+        <svg width="26" height="26" viewBox="0 0 24 24" role="status" aria-label="Loading" style="display:inline-block">
+          <circle cx="12" cy="12" r="9" fill="none" stroke="#e7d9bd" stroke-width="3"></circle>
+          <path d="M12 3a9 9 0 0 1 9 9" fill="none" stroke="#a85f00" stroke-width="3" stroke-linecap="round">
+            <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.8s" repeatCount="indefinite" />
+          </path>
+        </svg>
+      </div>
+    </div>
+    <noscript>
+      <div style="max-width:720px;margin:40px auto;padding:0 24px;font-family:Inter,system-ui,sans-serif;color:#1a1a1a;line-height:1.6">
+        <h2>Online courses, live cohorts &amp; expert webinars</h2>
+        <p>
+          Silicon Mango Academy helps working professionals across India build job-ready skills in
+          Excel, Python, SQL, and AI. Choose a live instructor-led cohort for accountability and
+          weekly doubt-clearing, or learn at your own pace with self-paced tracks you can resume on
+          any device — even on a slow 3G/4G connection.
+        </p>
+        <p>
+          Every course includes mentor-reviewed assignments (real feedback, not just an auto-graded
+          score), a hands-on capstone project for your portfolio, and a certificate with a unique ID
+          and a public verification URL you can share on LinkedIn or your resume. New batches open
+          regularly, and you get a full refund if you cancel before your batch begins.
+        </p>
+        <p>This site works best with JavaScript enabled. Explore Silicon Mango Academy:</p>
+        <ul>
+          <li><a href="/courses">Browse all courses</a></li>
+          <li><a href="/webinars">Upcoming webinars &amp; live classes</a></li>
+          <li><a href="/blog">Read the Silicon Mango blog</a></li>
+          <li><a href="/signup">Create a free account</a></li>
+          <li><a href="/login">Sign in to your account</a></li>
+        </ul>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

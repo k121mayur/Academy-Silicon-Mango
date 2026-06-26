@@ -1,0 +1,12 @@
+# Silicon Mango Academy — robots.txt
+# Public marketing/content pages are crawlable; authenticated app areas are not.
+
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /portal
+Disallow: /instructor
+Disallow: /account
+Disallow: /api/
+
+Sitemap: https://academy.siliconmango.in/sitemap.xml
