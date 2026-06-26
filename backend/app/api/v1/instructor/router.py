@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import APIError
 from app.db.session import get_db
@@ -20,7 +21,6 @@ from app.models.attendance import AttendanceRecord, AttendanceSource, Attendance
 from app.models.batch import (
     Batch,
     BatchPlan,
-    BatchScheduleSlot,
     BatchStatus,
     DeliveryMode,
     Enrollment,
@@ -191,52 +191,51 @@ async def list_batches(
     db: AsyncSession = Depends(get_db),
 ):
     res = await db.execute(
-        select(Batch).where(Batch.instructor_id == instructor.id).order_by(Batch.created_at.desc())
+        select(Batch)
+        .options(selectinload(Batch.course), selectinload(Batch.schedule_slots))
+        .where(Batch.instructor_id == instructor.id)
+        .order_by(Batch.created_at.desc())
     )
     batches = res.scalars().all()
+    ids = [b.id for b in batches]
+
+    # Aggregate each per-batch count in a SINGLE grouped query keyed by batch_id,
+    # instead of issuing 4 counts + a slots query PER batch (the old 1 + 6N pattern
+    # that exhausts the DB pool under load). Now it's a flat ~6 queries regardless
+    # of how many batches the instructor has.
+    async def _count_by_batch(model, *extra_where) -> dict:
+        if not ids:
+            return {}
+        rows = (
+            await db.execute(
+                select(model.batch_id, func.count())
+                .where(model.batch_id.in_(ids), *extra_where)
+                .group_by(model.batch_id)
+            )
+        ).all()
+        return {bid: int(c) for bid, c in rows}
+
+    enrolled_map = await _count_by_batch(Enrollment, Enrollment.status == EnrollmentStatus.active)
+    sessions_map = await _count_by_batch(ClassSession)
+    assignments_map = await _count_by_batch(Assignment)
+    certs_map = await _count_by_batch(Certificate)
+
     items: list[dict] = []
     for b in batches:
-        course = await db.get(Course, b.course_id)
-        enrolled = (
-            await db.execute(
-                select(func.count(Enrollment.id)).where(
-                    Enrollment.batch_id == b.id, Enrollment.status == EnrollmentStatus.active
-                )
-            )
-        ).scalar_one()
-        sessions = (
-            await db.execute(
-                select(func.count(ClassSession.id)).where(ClassSession.batch_id == b.id)
-            )
-        ).scalar_one()
-        assignments = (
-            await db.execute(
-                select(func.count(Assignment.id)).where(Assignment.batch_id == b.id)
-            )
-        ).scalar_one()
-        certs = (
-            await db.execute(
-                select(func.count(Certificate.id)).where(Certificate.batch_id == b.id)
-            )
-        ).scalar_one()
-        slots_res = await db.execute(
-            select(BatchScheduleSlot).where(BatchScheduleSlot.batch_id == b.id)
-        )
-        slots = slots_res.scalars().all()
         items.append(
             {
                 "id": str(b.id),
                 "name": b.name,
                 "course_id": str(b.course_id),
-                "course_title": course.title if course else None,
+                "course_title": b.course.title if b.course else None,
                 "delivery_mode": b.delivery_mode.value,
                 "status": b.status.value,
                 "start_date": b.start_date.isoformat() if b.start_date else None,
                 "end_date": b.end_date.isoformat() if b.end_date else None,
-                "enrolled_count": int(enrolled),
-                "sessions_count": int(sessions),
-                "assignments_count": int(assignments),
-                "certificates_count": int(certs),
+                "enrolled_count": enrolled_map.get(b.id, 0),
+                "sessions_count": sessions_map.get(b.id, 0),
+                "assignments_count": assignments_map.get(b.id, 0),
+                "certificates_count": certs_map.get(b.id, 0),
                 "schedule_slots": [
                     {
                         "slot_type": s.slot_type.value,
@@ -245,7 +244,7 @@ async def list_batches(
                         "start_time": s.start_time.isoformat() if s.start_time else None,
                         "end_time": s.end_time.isoformat() if s.end_time else None,
                     }
-                    for s in slots
+                    for s in b.schedule_slots
                 ],
             }
         )
@@ -906,7 +905,7 @@ async def grade_submission(
         sub.status = SubmissionStatus.graded
 
     if sub.status == SubmissionStatus.graded:
-        sub.graded_at = datetime.utcnow()
+        sub.graded_at = datetime.now(timezone.utc)
         sub.graded_by = instructor.id
 
     await db.commit()
@@ -1032,7 +1031,7 @@ async def set_attendance(
                 source=AttendanceSource.manual,
                 notes=entry.notes,
                 marked_by=instructor.id,
-                marked_at=datetime.utcnow(),
+                marked_at=datetime.now(timezone.utc),
             )
             db.add(ar)
         else:
@@ -1040,7 +1039,7 @@ async def set_attendance(
             ar.notes = entry.notes
             ar.source = AttendanceSource.manual
             ar.marked_by = instructor.id
-            ar.marked_at = datetime.utcnow()
+            ar.marked_at = datetime.now(timezone.utc)
         saved += 1
     await db.commit()
     return {"success": True, "data": {"saved": saved}}
