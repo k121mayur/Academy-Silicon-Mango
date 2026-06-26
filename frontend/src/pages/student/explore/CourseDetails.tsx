@@ -96,8 +96,8 @@ export default function CourseDetails() {
       <Modal
         open={authPrompt}
         onClose={() => setAuthPrompt(false)}
-        title="Create an account to enrol"
-        description="You need a Silicon Mango account to enrol in this course. Sign in or sign up — it only takes a minute."
+        title="Create an account to enroll"
+        description="You need a Silicon Mango account to enroll in this course. Sign in or sign up — it only takes a minute."
         footer={
           <>
             <Button variant="outline" onClick={() => navigate(ROUTES.login, { state: { from: ROUTES.public.courseDetails(course.id) } })}>
@@ -110,7 +110,7 @@ export default function CourseDetails() {
         }
       >
         <p className="text-body-sm text-ink-variant">
-          Browsing is free and open to everyone. Enrolment, course materials, assignments and
+          Browsing is free and open to everyone. Enrollment, course materials, assignments and
           certificates are available once you have an account.
         </p>
       </Modal>
@@ -323,7 +323,7 @@ function DemoSessionTab({ videoId }: { videoId: string }) {
       <div>
         <h3 className="text-title-md font-semibold text-ink">Demo session</h3>
         <p className="text-body-sm text-ink-variant">
-          Watch this free preview to see the teaching style and what the course covers before you enrol.
+          Watch this free preview to see the teaching style and what the course covers before you enroll.
         </p>
       </div>
       <div className="relative w-full overflow-hidden rounded-2xl border border-ink-outlineVariant/40 bg-black aspect-video">
@@ -483,10 +483,15 @@ function BatchesTab({
 
   return (
     <div className="space-y-4">
-      <div>
-        <h3 className="text-title-md font-semibold text-ink">Choose your batch</h3>
-        <p className="text-body-sm text-ink-variant">
-          Pick the schedule that works for you, then continue to secure payment.
+      <div className="rounded-2xl border border-primary/30 bg-primary-container/15 p-4">
+        <div className="flex items-center gap-2">
+          <span className="icon text-[22px] text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>
+            event_available
+          </span>
+          <h3 className="font-display text-title-lg font-bold text-ink">Choose your batch to enroll</h3>
+        </div>
+        <p className="text-body-sm text-ink-variant mt-1">
+          Pick the start date and schedule that work for you, then continue to secure payment. Seats are limited.
         </p>
       </div>
 
@@ -500,17 +505,20 @@ function BatchesTab({
         <EmptyState
           icon="event_busy"
           title="No open batches yet"
-          description="This course doesn't have any batches open for enrolment right now. Check back soon."
+          description="This course doesn't have any batches open for enrollment right now. Check back soon."
         />
       ) : (
         <>
           <BatchPicker batches={batches} selected={selected} onSelect={setSelected} />
-          <div className="sticky bottom-4 flex items-center justify-between gap-3 bg-surface-lowest/90 backdrop-blur border border-ink-outlineVariant/40 rounded-2xl shadow-card p-3">
+          <div className="sticky bottom-4 flex items-center justify-between gap-3 bg-surface-lowest/95 backdrop-blur border border-primary/30 rounded-2xl shadow-modal p-3">
             <div className="px-2">
               <p className="text-label text-ink-outline">Total payable</p>
               <p className="font-display font-bold text-title-lg text-primary">
                 {payable === 0 ? "Free" : formatCurrency(payable)}
               </p>
+              {!selected && (
+                <p className="text-label text-ink-outline mt-0.5">Select a batch to continue</p>
+              )}
             </div>
             <Button
               size="lg"
@@ -518,7 +526,7 @@ function BatchesTab({
               disabled={!selected || (selectedBatch ? !isBatchSelectable(selectedBatch) : false)}
               onClick={onContinue}
             >
-              Continue to payment
+              {selected ? "Enroll · Continue to payment" : "Continue to payment"}
             </Button>
           </div>
         </>

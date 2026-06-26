@@ -54,16 +54,20 @@ function BatchOption({
       type="button"
       onClick={onSelect}
       disabled={disabled}
-      className={`w-full text-left p-4 rounded-2xl border transition-all ${
+      aria-pressed={selected}
+      className={`group w-full text-left p-4 rounded-2xl border-2 transition-all ${
         selected
-          ? "ring-2 ring-primary bg-primary-container/20 border-primary/40"
-          : "bg-surface-lowest border-ink-outlineVariant/40 hover:border-primary/40 hover:shadow-card"
-      } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+          ? "ring-2 ring-primary border-primary bg-primary-container/25 shadow-card"
+          : "bg-surface-lowest border-ink-outlineVariant/40 hover:border-primary/60 hover:bg-primary-container/5 hover:shadow-card"
+      } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-semibold text-ink">{batch.name}</p>
+            <p className="font-display text-title-md font-bold text-ink">{batch.name}</p>
+            {selected && (
+              <Badge tone="primary" icon="check_circle">Selected</Badge>
+            )}
             <Badge
               tone={batch.delivery_mode === "live" ? "primary" : "tertiary"}
               icon={batch.delivery_mode === "live" ? "live_tv" : "self_improvement"}
@@ -102,7 +106,7 @@ function BatchOption({
             </div>
           )}
         </div>
-        <span className={`icon text-[22px] shrink-0 ${selected ? "text-primary" : "text-ink-outline"}`}>
+        <span className={`icon text-[24px] shrink-0 transition-colors ${selected ? "text-primary" : "text-ink-outline group-hover:text-primary/70"}`}>
           {selected ? "radio_button_checked" : "radio_button_unchecked"}
         </span>
       </div>
