@@ -123,7 +123,7 @@ export default function CourseDetails() {
             {course.banner_url && (
               <img
                 src={absoluteApiUrl(course.banner_url)}
-                alt={course.title}
+                alt={course.title || "Course banner"}
                 className="absolute inset-0 w-full h-full object-cover"
               />
             )}
@@ -469,7 +469,7 @@ function BatchesTab({
       return;
     }
     if (!profileComplete) {
-      toast("Complete your profile first.", { icon: "🔒" });
+      toast("Complete your profile to enroll.", { icon: <span className="icon">lock</span> });
       return;
     }
     setPayOpen(true);
