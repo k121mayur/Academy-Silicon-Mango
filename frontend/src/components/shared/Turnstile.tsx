@@ -25,7 +25,12 @@ function loadScript(): Promise<void> {
       s.async = true;
       s.defer = true;
       s.onload = () => resolve();
-      s.onerror = () => reject(new Error("Failed to load Turnstile"));
+      s.onerror = () => {
+        // Reset so a later remount (e.g. the user hits "retry") re-attempts the load
+        // instead of reusing this rejected promise forever.
+        scriptPromise = null;
+        reject(new Error("Failed to load Turnstile"));
+      };
       document.head.appendChild(s);
     });
   }
@@ -36,7 +41,13 @@ function loadScript(): Promise<void> {
  * Cloudflare Turnstile widget. Renders nothing when no site key is configured
  * (so local/dev works without keys — the backend also skips verification then).
  */
-export function Turnstile({ onToken }: { onToken: (token: string) => void }) {
+export function Turnstile({
+  onToken,
+  onLoadError,
+}: {
+  onToken: (token: string) => void;
+  onLoadError?: () => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const widgetId = useRef<string | null>(null);
 
@@ -54,7 +65,10 @@ export function Turnstile({ onToken }: { onToken: (token: string) => void }) {
         });
       })
       .catch(() => {
-        /* network failure — backend still rate-limits + email-verifies */
+        // The widget couldn't load (network/CSP/ad-blocker). The backend still
+        // fails closed, so let the form surface a clear "retry" instead of leaving
+        // an empty space the user can't act on.
+        if (!cancelled) onLoadError?.();
       });
     return () => {
       cancelled = true;
@@ -66,7 +80,7 @@ export function Turnstile({ onToken }: { onToken: (token: string) => void }) {
         }
       }
     };
-  }, [onToken]);
+  }, [onToken, onLoadError]);
 
   if (!SITE_KEY) return null;
   return <div ref={ref} className="my-1" />;

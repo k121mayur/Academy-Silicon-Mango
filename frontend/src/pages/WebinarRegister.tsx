@@ -44,8 +44,17 @@ export default function WebinarRegister() {
   const [submitting, setSubmitting] = useState(false);
   const [resending, setResending] = useState(false);
   const [waitlisted, setWaitlisted] = useState(false);
+  const [captchaFailed, setCaptchaFailed] = useState(false);
+  // Bumping this key remounts the Turnstile widget to re-attempt a failed load.
+  const [captchaKey, setCaptchaKey] = useState(0);
 
   const onToken = useCallback((t: string) => setCaptcha(t), []);
+  const onCaptchaError = useCallback(() => setCaptchaFailed(true), []);
+  const retryCaptcha = () => {
+    setCaptchaFailed(false);
+    setCaptcha("");
+    setCaptchaKey((k) => k + 1);
+  };
 
   if (isLoading) {
     return (
@@ -228,7 +237,19 @@ export default function WebinarRegister() {
                 options={[{ value: "", label: "Select…" }, ...PROFESSION_OPTIONS.map((p) => ({ value: p, label: p }))]}
               />
 
-              <Turnstile onToken={onToken} />
+              <Turnstile key={captchaKey} onToken={onToken} onLoadError={onCaptchaError} />
+              {captchaFailed && (
+                <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-body-sm text-ink">
+                  <p>Couldn't load the verification widget. Check your connection or disable ad-blockers, then try again.</p>
+                  <button
+                    type="button"
+                    onClick={retryCaptcha}
+                    className="mt-2 inline-flex items-center gap-1 text-primary font-medium hover:underline"
+                  >
+                    <span className="icon text-[18px]">refresh</span> Retry verification
+                  </button>
+                </div>
+              )}
 
               <Button type="submit" fullWidth loading={submitting} leftIcon="how_to_reg">
                 {w.registration_state === "waitlist" ? "Join waitlist" : "Register"}
