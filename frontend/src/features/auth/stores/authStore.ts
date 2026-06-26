@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { AuthUser } from "@/types/auth";
 
@@ -54,7 +55,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
 if (typeof window !== "undefined") {
   window.addEventListener("auth:logout", () => {
+    // Only tell the user their session expired if they actually had one — a guest's
+    // session-probe 401 also lands here, and shouldn't pop a "session expired" toast.
+    const hadSession = !!useAuthStore.getState().user;
     console.warn("[AUTH] Got auth:logout event — clearing state");
     useAuthStore.getState().clearAuth();
+    if (hadSession) {
+      toast.error("Your session has expired — please sign in again.");
+    }
   });
 }
