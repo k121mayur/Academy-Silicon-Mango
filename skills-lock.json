@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "understand": {
+      "source": "lum1104/understand-anything",
+      "sourceType": "github",
+      "skillPath": "understand-anything-plugin/skills/understand/SKILL.md",
+      "computedHash": "bbdedafa0179c26e415791f268b84beedf5cba738d25c35f11e2d80299feebbb"
+    }
+  }
+}
