@@ -112,6 +112,7 @@ export function PaymentModal({ open, onClose, courseId, courseTitle, batch, paya
   };
 
   const startRealPayment = async () => {
+    if (busy) return; // guard against double-submit while a request is in flight (retry from "error" still works)
     setPhase("creating");
     try {
       const order = await createOrder(batch.id, false);
@@ -148,6 +149,7 @@ export function PaymentModal({ open, onClose, courseId, courseTitle, batch, paya
   };
 
   const startMockPayment = async () => {
+    if (busy) return; // guard against double-submit while a request is in flight (retry from "error" still works)
     setPhase("creating");
     try {
       const order = await createOrder(batch.id, true);
@@ -238,7 +240,7 @@ export function PaymentModal({ open, onClose, courseId, courseTitle, batch, paya
 
           <div className="space-y-2">
             {!mockOnly && (
-              <Button fullWidth size="lg" leftIcon="lock" onClick={startRealPayment}>
+              <Button fullWidth size="lg" leftIcon="lock" onClick={startRealPayment} disabled={busy} loading={busy}>
                 {payable === 0 ? "Enroll for free" : `Pay ${formatCurrency(payable)} securely`}
               </Button>
             )}
@@ -249,11 +251,12 @@ export function PaymentModal({ open, onClose, courseId, courseTitle, batch, paya
                 size={mockOnly ? "lg" : "md"}
                 leftIcon="bolt"
                 onClick={startMockPayment}
+                disabled={busy}
               >
                 Simulate payment (dev)
               </Button>
             )}
-            <Button fullWidth variant="ghost" onClick={onClose}>
+            <Button fullWidth variant="ghost" onClick={onClose} disabled={busy}>
               Cancel
             </Button>
           </div>
