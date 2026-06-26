@@ -3,14 +3,9 @@
   <head>
     <meta charset="UTF-8" />
 
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-3T4XZ0H6NH"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      gtag('config', 'G-3T4XZ0H6NH');
-    </script>
+    <!-- Google Analytics (gtag.js) is bootstrapped from src/components/Analytics.tsx
+         using VITE_GA_MEASUREMENT_ID, so it only loads when configured (no dev/staging
+         pollution) and the ID isn't hardcoded here. -->
 
     <link rel="icon" type="image/png" href="/Logo1.png" />
     <link rel="apple-touch-icon" href="/Logo1.png" />
