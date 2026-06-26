@@ -131,7 +131,7 @@ export function SecureVideoPlayer({
       if (!isCurrent() || hlsRef.current !== hls || !data.fatal) return;
       // Network error → segment URLs likely rotated/expired. Re-fetch the
       // playlist (re-authorized) and re-attach with fresh signed URLs.
-      if (data.type === Hls.ErrorTypes.NETWORK_ERROR && retryCountRef.current < 3) {
+      if (data.type === Hls.ErrorTypes.NETWORK_ERROR && retryCountRef.current < 5) {
         retryCountRef.current += 1;
         try {
           const fresh = await fetchPlaybackInfo(videoId);
@@ -153,7 +153,7 @@ export function SecureVideoPlayer({
         }
       }
       // Media error → try to recover in place before giving up.
-      if (data.type === Hls.ErrorTypes.MEDIA_ERROR && retryCountRef.current < 3) {
+      if (data.type === Hls.ErrorTypes.MEDIA_ERROR && retryCountRef.current < 5) {
         retryCountRef.current += 1;
         try {
           hls.recoverMediaError();
