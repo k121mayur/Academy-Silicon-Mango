@@ -201,6 +201,12 @@ class Settings(BaseSettings):
         elif not self.SEGMENT_SIGNING_SECRET:
             problems.append("SEGMENT_SIGNING_SECRET is empty — video segment URLs cannot be signed.")
 
+        if not self.VIDEO_STREAM_SECRET:
+            problems.append(
+                "VIDEO_STREAM_SECRET is empty — video playback tokens cannot be signed, so every "
+                "video would 500 at runtime. Set a strong random value."
+            )
+
         return problems
 
 
