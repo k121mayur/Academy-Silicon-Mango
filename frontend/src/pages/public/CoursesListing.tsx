@@ -39,7 +39,7 @@ export default function CoursesListing() {
           <p className="text-caption text-tertiary mb-2">CATALOG</p>
           <h1 className="font-display font-bold text-display-md md:text-display-lg text-ink">Explore courses</h1>
           <p className="text-body-sm text-ink-variant mt-1 max-w-xl">
-            Browse every course with full details — no account needed. Create a free account when you're ready to enrol.
+            Browse every course with full details — no account needed. Create a free account when you're ready to enroll.
           </p>
         </div>
         {!user && (
