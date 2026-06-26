@@ -90,7 +90,7 @@ export function PaymentModal({ open, onClose, courseId, courseTitle, batch, paya
           fail(
             extractErrorMessage(
               e,
-              "Payment received but we couldn't confirm enrolment. If you were charged, contact support."
+              "Payment received but we couldn't confirm enrollment. If you were charged, contact support."
             )
           );
         }
@@ -169,7 +169,7 @@ export function PaymentModal({ open, onClose, courseId, courseTitle, batch, paya
         if (!busy) onClose();
       }}
       closable={!busy && phase !== "success"}
-      title={phase === "success" ? undefined : "Complete your enrolment"}
+      title={phase === "success" ? undefined : "Complete your enrollment"}
       size="md"
     >
       {phase === "success" ? (

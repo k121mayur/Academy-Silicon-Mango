@@ -200,7 +200,7 @@ export default function PaymentSettings() {
           <p>
             <strong className="text-ink">Test mode</strong> uses Razorpay's sandbox. The checkout, QR and UPI all
             look real, but no money moves — you use Razorpay's test cards/UPI to simulate a success or failure. Use
-            this to confirm the whole journey (pay → enrol → receipt email) before launch.
+            this to confirm the whole journey (pay → enroll → receipt email) before launch.
           </p>
           <p>
             <strong className="text-ink">Live mode</strong> uses your real Razorpay account. Students pay the actual
