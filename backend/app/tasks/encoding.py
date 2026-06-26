@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -98,7 +98,7 @@ async def _run() -> dict:
 
 
 async def _pick_next(db: AsyncSession) -> Optional[Video]:
-    cutoff = datetime.utcnow() - timedelta(hours=1)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
     stmt = (
         select(Video)
         .where(
@@ -182,7 +182,7 @@ async def _encode_one(video_id, Session: async_sessionmaker) -> tuple[bool, Opti
             video.duration_seconds = probe.duration_seconds
             video.source_height = probe.height
             video.status = VideoStatus.ready
-            video.processed_at = datetime.utcnow()
+            video.processed_at = datetime.now(timezone.utc)
             video.error_message = None
             if video.source_path and os.path.isfile(video.source_path):
                 try:

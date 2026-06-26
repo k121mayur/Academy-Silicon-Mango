@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import select
@@ -109,7 +109,7 @@ async def issue_and_email_certificate(
 
     if sent:
         cert.email_status = CertificateEmailStatus.sent
-        cert.emailed_at = datetime.utcnow()
+        cert.emailed_at = datetime.now(timezone.utc)
         return cert, was_created, True, None
 
     cert.email_status = CertificateEmailStatus.failed
