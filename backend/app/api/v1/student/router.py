@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import APIError
 from app.db.session import get_db
@@ -46,18 +47,28 @@ async def my_batches(
     db: AsyncSession = Depends(get_db),
 ):
     res = await db.execute(
-        select(Enrollment, Batch).join(Batch, Batch.id == Enrollment.batch_id).where(Enrollment.student_id == student.id)
+        select(Enrollment, Batch)
+        .join(Batch, Batch.id == Enrollment.batch_id)
+        .options(selectinload(Batch.course))
+        .where(Enrollment.student_id == student.id)
     )
+    rows = res.all()
+
+    # Resolve all instructor names in ONE query instead of one per enrolled batch.
+    instructor_ids = {batch.instructor_id for _enr, batch in rows if batch.instructor_id}
+    prof_map: dict = {}
+    if instructor_ids:
+        profs = (
+            await db.execute(
+                select(InstructorProfile).where(InstructorProfile.user_id.in_(instructor_ids))
+            )
+        ).scalars().all()
+        prof_map = {p.user_id: p.display_name for p in profs}
+
     items = []
-    for enr, batch in res.all():
-        course = await db.get(Course, batch.course_id)
-        instructor_name = None
-        if batch.instructor_id:
-            iprof = (
-                await db.execute(select(InstructorProfile).where(InstructorProfile.user_id == batch.instructor_id))
-            ).scalar_one_or_none()
-            instructor_name = iprof.display_name if iprof else None
-        d = _batch_dict(batch, course, instructor_name)
+    for enr, batch in rows:
+        instructor_name = prof_map.get(batch.instructor_id) if batch.instructor_id else None
+        d = _batch_dict(batch, batch.course, instructor_name)
         d["enrollment_status"] = enr.status.value
         items.append(d)
     return {"success": True, "data": items}
@@ -254,7 +265,7 @@ async def submit_assignment(
         final_content = content.strip()
 
     # Lateness check
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     is_late = bool(a.due_date and now > a.due_date)
     if is_late and not a.allow_late:
         raise APIError(code="VALIDATION", message="Past due date and late submissions are not allowed")
