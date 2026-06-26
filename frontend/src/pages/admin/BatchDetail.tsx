@@ -184,13 +184,18 @@ export default function BatchDetail() {
   const saveEdit = async () => {
     if (!id) return;
     if (!editForm.name.trim()) { toast.error("Batch name is required"); return; }
+    if (editForm.end_date && editForm.start_date && editForm.end_date < editForm.start_date) {
+      toast.error("End date must be on or after the start date");
+      return;
+    }
     setSavingEdit(true);
     try {
-      // end_date is intentionally omitted — the backend re-derives it from the
-      // course duration relative to start_date, keeping the two in sync.
+      // end_date is admin-editable: it pre-fills from the course duration but can be
+      // overridden here. The backend re-derives it only when it isn't supplied.
       await updateBatch(id, {
         name: editForm.name.trim(),
         start_date: editForm.start_date,
+        end_date: editForm.end_date || undefined,
         capacity: editForm.capacity.trim() === "" ? null : Number(editForm.capacity),
         status: editForm.status,
       });
@@ -429,12 +434,11 @@ export default function BatchDetail() {
               onChange={(e) => setEditForm((f) => ({ ...f, start_date: e.target.value }))}
             />
             <Input
-              label="End date (auto)"
+              label="End date"
               type="date"
               value={editForm.end_date}
-              readOnly
-              disabled
-              hint="Recalculated from the course duration on save."
+              onChange={(e) => setEditForm((f) => ({ ...f, end_date: e.target.value }))}
+              hint="Auto-filled from the course duration — you can override it."
             />
           </div>
           <Input
