@@ -35,11 +35,11 @@ const EXCEL_FALLBACK: PublicCourse = {
   id: "excel-mastery",
   slug: "",
   title: "Excel Mastery: Beginner to Pro",
-  description: "Go from zero to dashboards in 7 weeks of live, mentor-led classes designed for working professionals.",
+  description: "Go from zero to dashboards in 8 days of live, mentor-led classes designed for working professionals.",
   category: "Live cohort",
   course_type: "live",
-  duration_unit: "weeks",
-  duration_value: 7,
+  duration_unit: "days",
+  duration_value: 8,
   price: 399,
   discount: 0,
 };
@@ -473,7 +473,7 @@ export default function Landing() {
                   Next batch starts 6 July 2026.
                 </h2>
                 <p className="text-body-lg text-white/85 mb-8">
-                  Excel Mastery · 8 weeks · Live classes + mentor support + certificate.
+                  Excel Mastery · 8 days · Live classes + mentor support + certificate.
                   All for ₹399 - less than a textbook.
                 </p>
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -579,7 +579,7 @@ function ExcelCourseCard({ course: c }: { course: PublicCourse }) {
       </div>
       {/* Body */}
       <div className="p-5 flex flex-col flex-1">
-        <p className="text-label text-ink-outline mb-1">8-week live cohort · Batch starts 6 July 2026</p>
+        <p className="text-label text-ink-outline mb-1">8-day live cohort · Batch starts 6 July 2026</p>
         <h3 className="font-display font-semibold text-title-lg text-ink mb-3 group-hover:text-primary transition-colors">{c.title}</h3>
         <ul className="space-y-2 mb-5 flex-1">
           {features.map((f) => (
@@ -671,10 +671,6 @@ function RoadmapTeaserCard() {
 }
 
 const FAQ_ITEMS = [
-  {
-    q: "Is this suitable for complete beginners?",
-    a: "Yes, completely. We start from the very basics - no prior Excel knowledge is needed. The course is designed for people who use computers every day but have never gone deep into spreadsheets.",
-  },
   {
     q: "What if I miss a live session?",
     a: "Every live class is recorded and posted the same day. You can watch it on your own time and bring your questions to the next week's session.",
