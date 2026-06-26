@@ -219,7 +219,7 @@ export default function StudentProfile() {
         <p className="text-body-sm text-ink-variant">
           {user?.profile_complete
             ? "Keep your details up to date — they appear on your certificates."
-            : "Complete your profile so we can personalise course recommendations and enrolment."}
+            : "Complete your profile so we can personalise course recommendations and enrollment."}
         </p>
       </div>
 

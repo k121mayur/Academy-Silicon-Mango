@@ -27,7 +27,7 @@ export default function ExploreCatalogue() {
       <div className="animate-slide-up">
         <h1 className="font-display font-bold text-display-md text-ink">Explore courses</h1>
         <p className="text-body-sm text-ink-variant">
-          Browse the catalogue, pick a course and a batch, and enrol in minutes.
+          Browse the catalogue, pick a course and a batch, and enroll in minutes.
         </p>
       </div>
 
