@@ -68,6 +68,8 @@ export interface PlanLike {
   id: string;
   plan_index: number;
   title: string;
+  /** "weeks" (Week → Day hierarchy) or "days" (each plan is a single day). */
+  unit?: "weeks" | "days";
 }
 
 export interface SessionLike {
@@ -87,29 +89,43 @@ export interface WeekDayEntry<S extends SessionLike> {
 }
 
 export interface WeekGroup<S extends SessionLike> {
-  /** 1-based week number (position among plans). */
+  /** 1-based group number (position among plans) — week number, or day number for day-based courses. */
   week: number;
   planId: string;
   title: string;
+  /** "Week 3" or, for day-based courses, "Day 3". */
+  groupLabel: string;
+  /** For day-based courses: the formatted date of this day's session (e.g. "Wed, 23 Jun 2026"), else null. */
+  dateLabel: string | null;
   days: WeekDayEntry<S>[];
 }
 
 export interface WeekDayGrouping<S extends SessionLike> {
   weeks: WeekGroup<S>[];
+  /** "weeks" or "days" — drives unit-aware labels/empty states in the UI. */
+  unit: "weeks" | "days";
   /** Manual / unplanned sessions that don't belong to any week. */
   ungrouped: S[];
 }
 
 /**
- * Group a batch's sessions under their week (plan), each ordered into days by
- * scheduled date. Within a week, sessions are sorted ascending by date and
- * labelled "Day N — <Weekday>, <date>". Sessions with no plan (manual) or whose
- * plan is missing land in `ungrouped`.
+ * Group a batch's sessions under their plan, ordered by scheduled date. The shape
+ * depends on the course's duration unit (taken from `plans[0].unit`, default "weeks"):
+ *
+ * - **weeks**: each plan is a Week; its sessions become Days labelled
+ *   "Day N — <Weekday>, <date>". Two-level Week → Day hierarchy.
+ * - **days**: each plan IS a single day (one session). The group is labelled
+ *   "Day N" with `dateLabel` set to that day's date, and the inner entry's `label`
+ *   is the date only (no redundant "Day 1 —" prefix).
+ *
+ * Sessions with no plan (manual) or whose plan is missing land in `ungrouped`.
  */
 export function groupSessionsByWeekDay<S extends SessionLike>(
   plans: PlanLike[],
   sessions: S[]
 ): WeekDayGrouping<S> {
+  const unit: "weeks" | "days" = plans[0]?.unit === "days" ? "days" : "weeks";
+  const isDay = unit === "days";
   const byPlan = new Map<string, S[]>();
   const ungrouped: S[] = [];
   const planIds = new Set(plans.map((p) => p.id));
@@ -134,15 +150,22 @@ export function groupSessionsByWeekDay<S extends SessionLike>(
     const days: WeekDayEntry<S>[] = sess.map((s, i) => ({
       dayIndex: i + 1,
       weekday: s.scheduled_at ? mondayFirstWeekday(s.scheduled_at) : null,
-      label: s.scheduled_at
-        ? `Day ${i + 1} — ${formatWeekdayDate(s.scheduled_at)}`
-        : `Day ${i + 1}`,
+      label: isDay
+        ? s.scheduled_at
+          ? formatWeekdayDate(s.scheduled_at)
+          : ""
+        : s.scheduled_at
+          ? `Day ${i + 1} — ${formatWeekdayDate(s.scheduled_at)}`
+          : `Day ${i + 1}`,
       session: s,
     }));
-    return { week: idx + 1, planId: p.id, title: p.title, days };
+    const groupLabel = `${isDay ? "Day" : "Week"} ${idx + 1}`;
+    const firstDated = sess.find((s) => s.scheduled_at)?.scheduled_at ?? null;
+    const dateLabel = isDay && firstDated ? formatWeekdayDate(firstDated) : null;
+    return { week: idx + 1, planId: p.id, title: p.title, groupLabel, dateLabel, days };
   });
 
-  return { weeks, ungrouped };
+  return { weeks, unit, ungrouped };
 }
 
 export function initials(name?: string | null): string {

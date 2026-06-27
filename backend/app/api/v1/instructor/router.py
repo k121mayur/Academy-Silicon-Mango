@@ -228,6 +228,7 @@ async def list_batches(
                 "name": b.name,
                 "course_id": str(b.course_id),
                 "course_title": b.course.title if b.course else None,
+                "duration_unit": b.course.duration_unit.value if b.course else None,
                 "delivery_mode": b.delivery_mode.value,
                 "status": b.status.value,
                 "start_date": b.start_date.isoformat() if b.start_date else None,
@@ -291,7 +292,9 @@ async def get_plan(
     instructor: User = Depends(require_instructor),
     db: AsyncSession = Depends(get_db),
 ):
-    await _assert_batch_assigned(db, instructor, batch_id)
+    batch = await _assert_batch_assigned(db, instructor, batch_id)
+    course = await db.get(Course, batch.course_id)
+    unit = course.duration_unit.value if course else "weeks"
     plans_res = await db.execute(
         select(BatchPlan).where(BatchPlan.batch_id == batch_id).order_by(BatchPlan.plan_index)
     )
@@ -317,6 +320,7 @@ async def get_plan(
                 "plan_index": p.plan_index,
                 "title": p.title,
                 "summary": p.summary,
+                "unit": unit,
                 "sessions": [
                     {
                         "id": str(s.id),

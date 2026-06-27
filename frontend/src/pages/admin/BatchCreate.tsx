@@ -44,6 +44,8 @@ export default function BatchCreate() {
   })();
 
   const isWeekBased = course?.duration_unit === "weeks";
+  // Number of day rows allowed for a day-based course (= the course's day count).
+  const dayCount = course && !isWeekBased ? Math.max(Number(course.duration_value) || 0, 0) : 0;
 
   useEffect(() => {
     listCourses({ limit: 100 }).then((r) => setCourses(r.data)).catch(() => {});
@@ -61,6 +63,16 @@ export default function BatchCreate() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseId, courses]);
 
+  // Add `n` days to a YYYY-MM-DD string and return YYYY-MM-DD (local).
+  const addDaysISO = (start: string, n: number): string => {
+    const d = new Date(`${start}T00:00:00`);
+    d.setDate(d.getDate() + n);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
   // End date is derived from the course duration (inclusive of the start day),
   // mirroring the backend: a 4-week batch from Jun 1 ends Jun 28; a 15-day
   // batch from Jul 1 ends Jul 15.
@@ -77,10 +89,27 @@ export default function BatchCreate() {
   };
 
   // Keep the end date in sync whenever the start date or selected course changes.
+  // For day-based courses, also auto-fill exactly N consecutive day rows from the
+  // start date (Day 1 = start … Day N), so the schedule always matches the course's
+  // day count. Times already entered are preserved by position.
   useEffect(() => {
     if (startDate && course) {
       setEndDate(computeEndDate(startDate, course));
       clearErr("endDate");
+      if (course.duration_unit === "weeks") {
+        // Drop any leftover date rows from a previously selected day-based course.
+        setSlots((prev) => prev.filter((s) => s.slot_type === "weekday"));
+      } else {
+        const n = Math.max(Number(course.duration_value) || 0, 0);
+        setSlots((prev) =>
+          Array.from({ length: n }, (_, i) => ({
+            slot_type: "date_based" as const,
+            slot_date: addDaysISO(startDate, i),
+            start_time: prev[i]?.start_time ?? "10:00",
+            end_time: prev[i]?.end_time ?? "11:30",
+          }))
+        );
+      }
     } else {
       setEndDate("");
     }
@@ -100,7 +129,17 @@ export default function BatchCreate() {
       }
       setSlots([...slots, { slot_type: "weekday", weekday: next, start_time: "10:00", end_time: "11:30" }]);
     } else {
-      setSlots([...slots, { slot_type: "date_based", slot_date: startDate, start_time: "10:00", end_time: "11:30" }]);
+      // Day-based: never exceed the course's day count, and auto-advance the date
+      // to the day after the last scheduled one (or the start date for the first).
+      if (slots.length >= dayCount) {
+        toast.error(`This ${dayCount}-day course already has all ${dayCount} days scheduled`);
+        return;
+      }
+      const dates = slots.map((s) => s.slot_date).filter(Boolean) as string[];
+      const nextDate = dates.length
+        ? addDaysISO(dates.reduce((a, b) => (a > b ? a : b)), 1)
+        : startDate;
+      setSlots([...slots, { slot_type: "date_based", slot_date: nextDate, start_time: "10:00", end_time: "11:30" }]);
     }
   };
 
@@ -222,7 +261,11 @@ export default function BatchCreate() {
             <div>
               <p className="text-title-md font-semibold">Step 2 — Schedule</p>
               <p className="text-label text-ink-outline">
-                {course.duration_unit === "weeks" ? "Pick weekdays + time slots" : "Pick session dates + times"}
+                {isWeekBased
+                  ? "Pick weekdays + time slots"
+                  : startDate
+                    ? `${dayCount} session dates, auto-filled from the start date — adjust dates/times as needed`
+                    : "Pick a start date above to auto-fill the session dates"}
               </p>
             </div>
             <Button
@@ -231,7 +274,7 @@ export default function BatchCreate() {
               variant="outline"
               leftIcon="add"
               onClick={addSlot}
-              disabled={isWeekBased && slots.length >= 7}
+              disabled={isWeekBased ? slots.length >= 7 : !startDate || slots.length >= dayCount}
             >
               Add slot
             </Button>
@@ -249,7 +292,7 @@ export default function BatchCreate() {
                     error={errors[`slotwd_${i}`]}
                   />
                 ) : (
-                  <Input label="Date" type="date" value={s.slot_date || ""} onChange={(e) => updateSlot(i, { slot_date: e.target.value })} />
+                  <Input label={`Day ${i + 1} — date`} type="date" value={s.slot_date || ""} onChange={(e) => updateSlot(i, { slot_date: e.target.value })} />
                 )}
                 <Input label="Start time" type="time" value={s.start_time} onChange={(e) => { updateSlot(i, { start_time: e.target.value }); clearErr(`slot_${i}`); }} />
                 <Input label="End time" type="time" value={s.end_time} onChange={(e) => { updateSlot(i, { end_time: e.target.value }); clearErr(`slot_${i}`); }} error={errors[`slot_${i}`]} />

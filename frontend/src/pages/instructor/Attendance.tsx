@@ -122,13 +122,17 @@ export default function AttendancePage() {
             <Card key={wk.planId}>
               <CardHeader>
                 <div className="flex items-center gap-2">
-                  <Badge tone="primary">Week {wk.week}</Badge>
-                  <p className="text-title-md font-semibold text-ink truncate">{wk.title || `Week ${wk.week}`}</p>
+                  <Badge tone="primary">{wk.groupLabel}</Badge>
+                  <p className="text-title-md font-semibold text-ink truncate">
+                    {grouping.unit === "days" ? wk.dateLabel || wk.title || wk.groupLabel : wk.title || wk.groupLabel}
+                  </p>
                 </div>
               </CardHeader>
               <CardBody className="space-y-2">
                 {wk.days.length === 0 && (
-                  <p className="text-body-sm text-ink-outline">No live sessions this week.</p>
+                  <p className="text-body-sm text-ink-outline">
+                    No live sessions this {grouping.unit === "days" ? "day" : "week"}.
+                  </p>
                 )}
                 {wk.days.map((d) => {
                   const past = isPast(d.session);
@@ -139,7 +143,9 @@ export default function AttendancePage() {
                       className={`flex items-center justify-between gap-3 p-3 rounded-lg ${active ? "bg-primary-container/40 ring-1 ring-primary" : "bg-surface-containerLow"}`}
                     >
                       <div className="min-w-0">
-                        <p className="font-medium text-ink truncate">Week {wk.week} {d.label}</p>
+                        <p className="font-medium text-ink truncate">
+                          {grouping.unit === "days" ? d.label || wk.groupLabel : `${wk.groupLabel} ${d.label}`}
+                        </p>
                         <p className="text-label text-ink-outline truncate">{d.session.title}</p>
                       </div>
                       {past ? (

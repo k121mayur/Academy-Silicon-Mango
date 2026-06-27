@@ -52,6 +52,56 @@ def _combine(d: date, t: time) -> datetime:
     return datetime.combine(d, t).replace(tzinfo=timezone.utc)
 
 
+async def _ensure_day_slots(
+    db: AsyncSession,
+    batch: Batch,
+    course: Course,
+    existing_slots: list[BatchScheduleSlot],
+) -> list[BatchScheduleSlot]:
+    """Add missing date-based slots so a day-based batch has exactly N slots.
+
+    Repairs batches created before the auto-fill UI fix where only N-1 (or fewer)
+    slots were manually added. Fills gaps using consecutive dates from batch.start_date
+    and inherits times from the last existing slot (fallback: 10:00–11:30).
+    """
+    n = int(course.duration_value)
+    if not n:
+        return existing_slots
+
+    existing_dates = {s.slot_date for s in existing_slots if s.slot_date}
+    if len(existing_dates) >= n:
+        return existing_slots
+
+    default_start_t = time(10, 0)
+    default_end_t = time(11, 30)
+    dated = [s for s in existing_slots if s.slot_date]
+    if dated:
+        last = max(dated, key=lambda s: s.slot_date)
+        default_start_t = last.start_time or default_start_t
+        default_end_t = last.end_time or default_end_t
+
+    for i in range(n):
+        expected_date = batch.start_date + timedelta(days=i)
+        if expected_date not in existing_dates:
+            db.add(BatchScheduleSlot(
+                batch_id=batch.id,
+                slot_type=SlotType.date_based,
+                weekday=None,
+                slot_date=expected_date,
+                start_time=default_start_t,
+                end_time=default_end_t,
+            ))
+
+    await db.commit()
+    res = await db.execute(
+        select(BatchScheduleSlot).where(
+            BatchScheduleSlot.batch_id == batch.id,
+            BatchScheduleSlot.slot_type == SlotType.date_based,
+        )
+    )
+    return list(res.scalars().all())
+
+
 async def sync_inherited_sessions(db: AsyncSession, batch_id: uuid.UUID) -> int:
     """Delete existing inherited sessions, then re-create from schedule slots & plans.
 
@@ -139,12 +189,16 @@ async def sync_inherited_sessions(db: AsyncSession, batch_id: uuid.UUID) -> int:
                 db.add(sess)
                 created += 1
     else:
-        # Date-based slots (one slot per session)
-        date_slots = sorted(
-            [s for s in batch.schedule_slots if s.slot_type == SlotType.date_based and s.slot_date],
-            key=lambda s: s.slot_date,
-        )
-        for idx, slot in enumerate(date_slots):
+        # Date-based: fill any missing slots first so batches created before the
+        # auto-fill UI fix are repaired, then create one session per slot (capped
+        # at plan count to preserve the 1:1 day↔session mapping).
+        raw_date_slots = [
+            s for s in batch.schedule_slots
+            if s.slot_type == SlotType.date_based and s.slot_date
+        ]
+        all_date_slots = await _ensure_day_slots(db, batch, course, raw_date_slots)
+        date_slots = sorted(all_date_slots, key=lambda s: s.slot_date)
+        for idx, slot in enumerate(date_slots[: len(plans)]):
             plan = plans[idx] if idx < len(plans) else (plans[-1] if plans else None)
             duration = (
                 datetime.combine(slot.slot_date, slot.end_time) - datetime.combine(slot.slot_date, slot.start_time)

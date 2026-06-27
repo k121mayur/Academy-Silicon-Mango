@@ -7,6 +7,7 @@ export interface InstructorBatch {
   name: string;
   course_id: string;
   course_title?: string | null;
+  duration_unit?: "weeks" | "days";
   delivery_mode: "live" | "recorded";
   status: "upcoming" | "active" | "completed" | "cancelled";
   start_date: string;
@@ -57,6 +58,7 @@ export interface InstructorPlanItem {
   plan_index: number;
   title: string;
   summary?: string | null;
+  unit?: "weeks" | "days";
   sessions: {
     id: string;
     title: string;

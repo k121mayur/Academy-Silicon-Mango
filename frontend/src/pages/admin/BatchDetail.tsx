@@ -84,7 +84,8 @@ export default function BatchDetail() {
     if (!id) return;
     try {
       const res = await syncBatchSessions(id);
-      toast.success(`Synced — created ${res.sessions_created} sessions`);
+      toast.success(`Synced — ${res.sessions_created} session(s) created`);
+      refresh();
     } catch (e) {
       toast.error(extractErrorMessage(e));
     }

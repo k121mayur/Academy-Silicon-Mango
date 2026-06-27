@@ -249,13 +249,17 @@ export default function SessionsResources() {
         {grouping.weeks.map((wk) => (
           <div key={wk.planId} className="space-y-3">
             <div className="flex items-center gap-2">
-              <Badge tone="primary">Week {wk.week}</Badge>
-              <p className="text-title-md font-semibold text-ink truncate">{wk.title || `Week ${wk.week}`}</p>
+              <Badge tone="primary">{wk.groupLabel}</Badge>
+              <p className="text-title-md font-semibold text-ink truncate">
+                {grouping.unit === "days" ? wk.dateLabel || wk.title || wk.groupLabel : wk.title || wk.groupLabel}
+              </p>
             </div>
             {wk.days.length === 0 ? (
-              <p className="text-body-sm text-ink-outline pl-1">No sessions scheduled this week.</p>
+              <p className="text-body-sm text-ink-outline pl-1">
+                No sessions scheduled this {grouping.unit === "days" ? "day" : "week"}.
+              </p>
             ) : (
-              wk.days.map((d) => renderSession(d.session, d.label))
+              wk.days.map((d) => renderSession(d.session, grouping.unit === "days" ? undefined : d.label))
             )}
           </div>
         ))}

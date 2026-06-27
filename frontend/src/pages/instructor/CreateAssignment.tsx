@@ -129,8 +129,10 @@ export default function CreateAssignmentPage() {
               <CardHeader>
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 min-w-0">
-                    <Badge tone="primary">Week {wk.week}</Badge>
-                    <p className="text-title-md font-semibold text-ink truncate">{wk.title || `Week ${wk.week}`}</p>
+                    <Badge tone="primary">{wk.groupLabel}</Badge>
+                    <p className="text-title-md font-semibold text-ink truncate">
+                      {grouping.unit === "days" ? wk.dateLabel || wk.title || wk.groupLabel : wk.title || wk.groupLabel}
+                    </p>
                   </div>
                   <Button
                     size="sm"
@@ -141,24 +143,28 @@ export default function CreateAssignmentPage() {
                         planId: wk.planId,
                         sessionId: null,
                         defaultDue: null,
-                        context: `Week ${wk.week} (no specific day)`,
+                        context: grouping.unit === "days" ? wk.groupLabel : `Week ${wk.week} (no specific day)`,
                       })
                     }
                   >
-                    Week assignment
+                    {grouping.unit === "days" ? "Day assignment" : "Week assignment"}
                   </Button>
                 </div>
               </CardHeader>
               <CardBody className="space-y-3">
                 {weekAssignments.length > 0 && (
                   <div className="space-y-1">
-                    <p className="text-label uppercase tracking-wide text-ink-outline">Week-level</p>
+                    <p className="text-label uppercase tracking-wide text-ink-outline">
+                      {grouping.unit === "days" ? "Day-level" : "Week-level"}
+                    </p>
                     {weekAssignments.map(renderAssignmentRow)}
                   </div>
                 )}
 
                 {wk.days.length === 0 && (
-                  <p className="text-body-sm text-ink-outline">No sessions scheduled this week yet.</p>
+                  <p className="text-body-sm text-ink-outline">
+                    No sessions scheduled this {grouping.unit === "days" ? "day" : "week"} yet.
+                  </p>
                 )}
 
                 {wk.days.map((d) => {

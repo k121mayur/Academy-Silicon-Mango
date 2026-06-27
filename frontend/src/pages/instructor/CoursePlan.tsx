@@ -83,7 +83,7 @@ export default function CoursePlan() {
               <div>
                 <p className="text-label uppercase tracking-wide text-ink-outline mb-1">Sessions</p>
                 {p.sessions.length === 0 ? (
-                  <p className="text-body-sm text-ink-outline">No sessions in this week</p>
+                  <p className="text-body-sm text-ink-outline">No sessions yet</p>
                 ) : (
                   <ul className="space-y-1">
                     {p.sessions.map((s) => (
@@ -101,7 +101,7 @@ export default function CoursePlan() {
               <div>
                 <p className="text-label uppercase tracking-wide text-ink-outline mb-1">Assignments</p>
                 {p.assignments.length === 0 ? (
-                  <p className="text-body-sm text-ink-outline">No assignments in this week</p>
+                  <p className="text-body-sm text-ink-outline">No assignments yet</p>
                 ) : (
                   <ul className="space-y-1">
                     {p.assignments.map((a) => (
