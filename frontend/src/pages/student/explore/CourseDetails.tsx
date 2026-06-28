@@ -83,7 +83,7 @@ export default function CourseDetails() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 pb-24 lg:pb-0">
       {/* Breadcrumb */}
       <nav className="text-label text-ink-outline flex items-center gap-1.5 animate-fade-in">
         <Link to={isStudent ? ROUTES.student.explore : ROUTES.public.courses} className="hover:text-primary">
@@ -117,9 +117,9 @@ export default function CourseDetails() {
 
       <div className="grid lg:grid-cols-3 gap-6 items-start">
         {/* Left: hero + tabs */}
-        <div className="lg:col-span-2 space-y-5">
+        <div className="lg:col-span-2 min-w-0 space-y-5">
           {/* Hero */}
-          <div className="relative h-56 md:h-64 rounded-2xl overflow-hidden bg-gradient-to-br from-primary-container via-secondary-container to-tertiary-container animate-slide-up">
+          <div className="relative min-h-[14rem] md:h-64 rounded-2xl overflow-hidden bg-gradient-to-br from-primary-container via-secondary-container to-tertiary-container animate-slide-up flex flex-col justify-end">
             {course.banner_url && (
               <img
                 src={absoluteApiUrl(course.banner_url)}
@@ -128,7 +128,7 @@ export default function CourseDetails() {
               />
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-            <div className="absolute inset-x-0 bottom-0 p-5 md:p-6 text-white">
+            <div className="relative z-10 p-5 md:p-6 text-white">
               <div className="flex items-center gap-2 mb-2 flex-wrap text-label uppercase tracking-wider opacity-90">
                 {course.category && <span>{course.category}</span>}
                 <span className="opacity-50">·</span>
@@ -250,6 +250,34 @@ export default function CourseDetails() {
           )}
         </aside>
       </div>
+
+      {/* Mobile-only page-level sticky bottom CTA bar, hidden when batches selector is active */}
+      {tab !== "batches" && (
+        <div className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-surface-lowest/95 backdrop-blur border-t border-ink-outlineVariant/30 p-4 shadow-modal flex items-center justify-between gap-3 animate-slide-up">
+          <div>
+            <p className="text-label text-ink-outline">Price</p>
+            <div className="flex items-baseline gap-1.5">
+              <span className="font-display font-bold text-title-lg text-primary">
+                {payable === 0 ? "Free" : formatCurrency(payable)}
+              </span>
+              {hasDiscount && (
+                <span className="text-body-sm text-ink-outline line-through font-mono">
+                  {formatCurrency(price)}
+                </span>
+              )}
+            </div>
+          </div>
+          <Button
+            size="md"
+            rightIcon="arrow_forward"
+            onMouseEnter={prefetchBatches}
+            onFocus={prefetchBatches}
+            onClick={goEnroll}
+          >
+            Enroll now
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -510,19 +538,23 @@ function BatchesTab({
       ) : (
         <>
           <BatchPicker batches={batches} selected={selected} onSelect={setSelected} />
-          <div className="sticky bottom-4 flex items-center justify-between gap-3 bg-surface-lowest/95 backdrop-blur border border-primary/30 rounded-2xl shadow-modal p-3">
-            <div className="px-2">
-              <p className="text-label text-ink-outline">Total payable</p>
-              <p className="font-display font-bold text-title-lg text-primary">
-                {payable === 0 ? "Free" : formatCurrency(payable)}
-              </p>
+          <div className="sticky bottom-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface-lowest/95 backdrop-blur border border-primary/30 rounded-2xl shadow-modal p-3">
+            <div className="flex items-center justify-between sm:block px-1 w-full sm:w-auto">
+              <div>
+                <p className="text-label text-ink-outline">Total payable</p>
+                <p className="font-display font-bold text-title-lg text-primary leading-tight">
+                  {payable === 0 ? "Free" : formatCurrency(payable)}
+                </p>
+              </div>
               {!selected && (
-                <p className="text-label text-ink-outline mt-0.5">Select a batch to continue</p>
+                <p className="text-label text-ink-outline sm:mt-0.5">Select a batch to continue</p>
               )}
             </div>
             <Button
               size="lg"
+              fullWidth
               rightIcon="arrow_forward"
+              className="sm:w-auto shrink-0"
               disabled={!selected || (selectedBatch ? !isBatchSelectable(selectedBatch) : false)}
               onClick={onContinue}
             >

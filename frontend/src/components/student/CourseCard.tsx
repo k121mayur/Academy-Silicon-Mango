@@ -96,8 +96,8 @@ export function CourseCard({ course, to }: { course: PublicCourseListItem; to?: 
           </div>
         )}
 
-        <div className="flex items-center justify-between mt-auto pt-4 border-t border-ink-outlineVariant/30">
-          <div className="flex items-center gap-3 text-body-sm text-ink-variant">
+        <div className="flex items-center justify-between mt-auto pt-4 border-t border-ink-outlineVariant/30 gap-2">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-body-sm text-ink-variant">
             <span className="flex items-center gap-1">
               <span className="icon text-[16px]">schedule</span>
               {course.duration_value} {course.duration_unit}
@@ -109,7 +109,7 @@ export function CourseCard({ course, to }: { course: PublicCourseListItem; to?: 
               {course.course_type === "self_paced" ? "Self-paced" : "Live"}
             </span>
           </div>
-          <div className="text-right">
+          <div className="text-right shrink-0">
             {hasDiscount && (
               <p className="text-label text-ink-outline line-through font-mono leading-tight">
                 {formatCurrency(price)}

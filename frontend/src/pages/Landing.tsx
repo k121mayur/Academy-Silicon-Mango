@@ -107,7 +107,7 @@ export default function Landing() {
           </div>
 
           <h1
-            className="font-display font-extrabold text-display-lg md:text-display-xl text-white leading-[1.05] animate-slide-up text-balance"
+            className="font-display font-extrabold text-display-md md:text-display-xl text-white leading-[1.05] animate-slide-up text-balance"
             style={{ animationDelay: "60ms", textShadow: "0 2px 24px rgba(0,0,0,0.35)" }}
           >
             Learn skills and get a boost{" "}
@@ -251,7 +251,7 @@ export default function Landing() {
           <div className="grid md:grid-cols-3 gap-5">
             {/* Wide feature cell — warm espresso→mango gradient (on-brand, light-theme safe) */}
             <Reveal className="md:col-span-2 md:row-span-2">
-              <div className="h-full bg-gradient-to-br from-[#3d2b00] via-[#7a4a00] to-[#a85f00] text-white rounded-3xl p-8 relative overflow-hidden min-h-[220px]">
+              <div className="h-full bg-gradient-to-br from-[#3d2b00] via-[#7a4a00] to-[#a85f00] text-white rounded-3xl p-6 md:p-8 relative overflow-hidden min-h-[220px]">
                 <div className="absolute -right-16 -bottom-16 w-64 h-64 rounded-full bg-primary-fill/20 blur-3xl" />
                 <div className="absolute inset-0 grid-pattern opacity-20" />
                 <div className="relative">
