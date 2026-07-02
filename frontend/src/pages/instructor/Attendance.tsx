@@ -6,7 +6,7 @@ import { Select } from "@/components/ui/Select";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { extractErrorMessage } from "@/lib/api";
-import { groupSessionsByWeekDay } from "@/lib/utils";
+import { groupSessionsByWeekDay, weekGroupHeaderTitle } from "@/lib/utils";
 import {
   fetchAttendance,
   fetchBatchPlan,
@@ -118,14 +118,16 @@ export default function AttendancePage() {
       {/* Week → Day picker */}
       {hasLive && (
         <div className="space-y-4">
-          {grouping.weeks.map((wk) => (
+          {grouping.weeks.map((wk) => {
+            const headerTitle = weekGroupHeaderTitle(wk, grouping.unit);
+            return (
             <Card key={wk.planId}>
               <CardHeader>
                 <div className="flex items-center gap-2">
                   <Badge tone="primary">{wk.groupLabel}</Badge>
-                  <p className="text-title-md font-semibold text-ink truncate">
-                    {grouping.unit === "days" ? wk.dateLabel || wk.title || wk.groupLabel : wk.title || wk.groupLabel}
-                  </p>
+                  {headerTitle && (
+                    <p className="text-title-md font-semibold text-ink truncate">{headerTitle}</p>
+                  )}
                 </div>
               </CardHeader>
               <CardBody className="space-y-2">
@@ -143,10 +145,10 @@ export default function AttendancePage() {
                       className={`flex items-center justify-between gap-3 p-3 rounded-lg ${active ? "bg-primary-container/40 ring-1 ring-primary" : "bg-surface-containerLow"}`}
                     >
                       <div className="min-w-0">
-                        <p className="font-medium text-ink truncate">
-                          {grouping.unit === "days" ? d.label || wk.groupLabel : `${wk.groupLabel} ${d.label}`}
-                        </p>
-                        <p className="text-label text-ink-outline truncate">{d.session.title}</p>
+                        <p className="font-medium text-ink truncate">{d.label || wk.groupLabel}</p>
+                        {d.session.title !== wk.title && (
+                          <p className="text-label text-ink-outline truncate">{d.session.title}</p>
+                        )}
                       </div>
                       {past ? (
                         <Button
@@ -165,7 +167,8 @@ export default function AttendancePage() {
                 })}
               </CardBody>
             </Card>
-          ))}
+            );
+          })}
 
           {grouping.ungrouped.filter((s) => s.session_type === "live").length > 0 && (
             <Card>

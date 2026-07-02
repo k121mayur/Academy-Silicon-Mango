@@ -22,7 +22,7 @@ import {
   type InstructorPlanItem,
   type InstructorSession,
 } from "@/services/instructor.service";
-import { groupSessionsByWeekDay } from "@/lib/utils";
+import { groupSessionsByWeekDay, weekGroupHeaderTitle } from "@/lib/utils";
 import { VideoUpload } from "@/components/shared/VideoUpload";
 import { useSelectedBatch } from "@/features/instructor/selectedBatchStore";
 import { useVideoUploadStore } from "@/features/instructor/videoUploadStore";
@@ -116,13 +116,15 @@ export default function SessionsResources() {
 
   const grouping = groupSessionsByWeekDay(plans, sessions);
 
-  const renderSession = (s: InstructorSession, dayLabel?: string) => (
+  const renderSession = (s: InstructorSession, dayLabel?: string, planTitle?: string) => (
     <Card key={s.id}>
       <CardHeader>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             {dayLabel && <p className="text-label uppercase tracking-wide text-primary mb-0.5">{dayLabel}</p>}
-            <p className="font-semibold text-ink truncate">{s.title}</p>
+            {(!dayLabel || s.title !== planTitle) && (
+              <p className="font-semibold text-ink truncate">{s.title}</p>
+            )}
             <p className="text-label text-ink-outline">
               {new Date(s.scheduled_at).toLocaleString()} · {s.duration_mins} mins
             </p>
@@ -246,23 +248,28 @@ export default function SessionsResources() {
       )}
 
       <div className="space-y-6">
-        {grouping.weeks.map((wk) => (
+        {grouping.weeks.map((wk) => {
+          const headerTitle = weekGroupHeaderTitle(wk, grouping.unit);
+          return (
           <div key={wk.planId} className="space-y-3">
             <div className="flex items-center gap-2">
               <Badge tone="primary">{wk.groupLabel}</Badge>
-              <p className="text-title-md font-semibold text-ink truncate">
-                {grouping.unit === "days" ? wk.dateLabel || wk.title || wk.groupLabel : wk.title || wk.groupLabel}
-              </p>
+              {headerTitle && (
+                <p className="text-title-md font-semibold text-ink truncate">{headerTitle}</p>
+              )}
             </div>
             {wk.days.length === 0 ? (
               <p className="text-body-sm text-ink-outline pl-1">
                 No sessions scheduled this {grouping.unit === "days" ? "day" : "week"}.
               </p>
             ) : (
-              wk.days.map((d) => renderSession(d.session, grouping.unit === "days" ? undefined : d.label))
+              wk.days.map((d) =>
+                renderSession(d.session, grouping.unit === "days" ? undefined : d.label, wk.title)
+              )
             )}
           </div>
-        ))}
+          );
+        })}
 
         {grouping.ungrouped.length > 0 && (
           <div className="space-y-3">

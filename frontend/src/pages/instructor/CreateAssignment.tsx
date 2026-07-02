@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { extractErrorMessage } from "@/lib/api";
-import { groupSessionsByWeekDay } from "@/lib/utils";
+import { groupSessionsByWeekDay, weekGroupHeaderTitle } from "@/lib/utils";
 import {
   createAssignment,
   deleteAssignment,
@@ -124,15 +124,16 @@ export default function CreateAssignmentPage() {
           const weekAssignments = assignments.filter(
             (a) => a.plan_id === wk.planId && !a.session_id
           );
+          const headerTitle = weekGroupHeaderTitle(wk, grouping.unit);
           return (
             <Card key={wk.planId}>
               <CardHeader>
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 min-w-0">
                     <Badge tone="primary">{wk.groupLabel}</Badge>
-                    <p className="text-title-md font-semibold text-ink truncate">
-                      {grouping.unit === "days" ? wk.dateLabel || wk.title || wk.groupLabel : wk.title || wk.groupLabel}
-                    </p>
+                    {headerTitle && (
+                      <p className="text-title-md font-semibold text-ink truncate">{headerTitle}</p>
+                    )}
                   </div>
                   <Button
                     size="sm"

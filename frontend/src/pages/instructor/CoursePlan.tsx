@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { extractErrorMessage } from "@/lib/api";
+import { groupSessionsByWeekDay, weekGroupHeaderTitle } from "@/lib/utils";
 import { fetchBatchPlan, type InstructorPlanItem } from "@/services/instructor.service";
 import { useSelectedBatch } from "@/features/instructor/selectedBatchStore";
 import { NoBatchSelected } from "./_NoBatch";
@@ -42,6 +43,12 @@ export default function CoursePlan() {
 
   if (!selectedBatchId) return <NoBatchSelected />;
 
+  const grouping = groupSessionsByWeekDay(
+    plan,
+    plan.flatMap((p) => p.sessions.map((s) => ({ ...s, plan_id: p.id })))
+  );
+  const groupByPlanId = new Map(grouping.weeks.map((w) => [w.planId, w]));
+
   return (
     <div className="space-y-5 max-w-5xl">
       <div className="flex items-start justify-between gap-3">
@@ -70,29 +77,39 @@ export default function CoursePlan() {
       )}
 
       <div className="space-y-3">
-        {plan.map((p) => (
+        {plan.map((p) => {
+          const wk = groupByPlanId.get(p.id);
+          const headerTitle = wk ? weekGroupHeaderTitle(wk, grouping.unit) : p.title || null;
+          return (
           <Card key={p.id}>
             <CardHeader>
               <div className="flex items-center gap-3">
-                <Badge tone="primary">#{p.plan_index}</Badge>
-                <p className="text-title-md font-semibold text-ink truncate">{p.title || `Item ${p.plan_index}`}</p>
+                <Badge tone="primary">{wk?.groupLabel ?? `#${p.plan_index}`}</Badge>
+                {headerTitle && (
+                  <p className="text-title-md font-semibold text-ink truncate">{headerTitle}</p>
+                )}
               </div>
               {p.summary && <p className="text-body-sm text-ink-variant mt-1">{p.summary}</p>}
             </CardHeader>
             <CardBody className="grid md:grid-cols-2 gap-4">
               <div>
                 <p className="text-label uppercase tracking-wide text-ink-outline mb-1">Sessions</p>
-                {p.sessions.length === 0 ? (
+                {!wk || wk.days.length === 0 ? (
                   <p className="text-body-sm text-ink-outline">No sessions yet</p>
                 ) : (
                   <ul className="space-y-1">
-                    {p.sessions.map((s) => (
-                      <li key={s.id} className="text-body-sm text-ink flex items-center gap-2">
+                    {wk.days.map((d) => (
+                      <li key={d.session.id} className="text-body-sm text-ink flex items-center gap-2">
                         <span className="icon text-ink-outline text-[16px]">event</span>
-                        <span className="truncate">{s.title}</span>
-                        <span className="text-ink-outline text-label">
-                          {s.scheduled_at ? new Date(s.scheduled_at).toLocaleString() : "—"}
-                        </span>
+                        <span className="truncate">{d.label}</span>
+                        {d.session.scheduled_at && (
+                          <span className="text-ink-outline text-label">
+                            {new Date(d.session.scheduled_at).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </span>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -116,7 +133,8 @@ export default function CoursePlan() {
               </div>
             </CardBody>
           </Card>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

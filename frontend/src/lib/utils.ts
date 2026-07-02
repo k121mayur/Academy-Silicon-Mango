@@ -168,6 +168,22 @@ export function groupSessionsByWeekDay<S extends SessionLike>(
   return { weeks, unit, ungrouped };
 }
 
+/**
+ * Text to show next to a group's badge (e.g. "Week 1"), beyond the badge itself.
+ * Returns null when there's nothing new to add — an untouched plan's title is
+ * always identical to its groupLabel, so showing both would just repeat the
+ * same text twice. Only a genuinely customized plan title (or, for day-based
+ * groups, the day's date) is worth a second line.
+ */
+export function weekGroupHeaderTitle<S extends SessionLike>(
+  wk: WeekGroup<S>,
+  unit: "weeks" | "days"
+): string | null {
+  if (unit === "days" && wk.dateLabel) return wk.dateLabel;
+  const title = wk.title?.trim();
+  return title && title !== wk.groupLabel ? title : null;
+}
+
 export function initials(name?: string | null): string {
   return (name?.trim() || "User")
     .split(/\s+/)
