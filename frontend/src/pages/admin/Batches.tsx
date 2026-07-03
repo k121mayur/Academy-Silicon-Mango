@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/Badge";
 import { Table, THead, TR, TH, TD } from "@/components/ui/Table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
+import { Pagination } from "@/components/ui/Pagination";
+import { BatchDeleteModal } from "@/components/admin/BatchDeleteModal";
 import { extractErrorMessage } from "@/lib/api";
 import {
   listBatches,
@@ -18,26 +20,32 @@ import {
 } from "@/services/admin.service";
 import { formatDate } from "@/lib/utils";
 
+const PAGE_SIZE = 10;
+
 export default function AdminBatches() {
   const [items, setItems] = useState<BatchDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [mode, setMode] = useState("");
+  const [page, setPage] = useState(1);
+  const [meta, setMeta] = useState({ page: 1, pages: 1, total: 0, limit: PAGE_SIZE });
   const [assignBatch, setAssignBatch] = useState<BatchDTO | null>(null);
   const [instructors, setInstructors] = useState<InstructorDTO[]>([]);
   const [instructorSearch, setInstructorSearch] = useState("");
   const [assigning, setAssigning] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<BatchDTO | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const params: any = {};
+      const params: any = { page, limit: PAGE_SIZE };
       if (search) params.search = search;
       if (status) params.status = status;
       if (mode) params.mode = mode;
       const res = await listBatches(params);
       setItems(res.data);
+      if (res.meta) setMeta(res.meta);
     } catch (e) {
       toast.error(extractErrorMessage(e, "Failed to load batches"));
     } finally {
@@ -48,7 +56,9 @@ export default function AdminBatches() {
   useEffect(() => {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, status, mode]);
+  }, [search, status, mode, page]);
+
+  const resetPage = () => setPage(1);
 
   const openAssign = async (b: BatchDTO) => {
     setAssignBatch(b);
@@ -89,13 +99,13 @@ export default function AdminBatches() {
       </div>
 
       <div className="flex flex-wrap gap-3">
-        <Input placeholder="Search batches" value={search} onChange={(e) => setSearch(e.target.value)} leftIcon="search" containerClassName="flex-1 min-w-60" />
-        <Select value={mode} onChange={(e) => setMode(e.target.value)} options={[
+        <Input placeholder="Search batches" value={search} onChange={(e) => { setSearch(e.target.value); resetPage(); }} leftIcon="search" containerClassName="flex-1 min-w-60" />
+        <Select value={mode} onChange={(e) => { setMode(e.target.value); resetPage(); }} options={[
           { value: "", label: "All modes" },
           { value: "live", label: "Live" },
           { value: "recorded", label: "Recorded" },
         ]} containerClassName="w-40" />
-        <Select value={status} onChange={(e) => setStatus(e.target.value)} options={[
+        <Select value={status} onChange={(e) => { setStatus(e.target.value); resetPage(); }} options={[
           { value: "", label: "All status" },
           { value: "upcoming", label: "Upcoming" },
           { value: "active", label: "Active" },
@@ -169,6 +179,15 @@ export default function AdminBatches() {
                       <Link to={`/admin/batches/${b.id}`}>
                         <Button size="sm" variant="ghost" leftIcon="visibility">View</Button>
                       </Link>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        leftIcon="delete"
+                        className="text-danger hover:bg-danger-container/40"
+                        onClick={() => setDeleteTarget(b)}
+                      >
+                        Delete
+                      </Button>
                     </div>
                   </TD>
                 </TR>
@@ -177,6 +196,16 @@ export default function AdminBatches() {
           </tbody>
         </Table>
       )}
+
+      {!loading && items.length > 0 && (
+        <Pagination page={meta.page} pages={meta.pages} total={meta.total} limit={meta.limit} onPageChange={setPage} />
+      )}
+
+      <BatchDeleteModal
+        batch={deleteTarget ? { id: deleteTarget.id, name: deleteTarget.name } : null}
+        onClose={() => setDeleteTarget(null)}
+        onDeleted={fetchData}
+      />
 
       <Modal
         open={!!assignBatch}

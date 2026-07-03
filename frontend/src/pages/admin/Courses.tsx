@@ -8,9 +8,12 @@ import { Badge } from "@/components/ui/Badge";
 import { Table, THead, TR, TH, TD } from "@/components/ui/Table";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { Pagination } from "@/components/ui/Pagination";
+import { formatCurrency } from "@/lib/utils";
 import { extractErrorMessage } from "@/lib/api";
 import { CourseDTO, deleteCourse, listCourses, togglePublishCourse } from "@/services/admin.service";
+
+const PAGE_SIZE = 10;
 
 export default function AdminCourses() {
   const [items, setItems] = useState<CourseDTO[]>([]);
@@ -18,18 +21,21 @@ export default function AdminCourses() {
   const [search, setSearch] = useState("");
   const [type, setType] = useState("");
   const [published, setPublished] = useState("");
+  const [page, setPage] = useState(1);
+  const [meta, setMeta] = useState({ page: 1, pages: 1, total: 0, limit: PAGE_SIZE });
   const [confirmDelete, setConfirmDelete] = useState<CourseDTO | null>(null);
   const [busyDelete, setBusyDelete] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const params: any = {};
+      const params: any = { page, limit: PAGE_SIZE };
       if (search) params.search = search;
       if (type) params.type = type;
       if (published) params.published = published === "true";
       const res = await listCourses(params);
       setItems(res.data);
+      if (res.meta) setMeta(res.meta);
     } catch (e) {
       toast.error(extractErrorMessage(e, "Failed to load courses"));
     } finally {
@@ -40,7 +46,10 @@ export default function AdminCourses() {
   useEffect(() => {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, type, published]);
+  }, [search, type, published, page]);
+
+  // Reset to the first page whenever a filter/search changes.
+  const resetPage = () => setPage(1);
 
   const onTogglePublish = async (c: CourseDTO) => {
     try {
@@ -81,15 +90,15 @@ export default function AdminCourses() {
 
       <div className="flex flex-wrap gap-3">
         <Input
-          placeholder="Search title or category"
+          placeholder="Search courses — title, category, tag, description or batch name"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => { setSearch(e.target.value); resetPage(); }}
           leftIcon="search"
           containerClassName="flex-1 min-w-60"
         />
         <Select
           value={type}
-          onChange={(e) => setType(e.target.value)}
+          onChange={(e) => { setType(e.target.value); resetPage(); }}
           options={[
             { value: "", label: "All types" },
             { value: "live", label: "Live" },
@@ -99,7 +108,7 @@ export default function AdminCourses() {
         />
         <Select
           value={published}
-          onChange={(e) => setPublished(e.target.value)}
+          onChange={(e) => { setPublished(e.target.value); resetPage(); }}
           options={[
             { value: "", label: "All status" },
             { value: "true", label: "Published" },
@@ -166,6 +175,10 @@ export default function AdminCourses() {
             ))}
           </tbody>
         </Table>
+      )}
+
+      {!loading && items.length > 0 && (
+        <Pagination page={meta.page} pages={meta.pages} total={meta.total} limit={meta.limit} onPageChange={setPage} />
       )}
 
       <ConfirmModal
