@@ -10,23 +10,36 @@ import { Table, THead, TR, TH, TD } from "@/components/ui/Table";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Pagination } from "@/components/ui/Pagination";
 import { extractErrorMessage } from "@/lib/api";
-import { createStudent, deleteStudent, listStudents, updateStudent, StudentDTO } from "@/services/admin.service";
+import { createStudent, deleteStudent, exportStudentsCsv, listStudents, updateStudent, StudentDTO } from "@/services/admin.service";
+
+const PAGE_SIZE = 10;
 
 export default function AdminStudents() {
   const [items, setItems] = useState<StudentDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [city, setCity] = useState("");
+  const [profileComplete, setProfileComplete] = useState("");
+  const [page, setPage] = useState(1);
+  const [meta, setMeta] = useState({ page: 1, pages: 1, total: 0, limit: PAGE_SIZE });
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<StudentDTO | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<StudentDTO | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await listStudents({ search });
+      const params: any = { page, limit: PAGE_SIZE };
+      if (search) params.search = search;
+      if (city) params.city = city;
+      if (profileComplete) params.profile_complete = profileComplete === "true";
+      const res = await listStudents(params);
       setItems(res.data);
+      if (res.meta) setMeta(res.meta);
     } catch (e) {
       toast.error(extractErrorMessage(e));
     } finally {
@@ -34,7 +47,24 @@ export default function AdminStudents() {
     }
   };
 
-  useEffect(() => { fetchData(); /* eslint-disable-next-line */ }, [search]);
+  useEffect(() => { fetchData(); /* eslint-disable-next-line */ }, [search, city, profileComplete, page]);
+
+  const resetPage = () => setPage(1);
+
+  const onExport = async () => {
+    setExporting(true);
+    try {
+      const params: any = {};
+      if (search) params.search = search;
+      if (city) params.city = city;
+      if (profileComplete) params.profile_complete = profileComplete === "true";
+      await exportStudentsCsv(params);
+    } catch (e) {
+      toast.error(extractErrorMessage(e, "Failed to export students"));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
@@ -58,10 +88,38 @@ export default function AdminStudents() {
           <h1 className="font-display font-bold text-display-md text-ink">Students</h1>
           <p className="text-body-sm text-ink-variant">Manage learner accounts</p>
         </div>
-        <Button leftIcon="person_add" onClick={() => setCreateOpen(true)}>Add Student</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" leftIcon="download" onClick={onExport} loading={exporting}>Export to Excel</Button>
+          <Button leftIcon="person_add" onClick={() => setCreateOpen(true)}>Add Student</Button>
+        </div>
       </div>
 
-      <Input placeholder="Search by name or email" value={search} onChange={(e) => setSearch(e.target.value)} leftIcon="search" containerClassName="max-w-sm" />
+      <div className="flex flex-wrap gap-3">
+        <Input
+          placeholder="Search by name, email, phone or city"
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); resetPage(); }}
+          leftIcon="search"
+          containerClassName="flex-1 min-w-60"
+        />
+        <Input
+          placeholder="Filter by city"
+          value={city}
+          onChange={(e) => { setCity(e.target.value); resetPage(); }}
+          leftIcon="location_on"
+          containerClassName="w-48"
+        />
+        <Select
+          value={profileComplete}
+          onChange={(e) => { setProfileComplete(e.target.value); resetPage(); }}
+          options={[
+            { value: "", label: "All profiles" },
+            { value: "true", label: "Profile complete" },
+            { value: "false", label: "Profile incomplete" },
+          ]}
+          containerClassName="w-48"
+        />
+      </div>
 
       {loading ? (
         <p className="text-body-sm text-ink-outline">Loading…</p>
@@ -109,6 +167,10 @@ export default function AdminStudents() {
             ))}
           </tbody>
         </Table>
+      )}
+
+      {!loading && items.length > 0 && (
+        <Pagination page={meta.page} pages={meta.pages} total={meta.total} limit={meta.limit} onPageChange={setPage} />
       )}
 
       <CreateStudentModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => { setCreateOpen(false); fetchData(); }} />

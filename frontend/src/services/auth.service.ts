@@ -29,6 +29,20 @@ export async function verifySignup(payload: {
   return res.data;
 }
 
+export async function requestPasswordReset(email: string): Promise<{ message: string; expires_in: number }> {
+  const res = await api.post("/auth/password-reset/request", { email });
+  return res.data;
+}
+
+export async function verifyPasswordReset(payload: {
+  email: string;
+  otp: string;
+  new_password: string;
+}): Promise<{ message: string }> {
+  const res = await api.post("/auth/password-reset/verify", payload);
+  return res.data;
+}
+
 export async function logout(): Promise<void> {
   await api.post("/auth/logout");
 }
