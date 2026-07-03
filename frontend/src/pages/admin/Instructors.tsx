@@ -9,13 +9,18 @@ import { Table, THead, TR, TH, TD } from "@/components/ui/Table";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Pagination } from "@/components/ui/Pagination";
 import { extractErrorMessage } from "@/lib/api";
 import { createInstructor, deleteInstructor, listInstructors, updateInstructor, InstructorDTO } from "@/services/admin.service";
+
+const PAGE_SIZE = 10;
 
 export default function AdminInstructors() {
   const [items, setItems] = useState<InstructorDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [meta, setMeta] = useState({ page: 1, pages: 1, total: 0, limit: PAGE_SIZE });
   const [createOpen, setCreateOpen] = useState(false);
   const [created, setCreated] = useState<{ email: string; password: string; emailSent: boolean } | null>(null);
   const [editTarget, setEditTarget] = useState<InstructorDTO | null>(null);
@@ -25,8 +30,9 @@ export default function AdminInstructors() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await listInstructors({ search });
+      const res = await listInstructors({ search, page, limit: PAGE_SIZE });
       setItems(res.data);
+      if (res.meta) setMeta(res.meta);
     } catch (e) {
       toast.error(extractErrorMessage(e));
     } finally {
@@ -34,7 +40,7 @@ export default function AdminInstructors() {
     }
   };
 
-  useEffect(() => { fetchData(); /* eslint-disable-next-line */ }, [search]);
+  useEffect(() => { fetchData(); /* eslint-disable-next-line */ }, [search, page]);
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
@@ -61,7 +67,7 @@ export default function AdminInstructors() {
         <Button leftIcon="person_add" onClick={() => setCreateOpen(true)}>Add Instructor</Button>
       </div>
 
-      <Input placeholder="Search by name or email" value={search} onChange={(e) => setSearch(e.target.value)} leftIcon="search" containerClassName="max-w-sm" />
+      <Input placeholder="Search by name or email" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} leftIcon="search" containerClassName="max-w-sm" />
 
       {loading ? (
         <p className="text-body-sm text-ink-outline">Loading…</p>
@@ -107,6 +113,10 @@ export default function AdminInstructors() {
             ))}
           </tbody>
         </Table>
+      )}
+
+      {!loading && items.length > 0 && (
+        <Pagination page={meta.page} pages={meta.pages} total={meta.total} limit={meta.limit} onPageChange={setPage} />
       )}
 
       <CreateInstructorModal
