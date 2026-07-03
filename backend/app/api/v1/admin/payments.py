@@ -56,6 +56,7 @@ async def list_payments(
                 amount=p.amount,
                 currency=p.currency,
                 status=p.status.value,
+                is_test=p.is_test,
                 razorpay_order_id=p.razorpay_order_id,
                 razorpay_payment_id=p.razorpay_payment_id,
                 created_at=p.created_at,
