@@ -16,6 +16,7 @@ class PaymentPublic(BaseModel):
     amount: Decimal
     currency: str = "INR"
     status: str
+    is_test: bool = False
     razorpay_order_id: Optional[str] = None
     razorpay_payment_id: Optional[str] = None
     created_at: Optional[datetime] = None
