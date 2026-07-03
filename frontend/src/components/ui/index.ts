@@ -10,3 +10,4 @@ export { ConfirmModal } from "./ConfirmModal";
 export { Select } from "./Select";
 export { SearchableSelect } from "./SearchableSelect";
 export { EmptyState } from "./EmptyState";
+export { Pagination } from "./Pagination";
