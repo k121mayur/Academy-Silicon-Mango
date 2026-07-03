@@ -70,6 +70,11 @@ class EnrollmentCreate(BaseModel):
     student_id: str
 
 
+class BatchEmailCreate(BaseModel):
+    subject: str = Field(min_length=1, max_length=200)
+    body: str = Field(min_length=1, max_length=5000)
+
+
 class EnrollmentPublic(BaseModel):
     id: str
     student_id: str
