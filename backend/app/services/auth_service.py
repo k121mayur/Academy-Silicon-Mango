@@ -26,6 +26,8 @@ from app.core.security import (
     verify_otp,
     verify_password,
 )
+from app.core.config import settings
+from app.core.redis import mark_password_changed
 from app.models.otp import OTPPurpose, OTPRecord
 from app.models.user import (
     AuthProvider,
@@ -34,7 +36,12 @@ from app.models.user import (
     User,
     UserRole,
 )
-from app.services.email_service import render_otp_email, send_email
+from app.services.email_service import (
+    render_otp_email,
+    render_password_reset_google_email,
+    render_password_reset_otp_email,
+    send_email,
+)
 
 
 def _mask_email(email: str) -> str:
@@ -195,6 +202,108 @@ async def verify_signup_otp_and_create(
     user = await get_user_by_email(db, email)
     print(f"[AUTH] Student account created via OTP: {_mask_email(email)}")
     return user
+
+
+async def request_password_reset_otp(db: AsyncSession, email: str) -> int:
+    """Issue a password-reset OTP. ALWAYS returns 300 (no account enumeration).
+
+    Only email/password accounts get a reset code; Google accounts get an
+    informational email. To avoid a timing oracle, the OTP is generated and
+    hashed (the expensive step) before branching on whether the account exists.
+    """
+    email = email.lower()
+
+    # Do the expensive bcrypt hash unconditionally so response time doesn't leak
+    # whether the account exists.
+    otp = generate_otp()
+    hashed = hash_otp(otp)
+
+    user = await get_user_by_email(db, email)
+    if user is None:
+        print(f"[AUTH] Password reset requested for unknown email {_mask_email(email)} (no-op)")
+        return 300
+
+    if user.auth_provider == AuthProvider.google or not user.hashed_password:
+        subject, html, text = render_password_reset_google_email()
+        await send_email(email, subject, html, text)
+        print(f"[AUTH] Password reset requested for Google account {_mask_email(email)} (info mail)")
+        return 300
+
+    # Only clear prior RESET records (never touch signup OTPs for this email).
+    await db.execute(
+        delete(OTPRecord).where(OTPRecord.email == email, OTPRecord.purpose == OTPPurpose.reset)
+    )
+    record = OTPRecord(
+        email=email,
+        hashed_code=hashed,
+        purpose=OTPPurpose.reset,
+        attempts=0,
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+    )
+    db.add(record)
+    await db.commit()
+
+    subject, html, text = render_password_reset_otp_email(otp, minutes=5)
+    await send_email(email, subject, html, text)
+    print(f"[AUTH] Password reset OTP issued for {_mask_email(email)} (expires in 5 min)")
+    return 300
+
+
+async def verify_password_reset_otp(db: AsyncSession, *, email: str, otp: str, new_password: str) -> None:
+    """Verify a reset OTP and set the new password, then kill all existing sessions."""
+    email = email.lower()
+
+    stmt = (
+        select(OTPRecord)
+        .where(OTPRecord.email == email, OTPRecord.purpose == OTPPurpose.reset)
+        .order_by(OTPRecord.created_at.desc())
+        .limit(1)
+    )
+    record = (await db.execute(stmt)).scalar_one_or_none()
+    if not record:
+        raise err_otp_expired()
+
+    now = datetime.now(timezone.utc)
+    expires_at = record.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < now:
+        await db.execute(delete(OTPRecord).where(OTPRecord.id == record.id))
+        await db.commit()
+        raise err_otp_expired()
+
+    if record.attempts >= 5:
+        await db.execute(delete(OTPRecord).where(OTPRecord.id == record.id))
+        await db.commit()
+        raise err_otp_max_attempts()
+
+    if not verify_otp(otp, record.hashed_code):
+        record.attempts += 1
+        await db.commit()
+        print(f"[AUTH] Invalid reset OTP attempt {record.attempts}/5 for {_mask_email(email)}")
+        raise err_otp_invalid()
+
+    user = await get_user_by_email(db, email)
+    # Defensive: account vanished or is a Google account — don't leak, just fail.
+    if user is None or user.auth_provider == AuthProvider.google or not user.hashed_password:
+        await db.execute(
+            delete(OTPRecord).where(OTPRecord.email == email, OTPRecord.purpose == OTPPurpose.reset)
+        )
+        await db.commit()
+        raise err_otp_invalid()
+
+    user.hashed_password = hash_password(new_password)
+    await db.execute(
+        delete(OTPRecord).where(OTPRecord.email == email, OTPRecord.purpose == OTPPurpose.reset)
+    )
+    await db.commit()
+
+    # Kill all existing access/refresh tokens for this user (same mechanism as
+    # change-password): any token issued before now is rejected.
+    await mark_password_changed(
+        str(user.id), settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60 + 60
+    )
+    print(f"[AUTH] Password reset completed for {_mask_email(email)} — all sessions revoked")
 
 
 async def get_or_create_google_user(db: AsyncSession, *, email: str, google_id: str, display_name: str, avatar_url: Optional[str]) -> User:

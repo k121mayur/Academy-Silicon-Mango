@@ -130,8 +130,13 @@ async def create_enrollment_with_payment(
     razorpay_order_id: Optional[str] = None,
     razorpay_payment_id: Optional[str] = None,
     razorpay_signature: Optional[str] = None,
+    is_test: bool = False,
 ) -> tuple[Enrollment, Payment]:
-    """Shared creator — admin-enroll and self-enroll both converge here. Caller commits."""
+    """Shared creator — admin-enroll and self-enroll both converge here. Caller commits.
+
+    `is_test=True` marks a QA/dummy enrollment (e.g. admin enrolling into an
+    unpublished course) so it is excluded from revenue reporting.
+    """
     enr = Enrollment(batch_id=batch.id, student_id=student.id, status=EnrollmentStatus.active)
     db.add(enr)
     await db.flush()
@@ -145,6 +150,7 @@ async def create_enrollment_with_payment(
         razorpay_order_id=razorpay_order_id,
         razorpay_payment_id=razorpay_payment_id,
         razorpay_signature=razorpay_signature,
+        is_test=is_test,
     )
     db.add(payment)
     await db.flush()

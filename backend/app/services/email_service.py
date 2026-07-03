@@ -452,6 +452,64 @@ def render_webinar_custom_email(subject: str, body_html: str) -> tuple[str, str,
     return subject, _webinar_shell(body_html), text
 
 
+def render_batch_bulk_email(subject: str, body: str) -> tuple[str, str, str]:
+    """Wrap an admin-composed PLAIN-TEXT message to a batch's students in the shell.
+
+    Unlike render_webinar_custom_email (which trusts admin HTML), the batch email
+    body is plain text typed into a textarea, so it is HTML-escaped and newlines
+    are converted to <br/> to prevent any accidental/injected markup from rendering.
+    """
+    import html as _html
+
+    safe = _html.escape(body or "").replace("\n", "<br/>")
+    inner = f"""
+        <div style="color:#514532;line-height:1.6;font-size:15px;">{safe}</div>
+    """
+    return subject, _webinar_shell(inner), (body or "")
+
+
+def render_password_reset_otp_email(otp: str, minutes: int = 5) -> tuple[str, str, str]:
+    subject = "Reset your Silicon Mango Academy password"
+    text = (
+        f"Your password reset code is: {otp}\n\n"
+        f"Enter it to set a new password. This code expires in {minutes} minutes.\n\n"
+        "If you didn't request a password reset, you can safely ignore this email — "
+        "your password will not change.\n\n"
+        "— Silicon Mango Academy"
+    )
+    html = f"""
+    <!doctype html><html><body style="font-family:Inter,system-ui,sans-serif;background:#f8f9fa;padding:32px;">
+      <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;box-shadow:0 1px 3px rgba(124,88,0,0.08);">
+        <div style="margin-bottom:24px;">
+          <span style="font-family:Manrope,sans-serif;font-weight:800;font-size:20px;color:#7c5800;">Silicon Mango Academy</span>
+        </div>
+        <h2 style="font-family:Manrope,sans-serif;color:#191c1d;font-size:24px;margin:0 0 16px;">Reset your password</h2>
+        <p style="color:#514532;line-height:1.5;">Use this 6-digit code to set a new password.</p>
+        <div style="background:#ffb800;color:#6b4c00;font-family:'JetBrains Mono',monospace;font-size:32px;font-weight:700;letter-spacing:8px;text-align:center;padding:20px;border-radius:12px;margin:24px 0;">{otp}</div>
+        <p style="color:#837560;font-size:14px;">This code expires in {minutes} minutes. If you didn't request this, ignore this email — your password won't change.</p>
+      </div>
+    </body></html>
+    """
+    return subject, html, text
+
+
+def render_password_reset_google_email() -> tuple[str, str, str]:
+    subject = "Password reset requested — Silicon Mango Academy"
+    text = (
+        "We received a request to reset the password for your Silicon Mango Academy account.\n\n"
+        "This account signs in with Google, so there is no password to reset. "
+        "Just use the \"Sign in with Google\" button on the login page.\n\n"
+        "If this wasn't you, you can safely ignore this email.\n\n"
+        "— Silicon Mango Academy"
+    )
+    inner = """
+        <h2 style="font-family:Manrope,sans-serif;color:#191c1d;font-size:22px;margin:0 0 12px;">Password reset requested</h2>
+        <p style="color:#514532;line-height:1.6;">This account signs in with <strong>Google</strong>, so there's no password to reset. Just use the <strong>Sign in with Google</strong> button on the login page.</p>
+        <p style="color:#837560;font-size:14px;margin-top:16px;">If this wasn't you, you can safely ignore this email.</p>
+    """
+    return subject, _webinar_shell(inner), text
+
+
 def render_welcome_instructor_email(display_name: str, email: str, password: str, login_url: str) -> tuple[str, str, str]:
     subject = "Welcome to Silicon Mango Academy — Instructor Account"
     text = (
