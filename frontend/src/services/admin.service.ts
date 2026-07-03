@@ -88,6 +88,7 @@ export async function fetchRecentTransactions() {
     batch_name: string;
     amount: number;
     status: string;
+    is_test?: boolean;
     created_at: string;
   }>;
 }
@@ -104,7 +105,7 @@ export async function fetchUpcomingSessions() {
 }
 
 // ---- Courses ----
-export async function listCourses(params: { page?: number; limit?: number; search?: string; type?: string; published?: boolean } = {}) {
+export async function listCourses(params: { page?: number; limit?: number; search?: string; type?: string; published?: boolean; category?: string } = {}) {
   const res = await api.get<PaginatedResponse<CourseDTO>>("/admin/courses", { params });
   return res.data;
 }
@@ -156,8 +157,43 @@ export async function updateBatch(id: string, payload: any) {
   const res = await api.put(`/admin/batches/${id}`, payload);
   return res.data as BatchDTO;
 }
+export interface BatchDeleteImpact {
+  batch_name: string;
+  is_locked: boolean;
+  status: string;
+  enrollments: number;
+  payments_count: number;
+  payments_total: number;
+  certificates: number;
+  sessions: number;
+  videos: number;
+}
+export async function getBatchDeleteImpact(id: string) {
+  const res = await api.get(`/admin/batches/${id}/delete-impact`);
+  return res.data.data as BatchDeleteImpact;
+}
 export async function deleteBatch(id: string) {
-  await api.delete(`/admin/batches/${id}`);
+  const res = await api.delete(`/admin/batches/${id}`);
+  return res.data.data as BatchDeleteImpact | undefined;
+}
+
+// ---- Batch bulk email ----
+export interface BatchEmailCampaign {
+  id: string;
+  subject: string;
+  status: "queued" | "sending" | "sent" | "failed";
+  total_recipients: number;
+  sent_count: number;
+  created_at: string;
+  sent_at?: string | null;
+}
+export async function sendBatchEmail(id: string, payload: { subject: string; body: string }) {
+  const res = await api.post(`/admin/batches/${id}/email`, payload);
+  return res.data.data as { id: string; status: string; total_recipients: number };
+}
+export async function listBatchEmailCampaigns(id: string) {
+  const res = await api.get(`/admin/batches/${id}/email-campaigns`);
+  return res.data.data as BatchEmailCampaign[];
 }
 export async function batchAssignInstructor(id: string, instructorId: string) {
   const res = await api.post(`/admin/batches/${id}/assign-instructor`, { instructor_id: instructorId });
@@ -211,7 +247,9 @@ export async function createInstructor(payload: { email: string; display_name: s
   const data = res.data.data as { id: string; user_id: string; email: string; display_name: string; temporary_password?: string; email_sent?: boolean };
   return { ...data, warning: res.data.warning as string | undefined };
 }
-export async function listStudents(params: { page?: number; limit?: number; search?: string } = {}) {
+export async function listStudents(
+  params: { page?: number; limit?: number; search?: string; city?: string; profile_complete?: boolean } = {}
+) {
   const res = await api.get<PaginatedResponse<StudentDTO>>("/admin/users/students", { params });
   return res.data;
 }
@@ -270,13 +308,61 @@ export async function listAllBatches(): Promise<BatchDTO[]> {
 }
 
 // ---- Enrollments ----
-export async function listAllEnrollments(params: { page?: number; limit?: number } = {}) {
-  const res = await api.get("/admin/enrollments", { params });
+export interface EnrollmentRow {
+  id: string;
+  student_id: string;
+  student_name: string;
+  student_email: string;
+  batch_id: string;
+  batch_name: string;
+  course_id: string;
+  course_title: string;
+  enrolled_at: string;
+  status: string;
+}
+export async function listAllEnrollments(
+  params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    course_id?: string;
+    batch_id?: string;
+    status?: string;
+  } = {}
+) {
+  const res = await api.get<PaginatedResponse<EnrollmentRow>>("/admin/enrollments", { params });
   return res.data;
 }
 export async function adminEnroll(payload: { student_id: string; batch_id: string }) {
   const res = await api.post("/admin/enrollments", payload);
   return res.data;
+}
+// Unenroll a student from a batch (keeps their account & payment record).
+export async function unenrollStudent(batchId: string, enrollmentId: string) {
+  await api.delete(`/admin/batches/${batchId}/enrollments/${enrollmentId}`);
+}
+
+// ---- CSV exports (server-streamed, respect current filters) ----
+async function downloadCsv(url: string, params: Record<string, unknown>, filename: string) {
+  const res = await api.get(url, { params, responseType: "blob" });
+  const blobUrl = window.URL.createObjectURL(res.data as Blob);
+  const a = document.createElement("a");
+  a.href = blobUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(blobUrl);
+}
+export async function exportStudentsCsv(
+  params: { search?: string; city?: string; profile_complete?: boolean } = {}
+) {
+  await downloadCsv("/admin/users/students/export", params, "students.csv");
+}
+export async function exportEnrollmentsCsv(
+  params: { search?: string; course_id?: string; batch_id?: string; status?: string } = {}
+) {
+  await downloadCsv("/admin/enrollments/export", params, "enrollments.csv");
 }
 
 // ---- Payments ----
