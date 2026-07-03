@@ -37,6 +37,32 @@ class SignupVerify(BaseModel):
         return v
 
 
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetVerify(BaseModel):
+    email: EmailStr
+    otp: str = Field(min_length=6, max_length=6)
+    new_password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def strong_password(cls, v: str) -> str:
+        if not any(c.isupper() for c in v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Password must contain at least one digit")
+        return v
+
+    @field_validator("otp")
+    @classmethod
+    def numeric_otp(cls, v: str) -> str:
+        if not v.isdigit():
+            raise ValueError("OTP must be 6 digits")
+        return v
+
+
 class UserPublic(BaseModel):
     id: str
     email: str
