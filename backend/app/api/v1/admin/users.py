@@ -34,6 +34,7 @@ from app.schemas.user import (
     StudentUpdate,
 )
 from app.services.email_service import render_student_welcome_email, render_welcome_instructor_email, send_email
+from app.services.export_service import csv_response
 
 router = APIRouter(prefix="/users", tags=["admin:users"])
 
@@ -285,58 +286,157 @@ async def delete_instructor(
 
 # ---------------- Students ----------------
 
+def _student_filter_conditions(search: Optional[str], city: Optional[str], profile_complete: Optional[bool]):
+    """Shared WHERE conditions for the student list and its CSV export, so both
+    always apply the same filters."""
+    conds = []
+    if search and search.strip():
+        like = f"%{search.strip()}%"
+        conds.append(
+            or_(
+                User.email.ilike(like),
+                StudentProfile.display_name.ilike(like),
+                StudentProfile.phone.ilike(like),
+                StudentProfile.city.ilike(like),
+            )
+        )
+    if city and city.strip():
+        conds.append(StudentProfile.city.ilike(f"%{city.strip()}%"))
+    if profile_complete is not None:
+        if profile_complete:
+            conds.append(StudentProfile.profile_complete.is_(True))
+        else:
+            # Profileless students are reported as incomplete, so include them here.
+            conds.append(or_(StudentProfile.profile_complete.is_(False), StudentProfile.id.is_(None)))
+    return conds
+
+
 @router.get("/students")
 async def list_students(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    search: Optional[str] = None,
+    search: Optional[str] = Query(None, description="Match name, email, phone or city"),
+    city: Optional[str] = Query(None),
+    profile_complete: Optional[bool] = Query(None),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    base = select(User).where(User.role == UserRole.student)
-    cnt = select(func.count(User.id)).where(User.role == UserRole.student)
-    if search:
-        like = f"%{search.strip()}%"
-        # Match by student display name (primary) OR email.
-        name_match = select(StudentProfile.user_id).where(
-            StudentProfile.display_name.ilike(like)
-        )
-        search_filter = or_(User.email.ilike(like), User.id.in_(name_match))
-        base = base.where(search_filter)
-        cnt = cnt.where(search_filter)
+    # Outer-join the profile once (students created by admin, or Google sign-ups,
+    # may not have a profile row yet) — this replaces the per-row profile query.
+    base = (
+        select(User, StudentProfile)
+        .outerjoin(StudentProfile, StudentProfile.user_id == User.id)
+        .where(User.role == UserRole.student)
+    )
+    cnt = (
+        select(func.count(User.id))
+        .select_from(User)
+        .outerjoin(StudentProfile, StudentProfile.user_id == User.id)
+        .where(User.role == UserRole.student)
+    )
+
+    for c in _student_filter_conditions(search, city, profile_complete):
+        base = base.where(c)
+        cnt = cnt.where(c)
 
     total = (await db.execute(cnt)).scalar_one()
     base = base.order_by(User.created_at.desc()).offset((page - 1) * limit).limit(limit)
-    users = (await db.execute(base)).scalars().all()
+    rows = (await db.execute(base)).all()
 
-    items = []
-    for u in users:
-        prof_res = await db.execute(select(StudentProfile).where(StudentProfile.user_id == u.id))
-        prof = prof_res.scalar_one_or_none()
-        enr_count = (
-            await db.execute(select(func.count(Enrollment.id)).where(Enrollment.student_id == u.id))
-        ).scalar_one()
-        items.append(
-            {
-                "id": str(prof.id) if prof else str(u.id),
-                "user_id": str(u.id),
-                "email": u.email,
-                "display_name": prof.display_name if prof else u.email,
-                "phone": prof.phone if prof else None,
-                "city": prof.city if prof else None,
-                "profile_complete": prof.profile_complete if prof else False,
-                "avatar_url": prof.avatar_url if prof else None,
-                "is_active": u.is_active,
-                "auth_provider": u.auth_provider.value,
-                "enrollments_count": enr_count,
-                "created_at": u.created_at,
-            }
+    # One grouped query for all enrollment counts on this page (no per-row query).
+    user_ids = [u.id for u, _ in rows]
+    counts: dict = {}
+    if user_ids:
+        counts = dict(
+            (
+                await db.execute(
+                    select(Enrollment.student_id, func.count(Enrollment.id))
+                    .where(Enrollment.student_id.in_(user_ids))
+                    .group_by(Enrollment.student_id)
+                )
+            ).all()
         )
+
+    items = [
+        {
+            "id": str(prof.id) if prof else str(u.id),
+            "user_id": str(u.id),
+            "email": u.email,
+            "display_name": prof.display_name if prof else u.email,
+            "phone": prof.phone if prof else None,
+            "city": prof.city if prof else None,
+            "profile_complete": prof.profile_complete if prof else False,
+            "avatar_url": prof.avatar_url if prof else None,
+            "is_active": u.is_active,
+            "auth_provider": u.auth_provider.value,
+            "enrollments_count": counts.get(u.id, 0),
+            "created_at": u.created_at,
+        }
+        for u, prof in rows
+    ]
     return {
         "success": True,
         "data": items,
         "meta": {"page": page, "limit": limit, "total": total, "pages": max(1, math.ceil(total / limit))},
     }
+
+
+@router.get("/students/export")
+async def export_students(
+    search: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    profile_complete: Optional[bool] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """Export the CURRENTLY-FILTERED student list to CSV (opens in Excel).
+
+    Declared before /students/{user_id} so the literal path wins over the
+    path-param route. Applies the same filters as the list, but no pagination.
+    """
+    stmt = (
+        select(User, StudentProfile)
+        .outerjoin(StudentProfile, StudentProfile.user_id == User.id)
+        .where(User.role == UserRole.student)
+    )
+    for c in _student_filter_conditions(search, city, profile_complete):
+        stmt = stmt.where(c)
+    stmt = stmt.order_by(User.created_at.desc())
+    rows = (await db.execute(stmt)).all()
+
+    # Enrollment counts for all exported users in one grouped query.
+    user_ids = [u.id for u, _ in rows]
+    counts: dict = {}
+    if user_ids:
+        counts = dict(
+            (
+                await db.execute(
+                    select(Enrollment.student_id, func.count(Enrollment.id))
+                    .where(Enrollment.student_id.in_(user_ids))
+                    .group_by(Enrollment.student_id)
+                )
+            ).all()
+        )
+
+    headers = [
+        "Name", "Email", "Phone", "City", "Profile Complete",
+        "Enrollments", "Sign-in Method", "Active", "Joined",
+    ]
+    data_rows = [
+        [
+            prof.display_name if prof else u.email,
+            u.email,
+            prof.phone if prof else "",
+            prof.city if prof else "",
+            "Yes" if (prof.profile_complete if prof else False) else "No",
+            counts.get(u.id, 0),
+            u.auth_provider.value,
+            "Yes" if u.is_active else "No",
+            u.created_at.strftime("%Y-%m-%d") if u.created_at else "",
+        ]
+        for u, prof in rows
+    ]
+    return csv_response("students.csv", headers, data_rows)
 
 
 @router.post("/students")
