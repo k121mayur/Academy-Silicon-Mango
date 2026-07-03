@@ -43,6 +43,8 @@ from app.schemas.auth import (
     MeResponse,
     MessageResponse,
     OTPRequestResponse,
+    PasswordResetRequest,
+    PasswordResetVerify,
     SignupRequest,
     SignupVerify,
     UserPublic,
@@ -52,7 +54,9 @@ from app.services.auth_service import (
     get_or_create_google_user,
     is_profile_complete,
     issue_tokens,
+    request_password_reset_otp,
     request_signup_otp,
+    verify_password_reset_otp,
     verify_signup_otp_and_create,
 )
 
@@ -254,6 +258,49 @@ async def change_password(
     await mark_password_changed(str(user.id), pw_marker_ttl)
 
     return MessageResponse(message="Password changed")
+
+
+@router.post("/password-reset/request", response_model=OTPRequestResponse)
+async def password_reset_request(
+    payload: PasswordResetRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    # Same limiter stack as signup: per-email (mail-bombing) + per-IP (enumeration).
+    allowed, reset_in = await otp_rate_limit(payload.email)
+    if not allowed:
+        raise err_otp_rate_limited(reset_in)
+    ip = get_client_ip(request)
+    allowed_ip, reset_ip = await otp_ip_rate_limit(ip)
+    if not allowed_ip:
+        raise err_otp_rate_limited(reset_ip)
+
+    await request_password_reset_otp(db, payload.email)
+    # Generic message regardless of whether the account exists (no enumeration).
+    return OTPRequestResponse(
+        message="If an account exists for this email, a reset code has been sent.",
+        expires_in=300,
+    )
+
+
+@router.post("/password-reset/verify", response_model=MessageResponse)
+async def password_reset_verify(
+    payload: PasswordResetVerify,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    # IP-limit the verify step (reuse the login limiter) so the OTP can't be
+    # brute-forced across many freshly-requested codes.
+    ip = get_client_ip(request)
+    allowed, reset_in = await login_rate_limit(ip)
+    if not allowed:
+        raise err_login_rate_limited(reset_in)
+
+    await verify_password_reset_otp(
+        db, email=payload.email, otp=payload.otp, new_password=payload.new_password
+    )
+    # No cookies set — force a fresh login (all prior sessions are now revoked).
+    return MessageResponse(message="Password reset. Please sign in with your new password.")
 
 
 @router.get("/me", response_model=MeResponse)

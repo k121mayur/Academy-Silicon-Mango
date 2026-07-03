@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid as uuid_lib
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +11,7 @@ from app.core.exceptions import APIError, err_otp_rate_limited
 from app.core.redis import otp_ip_rate_limit, otp_rate_limit
 from app.core.utils import get_client_ip
 from app.db.session import get_db
+from app.dependencies.auth import get_current_user_optional
 from app.models.batch import Batch, BatchScheduleSlot, BatchStatus, Enrollment, EnrollmentStatus
 from app.models.course import Course, CourseInstructor
 from app.models.user import InstructorProfile, StudentProfile, User, UserRole
@@ -41,6 +42,7 @@ def _course_detail_dict(c: Course, instructors: list[dict], certificate_template
         "certification_criteria": c.certification_criteria or [],
         "syllabus_pdf_url": c.syllabus_pdf_url,
         "demo_youtube_url": c.demo_youtube_url,
+        "is_published": c.is_published,
         "instructors": instructors,
         "certificate_template": certificate_template,
     }
@@ -51,11 +53,21 @@ _ENROLLABLE_STATUSES = (BatchStatus.upcoming, BatchStatus.active)
 
 @router.get("/courses")
 async def public_courses(
+    response: Response,
     search: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
+    viewer: Optional[User] = Depends(get_current_user_optional),
 ):
-    stmt = select(Course).where(Course.is_published == True)  # noqa: E712
+    # An authenticated admin previews unpublished (draft) courses too, so they can
+    # see exactly how a course will look on the public explore page before publishing.
+    is_admin = viewer is not None and viewer.role == UserRole.admin
+    stmt = select(Course)
+    if not is_admin:
+        stmt = stmt.where(Course.is_published == True)  # noqa: E712
+    else:
+        # Never let a shared/CDN cache serve an admin's draft-inclusive response.
+        response.headers["Cache-Control"] = "private, no-store"
     if search and search.strip():
         term = f"%{search.strip().lower()}%"
         stmt = stmt.where(
@@ -94,6 +106,7 @@ async def public_courses(
                 "discount": float(c.discount),
                 "banner_url": c.banner_url,
                 "tags": c.tags or [],
+                "is_published": c.is_published,
                 "batches_count": batches_count.get(c.id, 0),
             }
         )
@@ -123,7 +136,7 @@ async def public_stats(db: AsyncSession = Depends(get_db)):
     }
 
 
-async def _resolve_course(db: AsyncSession, id_or_slug: str) -> Course:
+async def _resolve_course(db: AsyncSession, id_or_slug: str, include_unpublished: bool = False) -> Course:
     course: Optional[Course] = None
     try:
         uuid_lib.UUID(id_or_slug)
@@ -132,14 +145,22 @@ async def _resolve_course(db: AsyncSession, id_or_slug: str) -> Course:
         course = (
             await db.execute(select(Course).where(Course.slug == id_or_slug))
         ).scalar_one_or_none()
-    if not course or not course.is_published:
+    if not course or (not course.is_published and not include_unpublished):
         raise APIError(code="NOT_FOUND", message="Course not found", status_code=404)
     return course
 
 
 @router.get("/courses/{id_or_slug}")
-async def public_course_detail(id_or_slug: str, db: AsyncSession = Depends(get_db)):
-    course = await _resolve_course(db, id_or_slug)
+async def public_course_detail(
+    id_or_slug: str,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    viewer: Optional[User] = Depends(get_current_user_optional),
+):
+    is_admin = viewer is not None and viewer.role == UserRole.admin
+    if is_admin:
+        response.headers["Cache-Control"] = "private, no-store"
+    course = await _resolve_course(db, id_or_slug, include_unpublished=is_admin)
 
     # Instructors (batched)
     ci_rows = (
@@ -178,8 +199,16 @@ async def public_course_detail(id_or_slug: str, db: AsyncSession = Depends(get_d
 
 
 @router.get("/courses/{course_id}/batches")
-async def public_course_batches(course_id: str, db: AsyncSession = Depends(get_db)):
-    course = await _resolve_course(db, course_id)
+async def public_course_batches(
+    course_id: str,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    viewer: Optional[User] = Depends(get_current_user_optional),
+):
+    is_admin = viewer is not None and viewer.role == UserRole.admin
+    if is_admin:
+        response.headers["Cache-Control"] = "private, no-store"
+    course = await _resolve_course(db, course_id, include_unpublished=is_admin)
 
     batches = (
         await db.execute(
