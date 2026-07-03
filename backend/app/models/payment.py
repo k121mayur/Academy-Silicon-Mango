@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String, func
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Numeric, String, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -40,6 +40,11 @@ class Payment(Base):
     status: Mapped[PaymentStatus] = mapped_column(
         Enum(PaymentStatus, name="payment_status_enum"), nullable=False, default=PaymentStatus.pending
     )
+    # Test/dummy enrollments (e.g. admin enrolling a student into an UNPUBLISHED
+    # course for QA). These are excluded from revenue reporting so testing never
+    # inflates the dashboard totals. Real Razorpay / free / admin-enroll into a
+    # published course stay is_test=false.
+    is_test: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
     receipt_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

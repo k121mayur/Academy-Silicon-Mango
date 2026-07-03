@@ -2,6 +2,8 @@ from app.models.assignment import Assignment, AssignmentType, Submission, Submis
 from app.models.attendance import AttendanceRecord, AttendanceSource, AttendanceStatus
 from app.models.batch import (
     Batch,
+    BatchEmailCampaign,
+    BatchEmailStatus,
     BatchPlan,
     BatchScheduleSlot,
     BatchStatus,
@@ -57,6 +59,8 @@ __all__ = [
     "AttendanceStatus",
     "AuthProvider",
     "Batch",
+    "BatchEmailCampaign",
+    "BatchEmailStatus",
     "BatchPlan",
     "BatchScheduleSlot",
     "BatchStatus",

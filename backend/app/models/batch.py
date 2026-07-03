@@ -5,7 +5,7 @@ import uuid
 from datetime import date, datetime, time
 from typing import Optional
 
-from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, String, Time, UniqueConstraint, func
+from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, String, Text, Time, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -117,3 +117,45 @@ class Enrollment(Base):
     status: Mapped[EnrollmentStatus] = mapped_column(
         Enum(EnrollmentStatus, name="enrollment_status_enum"), nullable=False, default=EnrollmentStatus.active
     )
+
+
+# ---------------------------------------------------------------------------
+# Batch email campaign (admin-composed bulk email to enrolled students)
+# ---------------------------------------------------------------------------
+
+
+class BatchEmailStatus(str, enum.Enum):
+    queued = "queued"
+    sending = "sending"
+    sent = "sent"
+    failed = "failed"
+
+
+class BatchEmailCampaign(Base):
+    """One admin-triggered bulk email to a batch's active-enrollment students.
+
+    Mirrors WebinarEmailCampaign. Runs on the dedicated `webinars` Celery queue
+    so a long video encode never delays it. sent_count is committed periodically
+    so a retry can resume instead of re-sending to everyone.
+    """
+
+    __tablename__ = "batch_email_campaigns"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    batch_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("batches.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    subject: Mapped[str] = mapped_column(String(200), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[BatchEmailStatus] = mapped_column(
+        Enum(BatchEmailStatus, name="batch_email_status_enum"),
+        nullable=False,
+        default=BatchEmailStatus.queued,
+    )
+    total_recipients: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    sent_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
