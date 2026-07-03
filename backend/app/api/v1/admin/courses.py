@@ -4,7 +4,7 @@ import math
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
-from sqlalchemy import func, or_, select
+from sqlalchemy import String as SAString, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -71,16 +71,29 @@ async def list_courses(
     search: Optional[str] = None,
     type: Optional[str] = None,
     published: Optional[bool] = None,
+    category: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ):
     stmt = select(Course)
     count_stmt = select(func.count(Course.id))
 
-    if search:
-        like = f"%{search}%"
-        stmt = stmt.where(or_(Course.title.ilike(like), Course.category.ilike(like)))
-        count_stmt = count_stmt.where(or_(Course.title.ilike(like), Course.category.ilike(like)))
+    if search and search.strip():
+        like = f"%{search.strip()}%"
+        # Global keyword search: title, category, description, tags (JSONB cast to
+        # text so array items match), and the name of any batch under the course.
+        batch_match = (
+            select(Batch.id).where(Batch.course_id == Course.id, Batch.name.ilike(like)).exists()
+        )
+        cond = or_(
+            Course.title.ilike(like),
+            Course.category.ilike(like),
+            Course.description.ilike(like),
+            cast(Course.tags, SAString).ilike(like),
+            batch_match,
+        )
+        stmt = stmt.where(cond)
+        count_stmt = count_stmt.where(cond)
     if type:
         try:
             t = CourseType(type)
@@ -91,6 +104,9 @@ async def list_courses(
     if published is not None:
         stmt = stmt.where(Course.is_published == published)
         count_stmt = count_stmt.where(Course.is_published == published)
+    if category:
+        stmt = stmt.where(Course.category == category)
+        count_stmt = count_stmt.where(Course.category == category)
 
     total = (await db.execute(count_stmt)).scalar_one()
     stmt = stmt.order_by(Course.created_at.desc()).offset((page - 1) * limit).limit(limit)

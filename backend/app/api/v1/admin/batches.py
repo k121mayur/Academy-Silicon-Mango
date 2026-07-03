@@ -17,6 +17,8 @@ from app.db.session import get_db
 from app.dependencies.auth import require_admin
 from app.models.batch import (
     Batch,
+    BatchEmailCampaign,
+    BatchEmailStatus,
     BatchPlan,
     BatchScheduleSlot,
     BatchStatus,
@@ -31,6 +33,7 @@ from app.models.payment import Payment
 from app.models.user import InstructorProfile, StudentProfile, User, UserRole
 from app.schemas.batch import (
     BatchCreate,
+    BatchEmailCreate,
     BatchPlanIn,
     BatchPlanPublic,
     BatchPublic,
@@ -38,7 +41,15 @@ from app.schemas.batch import (
     EnrollmentCreate,
     EnrollmentPublic,
 )
+from app.celery_app import celery
+from app.services.payment_service import active_enrollment_count
 from app.models.session import Session, SessionStatus
+from app.services.batch_admin_service import (
+    batch_delete_impact,
+    collect_batch_video_files,
+    enrolled_student_ids,
+    remove_video_files,
+)
 from app.services.certificate_issue_service import issue_and_email_all_for_batch
 from app.services.planning_service import sync_inherited_sessions
 from app.services.scheduling_service import (
@@ -279,44 +290,69 @@ async def update_batch(
     return await _enriched_batch(db, batch)
 
 
+@router.get("/{batch_id}/delete-impact")
+async def batch_delete_impact_endpoint(
+    batch_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """Preview exactly what deleting this batch would destroy, so the admin can
+    confirm knowingly (enrollments, payments + revenue, certificates, sessions,
+    videos). Consumed by the type-the-batch-name confirmation modal."""
+    batch = await db.get(Batch, batch_id)
+    if not batch:
+        raise APIError(code="NOT_FOUND", message="Batch not found", status_code=404)
+    return {"success": True, "data": await batch_delete_impact(db, batch)}
+
+
 @router.delete("/{batch_id}")
 async def delete_batch(
     batch_id: str,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ):
+    """Full, irreversible wipe of a batch and everything under it.
+
+    Deleting the batch row cascade-deletes (at the DB level) its enrollments,
+    payments, sessions + attendance + resources + videos, assignments +
+    submissions, certificates, schedule slots and plans. Student *accounts* are
+    kept (the FK on enrollments/payments points at the batch, not the user).
+    Because payments go too, dashboard revenue will drop by this batch's paid
+    total — this is intentional and surfaced via the delete-impact preview.
+    """
     batch = await db.get(Batch, batch_id)
     if not batch:
         raise APIError(code="NOT_FOUND", message="Batch not found", status_code=404)
 
-    # A completed batch is locked and its certificates are issued — never deletable.
-    if batch.is_locked or batch.status == BatchStatus.completed:
-        raise APIError(code="BATCH_005", message="Cannot delete a completed batch")
-
-    # Deleting a batch cascade-deletes its enrollments, payments and certificates at the
-    # DB level. Guard the financial and academic records so they can't be silently wiped.
-    pay_count = (
-        await db.execute(select(func.count(Payment.id)).where(Payment.batch_id == batch.id))
-    ).scalar_one()
-    if pay_count > 0:
-        raise APIError(
-            code="HAS_PAYMENTS",
-            message="Cannot delete a batch that has payment records — these are financial records and must be preserved.",
-        )
-    cert_count = (
-        await db.execute(select(func.count(Certificate.id)).where(Certificate.batch_id == batch.id))
-    ).scalar_one()
-    if cert_count > 0:
-        raise APIError(
-            code="HAS_CERTIFICATES",
-            message="Cannot delete a batch that has issued certificates.",
-        )
-
     name = batch.name
+    # Capture what we need BEFORE the cascade removes the rows.
+    student_ids = await enrolled_student_ids(db, batch.id)
+    video_files = await collect_batch_video_files(db, batch.id)
+    impact = await batch_delete_impact(db, batch)
+
     await db.delete(batch)
     await db.commit()
-    print(f"[ADMIN] Batch deleted: {name} ({batch_id})")
-    return {"success": True, "message": "Batch deleted"}
+
+    # Kill any in-flight HLS streams for the now-unenrolled students. The
+    # student-video manifest endpoint checks this Redis key on every refresh
+    # (~120s), so active streams stop within that window. Non-fatal.
+    if student_ids:
+        try:
+            from app.core.redis import get_redis
+
+            r = await get_redis()
+            pipe = r.pipeline()
+            for sid in student_ids:
+                pipe.set(f"stream:revoked:{sid}:{batch_id}", "1", ex=86400)
+            await pipe.execute()
+        except Exception as exc:
+            print(f"[ADMIN] Failed to set stream revoke keys for deleted batch {batch_id}: {exc}")
+
+    # Remove on-disk HLS trees + source uploads (DB rows already gone via cascade).
+    remove_video_files(video_files)
+
+    print(f"[ADMIN] Batch deleted (full wipe): {name} ({batch_id}) impact={impact}")
+    return {"success": True, "message": "Batch deleted", "data": impact}
 
 
 @router.post("/{batch_id}/assign-instructor", response_model=BatchPublic)
@@ -575,3 +611,91 @@ async def complete_batch(
             },
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# Bulk email to a batch's enrolled students (announcements / notices)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{batch_id}/email")
+async def send_batch_email(
+    batch_id: str,
+    payload: BatchEmailCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    """Queue a bulk email to every ACTIVE-enrollment student in the batch.
+
+    Runs asynchronously on the `webinars` Celery worker so a large send never
+    blocks the request. A campaign row tracks progress (see email-campaigns)."""
+    batch = await db.get(Batch, batch_id)
+    if not batch:
+        raise APIError(code="NOT_FOUND", message="Batch not found", status_code=404)
+
+    recipients = await active_enrollment_count(db, batch.id)
+    if recipients == 0:
+        raise APIError(
+            code="NO_RECIPIENTS",
+            message="This batch has no active enrollments to email.",
+            status_code=400,
+        )
+
+    campaign = BatchEmailCampaign(
+        batch_id=batch.id,
+        subject=payload.subject.strip(),
+        body=payload.body,
+        status=BatchEmailStatus.queued,
+        total_recipients=recipients,
+        created_by=user.id,
+    )
+    db.add(campaign)
+    await db.commit()
+    await db.refresh(campaign)
+
+    # Best-effort enqueue — a broker hiccup must not fail the admin's action;
+    # the campaign stays 'queued' and can be retried by re-sending.
+    try:
+        celery.send_task(
+            "tasks.send_batch_email_campaign", args=[str(campaign.id)], queue="webinars"
+        )
+        print(f"[BATCH] enqueued email campaign {campaign.id} for batch {batch_id}")
+    except Exception as exc:  # pragma: no cover
+        print(f"[BATCH] enqueue email campaign failed: {exc}")
+
+    return {
+        "success": True,
+        "data": {
+            "id": str(campaign.id),
+            "status": campaign.status.value,
+            "total_recipients": recipients,
+        },
+    }
+
+
+@router.get("/{batch_id}/email-campaigns")
+async def list_batch_email_campaigns(
+    batch_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """Recent bulk-email campaigns for the batch, newest first (for status display)."""
+    res = await db.execute(
+        select(BatchEmailCampaign)
+        .where(BatchEmailCampaign.batch_id == batch_id)
+        .order_by(BatchEmailCampaign.created_at.desc())
+        .limit(20)
+    )
+    items = [
+        {
+            "id": str(c.id),
+            "subject": c.subject,
+            "status": c.status.value,
+            "total_recipients": c.total_recipients,
+            "sent_count": c.sent_count,
+            "created_at": c.created_at,
+            "sent_at": c.sent_at,
+        }
+        for c in res.scalars().all()
+    ]
+    return {"success": True, "data": items}
