@@ -1,15 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Pagination } from "@/components/ui/Pagination";
 import { extractErrorMessage } from "@/lib/api";
 import { CourseDTO, listCourses, togglePublishCourse } from "@/services/admin.service";
 import { formatCurrency } from "@/lib/utils";
 import { CourseDetailModal } from "@/components/catalog/CourseDetailModal";
 import { stripHtml } from "@/components/shared/RichTextView";
+
+const PAGE_SIZE = 10;
 
 export default function AdminCatalogue() {
   const [items, setItems] = useState<CourseDTO[]>([]);
@@ -17,14 +20,22 @@ export default function AdminCatalogue() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
   const [status, setStatus] = useState("");
+  const [page, setPage] = useState(1);
+  const [meta, setMeta] = useState({ page: 1, pages: 1, total: 0, limit: PAGE_SIZE });
+  const [categories, setCategories] = useState<string[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const load = async () => {
     setLoading(true);
     try {
-      const r = await listCourses({ limit: 100 });
+      const params: any = { page, limit: PAGE_SIZE };
+      if (search) params.search = search;
+      if (category) params.category = category;
+      if (status) params.published = status === "published";
+      const r = await listCourses(params);
       setItems(r.data);
+      if (r.meta) setMeta(r.meta);
     } catch (e) {
       toast.error(extractErrorMessage(e));
     } finally {
@@ -34,35 +45,21 @@ export default function AdminCatalogue() {
 
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, category, status, page]);
+
+  // Populate the category dropdown from the full catalogue, independent of pagination.
+  useEffect(() => {
+    listCourses({ limit: 100 })
+      .then((r) => {
+        const set = new Set<string>();
+        r.data.forEach((c) => c.category && set.add(c.category));
+        setCategories(Array.from(set).sort());
+      })
+      .catch(() => {});
   }, []);
 
-  const categories = useMemo(() => {
-    const set = new Set<string>();
-    items.forEach((c) => c.category && set.add(c.category));
-    return Array.from(set).sort();
-  }, [items]);
-
-  const filtered = useMemo(() => {
-    return items.filter((c) => {
-      if (status === "published" && !c.is_published) return false;
-      if (status === "draft" && c.is_published) return false;
-      if (category && c.category !== category) return false;
-      if (search) {
-        const q = search.toLowerCase();
-        const blob = [
-          c.title,
-          c.category,
-          ...(c.tags || []),
-          stripHtml(c.description || ""),
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-        if (!blob.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [items, search, category, status]);
+  const resetPage = () => setPage(1);
 
   const handleTogglePublish = async (c: CourseDTO) => {
     try {
@@ -87,13 +84,13 @@ export default function AdminCatalogue() {
         <Input
           placeholder="Search by title, category, tag…"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => { setSearch(e.target.value); resetPage(); }}
           leftIcon="search"
           containerClassName="flex-1 min-w-60"
         />
         <Select
           value={category}
-          onChange={(e) => setCategory(e.target.value)}
+          onChange={(e) => { setCategory(e.target.value); resetPage(); }}
           options={[
             { value: "", label: "All categories" },
             ...categories.map((c) => ({ value: c, label: c })),
@@ -102,7 +99,7 @@ export default function AdminCatalogue() {
         />
         <Select
           value={status}
-          onChange={(e) => setStatus(e.target.value)}
+          onChange={(e) => { setStatus(e.target.value); resetPage(); }}
           options={[
             { value: "", label: "All status" },
             { value: "published", label: "Published" },
@@ -128,22 +125,25 @@ export default function AdminCatalogue() {
             </div>
           ))}
         </div>
-      ) : filtered.length === 0 ? (
+      ) : items.length === 0 ? (
         <EmptyState
-          title={items.length === 0 ? "No courses yet" : "No matches"}
+          title={meta.total === 0 && !search && !category && !status ? "No courses yet" : "No matches"}
           description={
-            items.length === 0
+            meta.total === 0 && !search && !category && !status
               ? "Once you create courses, they'll appear here in a student-friendly view."
               : "Try clearing filters or a different search term."
           }
           icon="auto_stories"
         />
       ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-          {filtered.map((c) => (
-            <CourseCard key={c.id} course={c} onOpen={() => setOpenId(c.id)} />
-          ))}
-        </div>
+        <>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            {items.map((c) => (
+              <CourseCard key={c.id} course={c} onOpen={() => setOpenId(c.id)} />
+            ))}
+          </div>
+          <Pagination page={meta.page} pages={meta.pages} total={meta.total} limit={meta.limit} onPageChange={setPage} />
+        </>
       )}
 
       <CourseDetailModal
