@@ -50,6 +50,22 @@ async def get_current_user(
     return user
 
 
+async def get_current_user_optional(
+    access_token: Optional[str] = Cookie(default=None),
+    db: AsyncSession = Depends(get_db),
+) -> Optional[User]:
+    """Like get_current_user but returns None instead of raising when there is no
+    valid session (missing/expired/blacklisted/revoked token, inactive account,
+    or Redis unavailable). Lets public endpoints optionally recognise a logged-in
+    admin without ever 401-ing an anonymous visitor."""
+    if not access_token:
+        return None
+    try:
+        return await get_current_user(access_token, db)
+    except Exception:
+        return None
+
+
 def require_role(*roles: UserRole):
     async def dep(user: User = Depends(get_current_user)) -> User:
         if user.role not in roles:
