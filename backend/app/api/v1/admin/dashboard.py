@@ -20,9 +20,12 @@ router = APIRouter(prefix="/dashboard", tags=["admin:dashboard"])
 
 @router.get("/stats")
 async def stats(db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
+    # Revenue excludes is_test payments (dummy/QA enrollments into unpublished courses).
     revenue = (
         await db.execute(
-            select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.status == PaymentStatus.paid)
+            select(func.coalesce(func.sum(Payment.amount), 0))
+            .where(Payment.status == PaymentStatus.paid)
+            .where(Payment.is_test == False)  # noqa: E712
         )
     ).scalar_one()
 
@@ -33,6 +36,7 @@ async def stats(db: AsyncSession = Depends(get_db), _: User = Depends(require_ad
         await db.execute(
             select(func.coalesce(func.sum(Payment.amount), 0))
             .where(Payment.status == PaymentStatus.paid)
+            .where(Payment.is_test == False)  # noqa: E712
             .where(Payment.created_at >= month_start)
         )
     ).scalar_one()
@@ -40,6 +44,7 @@ async def stats(db: AsyncSession = Depends(get_db), _: User = Depends(require_ad
         await db.execute(
             select(func.coalesce(func.sum(Payment.amount), 0))
             .where(Payment.status == PaymentStatus.paid)
+            .where(Payment.is_test == False)  # noqa: E712
             .where(Payment.created_at >= last_month_start)
             .where(Payment.created_at < month_start)
         )
@@ -93,6 +98,7 @@ async def revenue_chart(
     res = await db.execute(
         select(func.date(Payment.created_at), func.coalesce(func.sum(Payment.amount), 0))
         .where(Payment.status == PaymentStatus.paid)
+        .where(Payment.is_test == False)  # noqa: E712
         .where(Payment.created_at >= start)
         .group_by(func.date(Payment.created_at))
         .order_by(func.date(Payment.created_at))
@@ -130,6 +136,7 @@ async def recent_transactions(
                 "batch_name": b.name,
                 "amount": float(p.amount),
                 "status": p.status.value,
+                "is_test": p.is_test,
                 "created_at": p.created_at,
             }
         )
