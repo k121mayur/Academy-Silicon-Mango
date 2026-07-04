@@ -550,9 +550,11 @@ async def update_session(
         except ValueError:
             raise APIError(code="VALIDATION", message="Invalid status")
     if payload.meeting_link is not None and payload.meeting_link != session.meeting_link:
+        _validate_link_url(payload.meeting_link, "meeting_link")
         changes.append(f"Meeting link updated")
         session.meeting_link = payload.meeting_link
     if payload.recording_url is not None and payload.recording_url != session.recording_url:
+        _validate_link_url(payload.recording_url, "recording_url")
         changes.append(f"Recording URL updated")
         session.recording_url = payload.recording_url
     if payload.scheduled_at is not None and payload.scheduled_at != session.scheduled_at:
