@@ -75,6 +75,35 @@ async def _assert_session_in_assigned_batch(
     return session, batch
 
 
+async def _assert_plan_in_batch(db: AsyncSession, batch_id, plan_id: Optional[str]) -> None:
+    """A plan_id must belong to the SAME batch the caller was already
+    authorized for — otherwise an instructor could attach their assignment/
+    session to another instructor's batch plan by guessing/enumerating its id."""
+    if plan_id is None:
+        return
+    plan = await db.get(BatchPlan, plan_id)
+    if not plan or str(plan.batch_id) != str(batch_id):
+        raise APIError(code="VALIDATION", message="Invalid plan_id for this batch", status_code=400)
+
+
+async def _assert_class_session_in_batch(db: AsyncSession, batch_id, session_id: Optional[str]) -> None:
+    """Same cross-batch ownership check as _assert_plan_in_batch, for session_id."""
+    if session_id is None:
+        return
+    sess = await db.get(ClassSession, session_id)
+    if not sess or str(sess.batch_id) != str(batch_id):
+        raise APIError(code="VALIDATION", message="Invalid session_id for this batch", status_code=400)
+
+
+def _validate_link_url(url: Optional[str], field: str) -> None:
+    if url and not (url.startswith("http://") or url.startswith("https://")):
+        raise APIError(
+            code="VALIDATION",
+            message=f"{field} must start with http:// or https://",
+            status_code=422,
+        )
+
+
 async def _instructor_display_name(db: AsyncSession, user: User) -> str:
     res = await db.execute(
         select(InstructorProfile).where(InstructorProfile.user_id == user.id)
