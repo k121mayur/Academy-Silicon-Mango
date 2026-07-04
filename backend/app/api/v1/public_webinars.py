@@ -26,9 +26,9 @@ from app.schemas.webinar import RegistrationCreate, RegistrationResend, Registra
 from app.services import webinar_service as wsvc
 from app.services.captcha_service import verify_turnstile
 from app.services.email_service import (
+    queue_email,
     render_webinar_confirmation_email,
     render_webinar_verification_email,
-    send_email,
 )
 
 router = APIRouter(prefix="/public/webinars", tags=["public:webinars"])
@@ -207,7 +207,7 @@ async def _send_verification(webinar: Webinar, reg: WebinarRegistration) -> None
     base = settings.FRONTEND_URL.rstrip("/")
     verify_url = f"{base}/webinars/verify/{reg.verification_token}"
     subject, html, text = render_webinar_verification_email(reg.full_name, webinar.title, verify_url)
-    await send_email(reg.email, subject, html, text)
+    queue_email(reg.email, subject, html, text)
 
 
 @router.post("/{webinar_id}/register")
@@ -402,7 +402,7 @@ async def verify_registration(payload: RegistrationVerify, db: AsyncSession = De
                 wsvc.google_calendar_url(webinar, detail_url),
             )
             ics = wsvc.build_ics(webinar, detail_url)
-            await send_email(
+            queue_email(
                 reg.email,
                 subject,
                 html,
