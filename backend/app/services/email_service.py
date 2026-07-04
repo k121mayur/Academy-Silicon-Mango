@@ -1,14 +1,46 @@
 from __future__ import annotations
 
+import base64
 from email.message import EmailMessage
 from typing import Iterable, Optional
 
 import aiosmtplib
 
+from app.celery_app import celery
 from app.core.config import settings
 
 
 Attachment = tuple[str, bytes, str]  # (filename, data, mime_type)
+
+
+def queue_email(
+    to_email: str,
+    subject: str,
+    html_body: str,
+    text_body: Optional[str] = None,
+    attachments: Optional[Iterable[Attachment]] = None,
+) -> None:
+    """Fire-and-forget dispatch to the `webinars` Celery queue.
+
+    Call this from request handlers so the HTTP response never blocks on a live
+    SMTP round-trip — the worker sends it within moments, off the request path.
+    Use `send_email` directly only from code that already runs off the request
+    path (e.g. inside a Celery task). A broker hiccup here must not fail the
+    caller's request, so failures are logged, not raised.
+    """
+    attachments_b64 = None
+    if attachments:
+        attachments_b64 = [
+            [fname, base64.b64encode(data).decode("ascii"), mime] for fname, data, mime in attachments
+        ]
+    try:
+        celery.send_task(
+            "tasks.send_email",
+            args=[to_email, subject, html_body, text_body, attachments_b64],
+            queue="webinars",
+        )
+    except Exception as exc:
+        print(f"[EMAIL][ERROR] Failed to queue email to {to_email}: {exc}")
 
 
 async def send_email(
@@ -505,6 +537,25 @@ def render_password_reset_google_email() -> tuple[str, str, str]:
     inner = """
         <h2 style="font-family:Manrope,sans-serif;color:#191c1d;font-size:22px;margin:0 0 12px;">Password reset requested</h2>
         <p style="color:#514532;line-height:1.6;">This account signs in with <strong>Google</strong>, so there's no password to reset. Just use the <strong>Sign in with Google</strong> button on the login page.</p>
+        <p style="color:#837560;font-size:14px;margin-top:16px;">If this wasn't you, you can safely ignore this email.</p>
+    """
+    return subject, _webinar_shell(inner), text
+
+
+def render_signup_existing_account_email() -> tuple[str, str, str]:
+    subject = "Signup attempted — Silicon Mango Academy"
+    text = (
+        "Someone tried to sign up for Silicon Mango Academy using this email address, "
+        "which already has an account.\n\n"
+        "If this was you, just log in instead — or use \"Forgot password\" if you don't "
+        "remember your password.\n\n"
+        "If this wasn't you, you can safely ignore this email.\n\n"
+        "— Silicon Mango Academy"
+    )
+    inner = """
+        <h2 style="font-family:Manrope,sans-serif;color:#191c1d;font-size:22px;margin:0 0 12px;">Signup attempted</h2>
+        <p style="color:#514532;line-height:1.6;">Someone tried to sign up using this email address, which already has an account.</p>
+        <p style="color:#514532;line-height:1.6;">If this was you, just log in instead — or use "Forgot password" if you don't remember your password.</p>
         <p style="color:#837560;font-size:14px;margin-top:16px;">If this wasn't you, you can safely ignore this email.</p>
     """
     return subject, _webinar_shell(inner), text
