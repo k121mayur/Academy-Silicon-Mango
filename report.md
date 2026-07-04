@@ -225,3 +225,40 @@ Only two migrations exist; `videos` indexes are in the migration but not the mod
 
 ## Appendix — what's genuinely solid
 Refresh-token rotation + Redis blacklist; OAuth state CSRF; bcrypt(12) + hashed/expiring/attempt-capped OTP; HLS HMAC tokens + per-request enrollment & revocation checks + path-traversal guards; `Numeric` money; correct composite unique constraints; consistent instructor/student object-level authorization; streaming upload with size cap + partial-file cleanup; `skip_locked` job pickup. The foundations are good — the gaps are concentrated in **deployment configuration, payment completeness, data-lifecycle (cascades), and the production-hardening that was deferred with "tighten before production" comments.**
+
+---
+
+# 10. Mobile responsiveness audit
+
+**Date:** 2026-07-04
+**Method:** Read-only frontend review plus live browser checks at a narrow viewport (`390x844`) on the public and auth screens that are reachable without a successful login.
+
+## Verdict
+
+The frontend is **mostly mobile-friendly overall**, including the public shell, the student portal, and most admin pages I could verify at phone width. I did **not** find a confirmed horizontal-overflow or clipping problem on `/`, `/login`, `/signup`, `/courses`, `/webinars`, `/blog`, `/portal/my-courses`, `/portal/profile`, `/admin/dashboard`, `/admin/courses`, `/admin/batches`, `/admin/users/students`, `/admin/webinars`, or `/admin/enrollments` at a `390x844` viewport. The app shell, header drawer, and most content cards stack correctly in the browser.
+
+There is one **confirmed mobile regression**: [frontend/src/pages/admin/PaymentSettings.tsx](frontend/src/pages/admin/PaymentSettings.tsx#L122) overflows the viewport horizontally on mobile (`scrollWidth 447` on a `375px` client width). The instructor dashboard is also a **borderline case**: [frontend/src/pages/instructor/Dashboard.tsx](frontend/src/pages/instructor/Dashboard.tsx#L43) measured `scrollWidth 398` on a `375px` client width, but the screenshot still looked usable and I did not see clipped content.
+
+## Verified in browser
+
+- [frontend/src/components/layout/AdminLayout.tsx](frontend/src/components/layout/AdminLayout.tsx) and the matching student/instructor layouts keep the sidebar behind a mobile drawer and collapse the content area cleanly.
+- Public and auth pages rendered within the phone viewport without document-level horizontal overflow.
+- The login and signup screens remained readable at narrow width; controls stacked instead of clipping.
+- The student portal pages [frontend/src/pages/student/MyCourses.tsx](frontend/src/pages/student/MyCourses.tsx#L50) and [frontend/src/pages/student/Profile.tsx](frontend/src/pages/student/Profile.tsx#L250) stayed within width bounds.
+- The admin dashboards and list pages above stayed within width bounds except for Payment Settings.
+- The instructor dashboard rendered correctly visually, but the browser metrics show a small width mismatch worth fixing.
+
+## Likely problem screens to inspect next
+
+- [frontend/src/pages/admin/PaymentSettings.tsx](frontend/src/pages/admin/PaymentSettings.tsx#L122)
+- [frontend/src/pages/instructor/Dashboard.tsx](frontend/src/pages/instructor/Dashboard.tsx#L43)
+
+The earlier code scan still suggests the dense admin list pages are worth keeping an eye on, but the live browser run only confirmed Payment Settings as a true overflow problem.
+
+## What I could not fully verify
+
+- The course detail tab strip and the sticky mobile CTA on the student course-details flow, which are both reasonable but still worth checking on a real signed-in session.
+
+## Conclusion
+
+I would describe the frontend as **mobile-friendly overall with one confirmed admin-side exception**. If you want the highest-value next fix, it is the Payment Settings screen at [frontend/src/pages/admin/PaymentSettings.tsx](frontend/src/pages/admin/PaymentSettings.tsx#L122); the instructor dashboard is the next borderline screen to tighten.
