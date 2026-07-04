@@ -18,7 +18,7 @@ from app.core.redis import (
 )
 from app.core.security import generate_otp, hash_otp, verify_otp
 from app.models.newsletter import NewsletterSubscriber
-from app.services.email_service import render_newsletter_otp_email, send_email
+from app.services.email_service import queue_email, render_newsletter_otp_email
 
 OTP_TTL_SECONDS = 300
 MAX_OTP_ATTEMPTS = 5
@@ -58,7 +58,7 @@ async def request_newsletter_otp(db: AsyncSession, email: str) -> tuple[int, boo
     await store_newsletter_otp(email, hash_otp(otp), ttl_seconds=OTP_TTL_SECONDS)
 
     subject, html, text = render_newsletter_otp_email(otp, minutes=OTP_TTL_SECONDS // 60)
-    await send_email(email, subject, html, text)
+    queue_email(email, subject, html, text)
     print(f"[NEWSLETTER] Confirmation OTP issued for {_mask_email(email)} (expires in 5 min)")
     return OTP_TTL_SECONDS, False
 
