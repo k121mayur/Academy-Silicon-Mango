@@ -250,10 +250,10 @@ export default function PublicLayout() {
 
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-14 grid grid-cols-2 md:grid-cols-4 gap-8 relative">
           <div className="col-span-2 md:col-span-1">
-            <div className="flex items-center gap-2 mb-3">
+            <Link to="/" className="flex items-center gap-2 mb-3">
               <img src="/Logo1.png" alt="Silicon Mango" width={32} height={32} className="w-8 h-8 object-contain" />
               <span className="font-display font-extrabold">Silicon Mango</span>
-            </div>
+            </Link>
             <p className="text-body-sm text-surface-containerHigh/70 max-w-xs">
               Affordable, job-ready courses in Excel, Python, SQL, and AI, built for working
               professionals across India.
