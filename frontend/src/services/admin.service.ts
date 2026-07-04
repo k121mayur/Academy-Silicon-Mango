@@ -214,8 +214,8 @@ export async function batchEnrollments(id: string) {
   const res = await api.get(`/admin/batches/${id}/enrollments`);
   return res.data as Array<{ id: string; student_id: string; student_name: string; student_email: string; enrolled_at: string; status: string }>;
 }
-export async function batchEnroll(id: string, studentId: string) {
-  const res = await api.post(`/admin/batches/${id}/enroll`, { student_id: studentId });
+export async function batchEnroll(id: string, studentId: string, feePaid: boolean = true) {
+  const res = await api.post(`/admin/batches/${id}/enroll`, { student_id: studentId, fee_paid: feePaid });
   return res.data;
 }
 export async function batchRemoveEnrollment(batchId: string, enrollmentId: string) {
@@ -333,7 +333,7 @@ export async function listAllEnrollments(
   const res = await api.get<PaginatedResponse<EnrollmentRow>>("/admin/enrollments", { params });
   return res.data;
 }
-export async function adminEnroll(payload: { student_id: string; batch_id: string }) {
+export async function adminEnroll(payload: { student_id: string; batch_id: string; fee_paid?: boolean }) {
   const res = await api.post("/admin/enrollments", payload);
   return res.data;
 }

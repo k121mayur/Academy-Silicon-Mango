@@ -203,7 +203,7 @@ export default function AdminEnrollments() {
         onClose={() => setUnenrollTarget(null)}
         onConfirm={confirmUnenroll}
         title="Unenroll student?"
-        description={`This removes ${unenrollTarget?.student_name || "the student"}'s enrollment in "${unenrollTarget?.batch_name}". Their account and existing payment record are kept.`}
+        description={`This removes ${unenrollTarget?.student_name || "the student"}'s enrollment in "${unenrollTarget?.batch_name}". Their paid fee will no longer count toward revenue. Their account and payment record are kept for reference.`}
         confirmLabel="Unenroll"
         destructive
         loading={unenrolling}
@@ -218,12 +218,14 @@ function EnrollModal({ open, onClose, onDone }: { open: boolean; onClose: () => 
   const [loadingOptions, setLoadingOptions] = useState(false);
   const [studentId, setStudentId] = useState<string | null>(null);
   const [batchId, setBatchId] = useState<string | null>(null);
+  const [feePaid, setFeePaid] = useState(true);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!open) {
       setStudentId(null);
       setBatchId(null);
+      setFeePaid(true);
       return;
     }
     setLoadingOptions(true);
@@ -240,7 +242,7 @@ function EnrollModal({ open, onClose, onDone }: { open: boolean; onClose: () => 
     if (!studentId || !batchId) return;
     setBusy(true);
     try {
-      await adminEnroll({ student_id: studentId, batch_id: batchId });
+      await adminEnroll({ student_id: studentId, batch_id: batchId, fee_paid: feePaid });
       toast.success("Student enrolled");
       onDone();
     } catch (e) {
@@ -276,6 +278,15 @@ function EnrollModal({ open, onClose, onDone }: { open: boolean; onClose: () => 
           onChange={setBatchId}
           emptyText="No batches found"
         />
+        <label className="flex items-center gap-2 text-body-sm text-ink">
+          <input
+            type="checkbox"
+            checked={feePaid}
+            onChange={(e) => setFeePaid(e.target.checked)}
+            className="w-4 h-4 accent-primary"
+          />
+          Fees paid
+        </label>
       </div>
     </Modal>
   );

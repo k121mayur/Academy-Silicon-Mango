@@ -40,6 +40,7 @@ export default function BatchDetail() {
   const [allStudents, setAllStudents] = useState<StudentDTO[]>([]);
   const [studentsLoading, setStudentsLoading] = useState(false);
   const [enrollStudentId, setEnrollStudentId] = useState<string | null>(null);
+  const [enrollFeePaid, setEnrollFeePaid] = useState(true);
   const [enrolling, setEnrolling] = useState(false);
   const [completeOpen, setCompleteOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -94,6 +95,7 @@ export default function BatchDetail() {
   useEffect(() => {
     if (!enrollOpen) {
       setEnrollStudentId(null);
+      setEnrollFeePaid(true);
       return;
     }
     setStudentsLoading(true);
@@ -107,7 +109,7 @@ export default function BatchDetail() {
     if (!id || !enrollStudentId) return;
     setEnrolling(true);
     try {
-      await batchEnroll(id, enrollStudentId);
+      await batchEnroll(id, enrollStudentId, enrollFeePaid);
       toast.success("Student enrolled");
       setEnrollOpen(false);
       refresh();
@@ -386,17 +388,28 @@ export default function BatchDetail() {
           <Button onClick={enroll} loading={enrolling} disabled={!enrollStudentId}>Enroll</Button>
         </>}
       >
-        <SearchableSelect
-          label="Student"
-          placeholder="Select a student"
-          loading={studentsLoading}
-          options={allStudents
-            .filter((s) => !enrollments.some((e) => e.student_id === s.user_id))
-            .map((s) => ({ value: s.user_id, label: s.display_name, sublabel: s.email }))}
-          value={enrollStudentId}
-          onChange={setEnrollStudentId}
-          emptyText="No students available"
-        />
+        <div className="space-y-4">
+          <SearchableSelect
+            label="Student"
+            placeholder="Select a student"
+            loading={studentsLoading}
+            options={allStudents
+              .filter((s) => !enrollments.some((e) => e.student_id === s.user_id))
+              .map((s) => ({ value: s.user_id, label: s.display_name, sublabel: s.email }))}
+            value={enrollStudentId}
+            onChange={setEnrollStudentId}
+            emptyText="No students available"
+          />
+          <label className="flex items-center gap-2 text-body-sm text-ink">
+            <input
+              type="checkbox"
+              checked={enrollFeePaid}
+              onChange={(e) => setEnrollFeePaid(e.target.checked)}
+              className="w-4 h-4 accent-primary"
+            />
+            Fees paid
+          </label>
+        </div>
       </Modal>
 
       <ConfirmModal
