@@ -63,7 +63,9 @@ export default function Login() {
       <div className="absolute inset-0 grid-pattern opacity-30 pointer-events-none -z-10" />
       <div className="w-full max-w-md animate-slide-up">
         <div className="text-center mb-6">
-          <img src="/Logo1.png" alt="Silicon Mango" width={48} height={48} className="w-12 h-12 object-contain mx-auto mb-3" />
+          <Link to="/">
+            <img src="/Logo1.png" alt="Silicon Mango" width={48} height={48} className="w-12 h-12 object-contain mx-auto mb-3" />
+          </Link>
           <h1 className="font-display font-bold text-display-md text-ink mb-1">Welcome back</h1>
           <p className="text-body-sm text-ink-variant">Sign in to continue your learning journey</p>
         </div>
@@ -96,6 +98,11 @@ export default function Login() {
               required
               leftIcon="lock"
             />
+            <div className="flex justify-end -mt-1">
+              <Link to="/forgot-password" className="text-label text-primary font-semibold hover:underline">
+                Forgot password?
+              </Link>
+            </div>
             <Button type="submit" fullWidth size="lg" loading={submitting}>
               Sign In
             </Button>
