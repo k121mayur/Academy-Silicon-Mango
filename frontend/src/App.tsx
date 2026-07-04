@@ -14,6 +14,7 @@ import { RouteFallback } from "@/components/layout/RouteFallback";
 const Landing = lazy(() => import("@/pages/Landing"));
 const Login = lazy(() => import("@/pages/auth/Login"));
 const Signup = lazy(() => import("@/pages/auth/Signup"));
+const ForgotPassword = lazy(() => import("@/pages/auth/ForgotPassword"));
 const VerifyCertificate = lazy(() => import("@/pages/public/VerifyCertificate"));
 const VerifyWebinarRegistration = lazy(() => import("@/pages/public/VerifyWebinarRegistration"));
 const WebinarListing = lazy(() => import("@/pages/WebinarListing"));
@@ -76,6 +77,7 @@ export default function App() {
           <Route index element={<Landing />} />
           <Route path="login" element={<Login />} />
           <Route path="signup" element={<Signup />} />
+          <Route path="forgot-password" element={<ForgotPassword />} />
           <Route path="courses" element={<CoursesListing />} />
           <Route path="courses/:courseId" element={<PublicCourseDetails />} />
           <Route path="blog" element={<BlogListing />} />
