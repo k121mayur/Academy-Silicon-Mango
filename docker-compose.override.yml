@@ -1,0 +1,31 @@
+# ============================================================
+# Local-dev-only overlay — auto-merged by plain `docker compose up` (no -f
+# flags), which is exactly the command CLAUDE.md/README document for local dev.
+# Production always runs with explicit -f flags (see scripts/deploy.sh), and
+# Compose does NOT auto-load this file when -f is given, so this can never
+# affect the server.
+#
+# Purpose: every service in docker-compose.yml sets `restart: unless-stopped`
+# on purpose, so a crashed prod container (or the whole stack after a VM
+# reboot) self-heals. Locally that same policy means Docker Desktop restarts
+# this entire stack on its own whenever it (or Windows) restarts, even though
+# nobody ran `docker compose up` — which is the "containers are up and I never
+# started them" symptom. Turning it off here means the stack only runs when
+# you explicitly start it.
+# ============================================================
+
+services:
+  postgres:
+    restart: "no"
+  redis:
+    restart: "no"
+  backend:
+    restart: "no"
+  worker:
+    restart: "no"
+  beat:
+    restart: "no"
+  worker-webinars:
+    restart: "no"
+  frontend:
+    restart: "no"
