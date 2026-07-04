@@ -314,7 +314,10 @@ async def verify_certificate(cert_id: str, db: AsyncSession = Depends(get_db)):
         return {"success": True, "data": {"valid": False}}
 
     cert, user, prof, batch, course = row
-    student_name = (prof.display_name if prof and prof.display_name else user.email) or ""
+    # Never fall back to the user's email here — this endpoint is public and
+    # unauthenticated, so leaking an email address to anyone with a cert ID
+    # (which is not a secret) would be a PII disclosure.
+    student_name = (prof.display_name if prof and prof.display_name else None) or "Verified Student"
     return {
         "success": True,
         "data": {
