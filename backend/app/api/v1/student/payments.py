@@ -19,7 +19,7 @@ from app.models.payment import Payment, PaymentStatus
 from app.models.user import User
 from app.schemas.student import CreateOrderIn, VerifyPaymentIn
 from app.services.auth_service import is_profile_complete
-from app.services.email_service import render_payment_receipt_email, send_email
+from app.services.email_service import queue_email, render_payment_receipt_email
 from app.services.payment_service import (
     acquire_seat_or_raise,
     assert_enrollable,
@@ -72,7 +72,7 @@ async def _issue_receipt(db: AsyncSession, payment: Payment, student: User, batc
             receipt_no=receipt_no,
             courses_url=f"{settings.FRONTEND_URL.rstrip('/')}/portal/my-courses",
         )
-        await send_email(
+        queue_email(
             student.email,
             subj,
             html,
