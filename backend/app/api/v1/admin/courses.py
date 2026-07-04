@@ -202,8 +202,12 @@ async def update_course(
     if "certification_criteria" in data:
         course.certification_criteria = [i if isinstance(i, dict) else i.model_dump() for i in data.pop("certification_criteria")]
 
+    _COURSE_UPDATE_FIELDS = {
+        "title", "description", "category", "duration_value", "price", "discount",
+        "demo_youtube_url", "tags", "is_published",
+    }
     for k, v in data.items():
-        if hasattr(course, k):
+        if k in _COURSE_UPDATE_FIELDS:
             setattr(course, k, v)
     await db.commit()
     await db.refresh(course)
