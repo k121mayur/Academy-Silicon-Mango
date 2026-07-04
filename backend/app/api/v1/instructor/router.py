@@ -799,15 +799,24 @@ async def update_assignment(
             a.assignment_type = AssignmentType(data.pop("assignment_type"))
         except ValueError:
             raise APIError(code="VALIDATION", message="Invalid assignment_type")
+    if "plan_id" in data:
+        await _assert_plan_in_batch(db, a.batch_id, data["plan_id"])
+    if "session_id" in data:
+        await _assert_class_session_in_batch(db, a.batch_id, data["session_id"])
+    # Allow-list: only fields AssignmentUpdate actually declares (minus
+    # assignment_type, popped above) may be written — closes the door on a
+    # future schema field being silently settable without a review here.
+    _ASSIGNMENT_UPDATE_FIELDS = {"plan_id", "session_id", "title", "description", "due_date", "max_points", "allow_late"}
     for k, v in data.items():
+        if k not in _ASSIGNMENT_UPDATE_FIELDS:
+            continue
         if v is None and k in {"title"}:
             continue
         if k == "title" and isinstance(v, str):
             v = v.strip()
             if not v:
                 raise APIError(code="VALIDATION", message="title cannot be empty")
-        if hasattr(a, k):
-            setattr(a, k, v)
+        setattr(a, k, v)
     await db.commit()
     await db.refresh(a)
     return {"success": True, "data": _assignment_to_dict(a)}
