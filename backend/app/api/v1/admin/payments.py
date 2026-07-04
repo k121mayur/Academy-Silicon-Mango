@@ -30,8 +30,19 @@ async def list_payments(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    base = select(Payment, User, Batch).join(User, User.id == Payment.student_id).join(Batch, Batch.id == Payment.batch_id)
-    cnt = select(func.count(Payment.id))
+    base = (
+        select(Payment, User, Batch, StudentProfile)
+        .join(User, User.id == Payment.student_id)
+        .join(Batch, Batch.id == Payment.batch_id)
+        .outerjoin(StudentProfile, StudentProfile.user_id == User.id)
+    )
+    cnt = (
+        select(func.count(Payment.id))
+        .select_from(Payment)
+        .join(User, User.id == Payment.student_id)
+        .join(Batch, Batch.id == Payment.batch_id)
+        .outerjoin(StudentProfile, StudentProfile.user_id == User.id)
+    )
     if status:
         try:
             s = PaymentStatus(status)
@@ -43,9 +54,7 @@ async def list_payments(
     base = base.order_by(Payment.created_at.desc()).offset((page - 1) * limit).limit(limit)
     rows = (await db.execute(base)).all()
     items = []
-    for p, u, b in rows:
-        prof_res = await db.execute(select(StudentProfile).where(StudentProfile.user_id == u.id))
-        prof = prof_res.scalar_one_or_none()
+    for p, u, b, prof in rows:
         items.append(
             PaymentPublic(
                 id=str(p.id),
@@ -67,6 +76,26 @@ async def list_payments(
         "data": items,
         "meta": {"page": page, "limit": limit, "total": total, "pages": max(1, math.ceil(total / limit))},
     }
+
+
+@router.patch("/payments/{payment_id}/mark-paid")
+async def mark_payment_paid(
+    payment_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    payment = await db.get(Payment, payment_id)
+    if not payment:
+        raise APIError(code="NOT_FOUND", message="Payment not found", status_code=404)
+    if payment.status != PaymentStatus.pending:
+        raise APIError(
+            code="VALIDATION",
+            message="Only pending payments can be marked as paid",
+            status_code=400,
+        )
+    payment.status = PaymentStatus.paid
+    await db.commit()
+    return {"success": True, "data": {"payment_id": str(payment.id), "status": payment.status.value}}
 
 
 def _mask(key: Optional[str]) -> Optional[str]:
