@@ -2,24 +2,44 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { Table, THead, TR, TH, TD } from "@/components/ui/Table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { extractErrorMessage } from "@/lib/api";
-import { listPayments } from "@/services/admin.service";
+import { listPayments, markPaymentPaid } from "@/services/admin.service";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 
 export default function AdminPayments() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
+  const [markingId, setMarkingId] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = () => {
     setLoading(true);
-    listPayments({ status: status || undefined })
+    return listPayments({ status: status || undefined })
       .then((res) => setItems(res.data))
       .catch((e) => toast.error(extractErrorMessage(e)))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
+
+  const handleMarkPaid = async (paymentId: string) => {
+    setMarkingId(paymentId);
+    try {
+      await markPaymentPaid(paymentId);
+      toast.success("Payment marked as paid");
+      await load();
+    } catch (e) {
+      toast.error(extractErrorMessage(e));
+    } finally {
+      setMarkingId(null);
+    }
+  };
 
   return (
     <div className="space-y-5">
@@ -49,6 +69,7 @@ export default function AdminPayments() {
               <TH>Status</TH>
               <TH>Razorpay Order</TH>
               <TH>Date</TH>
+              <TH>Actions</TH>
             </tr>
           </THead>
           <tbody>
@@ -60,6 +81,18 @@ export default function AdminPayments() {
                 <TD><Badge tone={p.status === "paid" ? "success" : p.status === "pending" ? "warning" : "danger"}>{p.status}</Badge></TD>
                 <TD className="font-mono text-label">{p.razorpay_order_id || "—"}</TD>
                 <TD>{formatDateTime(p.created_at)}</TD>
+                <TD>
+                  {p.status === "pending" && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      loading={markingId === p.id}
+                      onClick={() => handleMarkPaid(p.id)}
+                    >
+                      Mark as Paid
+                    </Button>
+                  )}
+                </TD>
               </TR>
             ))}
           </tbody>

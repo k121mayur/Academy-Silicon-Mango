@@ -370,6 +370,10 @@ export async function listPayments(params: { page?: number; limit?: number; stat
   const res = await api.get("/admin/payments", { params });
   return res.data;
 }
+export async function markPaymentPaid(paymentId: string) {
+  const res = await api.patch(`/admin/payments/${paymentId}/mark-paid`);
+  return res.data;
+}
 export interface PaymentSettings {
   mode: "test" | "live";
   test_configured: boolean;
