@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app.api.v1 import auth as auth_router
 from app.api.v1.admin import (
@@ -25,6 +25,7 @@ from app.api.v1.student import (
 from app.api.v1 import public as public_router
 from app.api.v1 import public_webinars as public_webinars_router
 from app.api.v1 import public_blogs as public_blogs_router
+from app.dependencies.auth import require_admin
 
 api_router = APIRouter()
 api_router.include_router(auth_router.router)
@@ -32,7 +33,9 @@ api_router.include_router(public_router.router)
 api_router.include_router(public_webinars_router.router)
 api_router.include_router(public_blogs_router.router)
 
-admin_router = APIRouter(prefix="/admin")
+# Router-level backstop: even if a new admin endpoint is added without its own
+# require_admin dependency, this still blocks non-admins from reaching it.
+admin_router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
 admin_router.include_router(admin_dashboard.router)
 admin_router.include_router(admin_courses.router)
 admin_router.include_router(admin_batches.router)
