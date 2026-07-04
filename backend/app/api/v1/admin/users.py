@@ -259,9 +259,10 @@ async def update_instructor(
         if new_password:
             user.hashed_password = hash_password(new_password)
             print(f"[ADMIN] Instructor password reset: {user.email}")
+    _INSTRUCTOR_PROFILE_FIELDS = {"display_name", "bio", "skills"}
     if prof and data:
         for k, v in data.items():
-            if hasattr(prof, k):
+            if k in _INSTRUCTOR_PROFILE_FIELDS:
                 setattr(prof, k, v)
     await db.commit()
     return await get_instructor(user_id, db, _)
@@ -551,9 +552,10 @@ async def update_student(
             user.email = email
     if "is_active" in data:
         user.is_active = data.pop("is_active")
+    _STUDENT_PROFILE_FIELDS = {"display_name", "phone", "city"}
     if prof and data:
         for k, v in data.items():
-            if hasattr(prof, k):
+            if k in _STUDENT_PROFILE_FIELDS:
                 setattr(prof, k, v)
     await db.commit()
     return await get_student(user_id, db, _)
