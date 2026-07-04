@@ -29,7 +29,7 @@ from app.models.batch import (
 )
 from app.models.certificate import Certificate
 from app.models.course import Course, DurationUnit
-from app.models.payment import Payment
+from app.models.payment import Payment, PaymentStatus
 from app.models.user import InstructorProfile, StudentProfile, User, UserRole
 from app.schemas.batch import (
     BatchCreate,
@@ -42,7 +42,12 @@ from app.schemas.batch import (
     EnrollmentPublic,
 )
 from app.celery_app import celery
-from app.services.payment_service import active_enrollment_count
+from app.services.payment_service import (
+    active_enrollment_count,
+    create_enrollment_with_payment,
+    get_existing_active_course_enrollment,
+    payable_amount,
+)
 from app.models.session import Session, SessionStatus
 from app.services.batch_admin_service import (
     batch_delete_impact,
@@ -282,8 +287,9 @@ async def update_batch(
         batch.delivery_mode = DeliveryMode(data.pop("delivery_mode"))
     if "status" in data:
         batch.status = BatchStatus(data.pop("status"))
+    _BATCH_UPDATE_FIELDS = {"name", "start_date", "end_date", "capacity"}
     for k, v in data.items():
-        if hasattr(batch, k):
+        if k in _BATCH_UPDATE_FIELDS:
             setattr(batch, k, v)
     await db.commit()
     await db.refresh(batch)
@@ -491,6 +497,18 @@ async def enroll_student(
     if existing.scalar_one_or_none():
         raise APIError(code="BATCH_002", message="Student already enrolled")
 
+    other = await get_existing_active_course_enrollment(db, batch.course_id, student.id)
+    if other:
+        other_batch = await db.get(Batch, other.batch_id)
+        raise APIError(
+            code="ALREADY_ENROLLED_COURSE",
+            message=(
+                f"Student is already enrolled in another batch of this course "
+                f"({other_batch.name if other_batch else 'unknown batch'})"
+            ),
+            status_code=409,
+        )
+
     if batch.capacity is not None:
         cnt = (
             await db.execute(
@@ -505,9 +523,20 @@ async def enroll_student(
                 batch.id, cnt, batch.capacity,
             )
 
-    enr = Enrollment(batch_id=batch.id, student_id=student.id, status=EnrollmentStatus.active)
-    db.add(enr)
+    course = await db.get(Course, batch.course_id)
+    # Enrolling into an UNPUBLISHED course is treated as a test/dummy enrollment
+    # (the admin is trialing the course), so its payment is excluded from revenue.
+    is_test_enrollment = course is not None and not course.is_published
     try:
+        enr, _payment = await create_enrollment_with_payment(
+            db,
+            batch=batch,
+            student=student,
+            amount=payable_amount(course),
+            status=PaymentStatus.paid if payload.fee_paid else PaymentStatus.pending,
+            razorpay_order_id="ADMIN_ENROLL",
+            is_test=is_test_enrollment,
+        )
         await db.commit()
         await db.refresh(enr)
     except IntegrityError:
