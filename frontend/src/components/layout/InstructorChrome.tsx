@@ -25,7 +25,7 @@ export function InstructorSidebar({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <aside className="w-64 h-full bg-surface-lowest border-r border-ink-outlineVariant/40 shadow-nav flex flex-col">
       <Link
-        to="/instructor/dashboard"
+        to="/"
         className="flex items-center gap-2 px-5 py-4 border-b border-ink-outlineVariant/30"
       >
         <img src="/Logo1.png" alt="Silicon Mango" className="w-9 h-9 object-contain" />
