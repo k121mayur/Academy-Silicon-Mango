@@ -9,7 +9,7 @@ celery = Celery(
     "silicon_mango",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=["app.tasks.encoding", "app.tasks.webinars", "app.tasks.batch_emails"],
+    include=["app.tasks.encoding", "app.tasks.webinars", "app.tasks.batch_emails", "app.tasks.emails"],
 )
 
 celery.conf.update(
@@ -44,6 +44,9 @@ celery.conf.update(
         # Batch bulk email shares the webinars worker (same "time-sensitive mail,
         # never blocked by encoding" rationale).
         "tasks.send_batch_email_campaign": {"queue": "webinars"},
+        # Single transactional emails (OTP, receipts, notifications) — queued so
+        # the HTTP request never blocks on a live SMTP round-trip.
+        "tasks.send_email": {"queue": "webinars"},
     },
 )
 
