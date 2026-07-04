@@ -754,6 +754,8 @@ async def create_assignment(
     db: AsyncSession = Depends(get_db),
 ):
     await _assert_batch_assigned(db, instructor, batch_id)
+    await _assert_plan_in_batch(db, batch_id, payload.plan_id)
+    await _assert_class_session_in_batch(db, batch_id, payload.session_id)
     try:
         atype = AssignmentType(payload.assignment_type)
     except ValueError:
