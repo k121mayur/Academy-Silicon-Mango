@@ -20,7 +20,7 @@ from app.api.v1.router import api_router
 from app.core.config import assert_safe_production_config, settings
 from app.core.exceptions import APIError
 from app.core.redis import close_redis, get_redis
-from app.db.seed import seed_master_admin
+from app.db.seed import seed_demo_accounts, seed_master_admin
 from app.db.session import AsyncSessionLocal, engine
 from app.services.storage_service import ensure_dirs
 
@@ -52,6 +52,7 @@ async def lifespan(app: FastAPI):
     async with AsyncSessionLocal() as db:
         try:
             await seed_master_admin(db)
+            await seed_demo_accounts(db)
         except Exception as e:
             print(f"[BOOT][ERROR] Seeding failed: {e}")
 
