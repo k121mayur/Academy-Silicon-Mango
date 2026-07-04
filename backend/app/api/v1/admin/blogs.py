@@ -162,8 +162,9 @@ async def update_blog(
         if now_published and blog.published_at is None:
             blog.published_at = datetime.now(timezone.utc)
 
+    _BLOG_UPDATE_FIELDS = {"title", "content", "excerpt", "author", "tags", "thumbnail_url"}
     for k, v in data.items():
-        if hasattr(blog, k):
+        if k in _BLOG_UPDATE_FIELDS:
             setattr(blog, k, v)
 
     await db.commit()
