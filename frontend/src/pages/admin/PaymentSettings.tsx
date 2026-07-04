@@ -87,21 +87,21 @@ export default function PaymentSettings() {
 
       {/* Overall status */}
       <Card>
-        <CardBody className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <span className={cn("icon text-[28px]", activeConfigured ? "text-tertiary" : "text-ink-outline")}>
+        <CardBody className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className={cn("icon text-[28px] shrink-0", activeConfigured ? "text-tertiary" : "text-ink-outline")}>
               {activeConfigured ? "verified_user" : "gpp_maybe"}
             </span>
-            <div>
+            <div className="min-w-0">
               <p className="text-title-md font-semibold text-ink">
                 Online payments are {activeConfigured ? "active" : "not working"}
               </p>
-              <p className="text-body-sm text-ink-variant">
+              <p className="text-body-sm text-ink-variant break-words">
                 Currently in <strong className="uppercase">{mode}</strong> mode
                 {data?.active_key_id_masked ? (
                   <>
                     {" · "}
-                    <span className="font-mono">{data.active_key_id_masked}</span>
+                    <span className="font-mono break-all">{data.active_key_id_masked}</span>
                   </>
                 ) : null}
               </p>
