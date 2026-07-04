@@ -480,6 +480,9 @@ async def create_manual_session(
     db: AsyncSession = Depends(get_db),
 ):
     await _assert_batch_assigned(db, instructor, batch_id)
+    await _assert_plan_in_batch(db, batch_id, payload.plan_id)
+    _validate_link_url(payload.meeting_link, "meeting_link")
+    _validate_link_url(payload.recording_url, "recording_url")
     try:
         stype = SessionType(payload.session_type)
     except ValueError:
