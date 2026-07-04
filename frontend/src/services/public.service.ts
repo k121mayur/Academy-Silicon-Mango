@@ -14,6 +14,9 @@ export interface PublicCourseListItem {
   banner_url: string | null;
   tags: string[];
   batches_count: number;
+  /** Only ever true for an admin's own preview request — the backend never
+   *  sends unpublished courses to non-admin viewers. */
+  is_published?: boolean;
 }
 
 export interface PublicInstructor {
@@ -42,6 +45,9 @@ export interface PublicCourseDetail {
   demo_youtube_url: string | null;
   instructors: PublicInstructor[];
   certificate_template: PublicCertificateTemplate | null;
+  /** Only ever true for an admin's own preview request — the backend never
+   *  sends unpublished courses to non-admin viewers. */
+  is_published?: boolean;
 }
 
 export interface PublicCertificateTemplate {

@@ -93,6 +93,15 @@ export default function CourseDetails() {
         <span className="text-ink-variant truncate max-w-[60vw]">{course.title}</span>
       </nav>
 
+      {course.is_published === false && (
+        <div className="rounded-xl bg-[#fff1c2] border border-primary-container/30 px-4 py-3 flex items-center gap-2 animate-fade-in">
+          <span className="icon text-[#6b4c00]">visibility</span>
+          <p className="text-body-sm text-[#6b4c00] font-medium">
+            Admin preview — this course is unpublished and is not visible to students or the public.
+          </p>
+        </div>
+      )}
+
       <Modal
         open={authPrompt}
         onClose={() => setAuthPrompt(false)}

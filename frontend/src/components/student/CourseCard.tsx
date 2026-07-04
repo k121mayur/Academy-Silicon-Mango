@@ -52,6 +52,11 @@ export function CourseCard({ course, to }: { course: PublicCourseListItem; to?: 
           </div>
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+        {course.is_published === false && (
+          <Badge tone="warning" className="absolute bottom-3 right-3 z-10 shadow-md">
+            Draft — admin preview only
+          </Badge>
+        )}
         <div className="absolute top-3 left-3 right-3 flex items-start justify-between gap-2">
           {course.category && (
             <span className="px-2.5 py-1 rounded-full text-label font-medium bg-white/95 text-ink backdrop-blur-sm shadow-sm">
