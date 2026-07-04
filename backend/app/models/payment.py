@@ -27,10 +27,10 @@ class Payment(Base):
         UUID(as_uuid=True), ForeignKey("enrollments.id", ondelete="SET NULL"), nullable=True
     )
     student_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     batch_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("batches.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True), ForeignKey("batches.id", ondelete="CASCADE"), nullable=False, index=True
     )
     razorpay_order_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     razorpay_payment_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
@@ -38,7 +38,7 @@ class Payment(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     currency: Mapped[str] = mapped_column(String(10), nullable=False, default="INR")
     status: Mapped[PaymentStatus] = mapped_column(
-        Enum(PaymentStatus, name="payment_status_enum"), nullable=False, default=PaymentStatus.pending
+        Enum(PaymentStatus, name="payment_status_enum"), nullable=False, default=PaymentStatus.pending, index=True
     )
     # Test/dummy enrollments (e.g. admin enrolling a student into an UNPUBLISHED
     # course for QA). These are excluded from revenue reporting so testing never
@@ -46,7 +46,7 @@ class Payment(Base):
     # published course stay is_test=false.
     is_test: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
     receipt_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
