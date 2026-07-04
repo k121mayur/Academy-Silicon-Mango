@@ -354,25 +354,19 @@ export default function Landing() {
               Real results from people just like you
             </h2>
           </Reveal>
-          <div className="grid md:grid-cols-3 gap-6 items-stretch">
+          <div className="grid md:grid-cols-2 gap-6 items-stretch">
             {[
               {
-                name: "Priya M.",
-                role: "HR Executive, Pune",
+                name: "Swapna Ghormode",
+                role: "Technical Assistant",
                 quote:
-                  "I used to spend 3 hours on reports every Monday. After week 4 of this course, I do the same in 20 minutes with VLOOKUP and pivot tables. My manager asked me to teach the team.",
+                  "An absolutely fantastic basic Excel course. The instructor has a wonderful teaching style that breaks down complex functions into simple, easy-to-understand language. No matter your prior experience, they ensure that absolutely everyone's doubts are cleared. I feel much more confident using Excel now",
               },
               {
-                name: "Rohit K.",
-                role: "MBA student, Nagpur",
+                name: "Kiran M.",
+                role: "Process Engineer, Praj Industries",
                 quote:
-                  "Rs.399 felt too cheap to be good - I was skeptical. But the live sessions, the mentor who actually reviewed my assignments, and the capstone project changed my mind completely.",
-              },
-              {
-                name: "Sunita D.",
-                role: "Homemaker, Surat",
-                quote:
-                  "I'm a homemaker who wanted to re-enter the workforce. This course gave me a skill and a certificate I could show. Got shortlisted for a data entry role within 6 weeks.",
+                  "Even in an engineering field, we always don't get much exposure to technical skills and expertise in academical content which is required for surviving and growing in corporate world. In such situation, such courses specifically focused on technical content and live experience helps understand things exponentially faster. Such affordable and well designed courses which never felt that your money or time is wasted.",
               },
             ].map((t, i) => (
               <Reveal key={t.name} delay={i * 80} className="h-full">
@@ -388,7 +382,7 @@ export default function Landing() {
                     </span>
                     <div className="leading-tight">
                       <p className="font-semibold text-ink">{t.name}</p>
-                      <p className="text-label text-ink-outline">{t.role} · Excel Mastery</p>
+                      <p className="text-label text-ink-outline">{t.role}</p>
                     </div>
                   </figcaption>
                 </figure>
