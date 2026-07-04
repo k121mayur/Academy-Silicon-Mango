@@ -15,7 +15,6 @@ from app.core.exceptions import (
     err_otp_invalid,
     err_otp_max_attempts,
     err_provider_mismatch_email,
-    err_provider_mismatch_google,
 )
 from app.core.security import (
     create_access_token,
@@ -37,10 +36,11 @@ from app.models.user import (
     UserRole,
 )
 from app.services.email_service import (
+    queue_email,
     render_otp_email,
     render_password_reset_google_email,
     render_password_reset_otp_email,
-    send_email,
+    render_signup_existing_account_email,
 )
 
 
@@ -81,10 +81,14 @@ async def authenticate_user(db: AsyncSession, email: str, password: str) -> User
         print(f"[AUTH] Login failed — email not found: {_mask_email(email)}")
         raise err_invalid_credentials()
 
-    if user.auth_provider == AuthProvider.google:
-        raise err_provider_mismatch_google()
+    if user.auth_provider == AuthProvider.google or not user.hashed_password:
+        # Same generic error as a wrong password — a distinct "this account
+        # uses Google" message would let an attacker enumerate which emails
+        # have accounts (and which provider) without ever guessing a password.
+        print(f"[AUTH] Login failed — password login attempted on Google account: {_mask_email(email)}")
+        raise err_invalid_credentials()
 
-    if not user.hashed_password or not verify_password(password, user.hashed_password):
+    if not verify_password(password, user.hashed_password):
         print(f"[AUTH] Login failed — bad password for: {_mask_email(email)}")
         raise err_invalid_credentials()
 
@@ -102,21 +106,33 @@ async def issue_tokens(user: User) -> tuple[str, str]:
 
 
 async def request_signup_otp(db: AsyncSession, email: str) -> int:
-    """Generate, hash, and store OTP. Returns expiry seconds."""
+    """Issue a signup OTP. ALWAYS returns 300 (no account enumeration).
+
+    If the email is already registered, no signup OTP is created and an
+    informational email is sent to the existing account instead — the caller
+    gets the identical response either way, mirroring request_password_reset_otp.
+    """
     email = email.lower()
+
+    # Do the expensive bcrypt hash unconditionally so response time doesn't leak
+    # whether the account exists.
+    otp = generate_otp()
+    hashed = hash_otp(otp)
 
     existing = await get_user_by_email(db, email)
     if existing:
-        raise err_email_exists()
+        subject, html, text = render_signup_existing_account_email()
+        queue_email(email, subject, html, text)
+        print(f"[AUTH] Signup OTP requested for existing email {_mask_email(email)} (info mail, no-op)")
+        return 300
 
     # Delete any existing OTP records for this email
     await db.execute(delete(OTPRecord).where(OTPRecord.email == email))
 
-    otp = generate_otp()
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
     record = OTPRecord(
         email=email,
-        hashed_code=hash_otp(otp),
+        hashed_code=hashed,
         purpose=OTPPurpose.signup,
         attempts=0,
         expires_at=expires_at,
@@ -125,7 +141,7 @@ async def request_signup_otp(db: AsyncSession, email: str) -> int:
     await db.commit()
 
     subject, html, text = render_otp_email(otp, minutes=5)
-    await send_email(email, subject, html, text)
+    queue_email(email, subject, html, text)
     print(f"[AUTH] OTP issued for {_mask_email(email)} (expires in 5 min)")
     return 300
 
@@ -225,7 +241,7 @@ async def request_password_reset_otp(db: AsyncSession, email: str) -> int:
 
     if user.auth_provider == AuthProvider.google or not user.hashed_password:
         subject, html, text = render_password_reset_google_email()
-        await send_email(email, subject, html, text)
+        queue_email(email, subject, html, text)
         print(f"[AUTH] Password reset requested for Google account {_mask_email(email)} (info mail)")
         return 300
 
@@ -244,7 +260,7 @@ async def request_password_reset_otp(db: AsyncSession, email: str) -> int:
     await db.commit()
 
     subject, html, text = render_password_reset_otp_email(otp, minutes=5)
-    await send_email(email, subject, html, text)
+    queue_email(email, subject, html, text)
     print(f"[AUTH] Password reset OTP issued for {_mask_email(email)} (expires in 5 min)")
     return 300
 
