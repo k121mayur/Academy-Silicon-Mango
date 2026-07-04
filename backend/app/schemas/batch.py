@@ -68,6 +68,13 @@ class BatchPlanPublic(BaseModel):
 
 class EnrollmentCreate(BaseModel):
     student_id: str
+    fee_paid: bool = True
+
+
+class AdminEnrollIn(BaseModel):
+    student_id: str
+    batch_id: str
+    fee_paid: bool = True
 
 
 class BatchEmailCreate(BaseModel):
