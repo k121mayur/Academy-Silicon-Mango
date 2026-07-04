@@ -83,8 +83,10 @@ async def update_organization(
     if not org:
         raise APIError(code="NOT_FOUND", message="Organization not found", status_code=404)
     data = payload.model_dump(exclude_unset=True)
+    _ORG_UPDATE_FIELDS = {"name", "logo_url", "description", "website", "contact_email"}
     for k, v in data.items():
-        setattr(org, k, v)
+        if k in _ORG_UPDATE_FIELDS:
+            setattr(org, k, v)
     await db.commit()
     await db.refresh(org)
     return {"success": True, "data": _to_dict(org)}
