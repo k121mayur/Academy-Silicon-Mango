@@ -41,13 +41,13 @@ class Video(Base):
     duration_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     source_height: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     status: Mapped[VideoStatus] = mapped_column(
-        Enum(VideoStatus, name="video_status_enum"), nullable=False, default=VideoStatus.uploaded
+        Enum(VideoStatus, name="video_status_enum"), nullable=False, default=VideoStatus.uploaded, index=True
     )
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), index=True
     )
 
     renditions: Mapped[list["VideoRendition"]] = relationship(
