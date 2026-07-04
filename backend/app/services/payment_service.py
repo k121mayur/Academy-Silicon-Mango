@@ -77,6 +77,29 @@ async def get_existing_enrollment(db: AsyncSession, batch_id, student_id) -> Opt
     ).scalar_one_or_none()
 
 
+async def get_existing_active_course_enrollment(
+    db: AsyncSession, course_id, student_id
+) -> Optional[Enrollment]:
+    """Any OTHER batch of the same course the student is currently active in.
+
+    Batch-level duplicates are already caught by get_existing_enrollment(); this
+    closes the course-level gap (same student, two different batches of one course).
+    Dropped/completed enrollments don't match, so re-enrolling into a batch a
+    student previously left stays unaffected.
+    """
+    return (
+        await db.execute(
+            select(Enrollment)
+            .join(Batch, Batch.id == Enrollment.batch_id)
+            .where(
+                Batch.course_id == course_id,
+                Enrollment.student_id == student_id,
+                Enrollment.status == EnrollmentStatus.active,
+            )
+        )
+    ).scalars().first()
+
+
 def payable_amount(course: Optional[Course]) -> Decimal:
     """Final payable in rupees. `discount` is a PERCENTAGE (0–100) of the price."""
     if not course:
@@ -100,6 +123,12 @@ async def assert_enrollable(db: AsyncSession, batch: Batch, student: User) -> De
     """
     if await get_existing_enrollment(db, batch.id, student.id):
         raise APIError(code="BATCH_002", message="You are already enrolled in this batch")
+    if await get_existing_active_course_enrollment(db, batch.course_id, student.id):
+        raise APIError(
+            code="ALREADY_ENROLLED_COURSE",
+            message="You are already enrolled in another batch of this course",
+            status_code=409,
+        )
     if batch.capacity is not None:
         # Best-effort pre-check (unlocked) so an obviously-full batch is rejected
         # before we ever call Razorpay. The AUTHORITATIVE, race-free capacity gate
