@@ -38,9 +38,9 @@ from app.schemas.webinar import (
 )
 from app.services import webinar_service as wsvc
 from app.services.email_service import (
+    queue_email,
     render_webinar_confirmation_email,
     render_webinar_verification_email,
-    send_email,
 )
 from app.services.storage_service import save_upload
 
@@ -374,8 +374,14 @@ async def update_webinar(
         if field in data and data[field] is not None:
             data[field] = wsvc.to_utc(data[field], tz_name)
 
+    _WEBINAR_UPDATE_FIELDS = {
+        "title", "subtitle", "description", "category", "language",
+        "start_at", "end_at", "timezone", "registration_open_at", "registration_close_at",
+        "max_participants", "allow_waitlist", "is_free", "price", "currency",
+        "meeting_url", "meeting_link_public",
+    }
     for k, v in data.items():
-        if hasattr(webinar, k):
+        if k in _WEBINAR_UPDATE_FIELDS:
             setattr(webinar, k, v)
 
     if webinar.is_free:
@@ -593,7 +599,7 @@ async def resend_registration_email(
             await db.commit()
         verify_url = f"{front}/webinars/verify/{reg.verification_token}"
         subject, html, text = render_webinar_verification_email(reg.full_name, webinar.title, verify_url)
-        await send_email(reg.email, subject, html, text)
+        queue_email(reg.email, subject, html, text)
         return {"success": True, "message": "Verification email re-sent."}
 
     # Already verified → resend the confirmation (with join link + calendar).
@@ -610,7 +616,7 @@ async def resend_registration_email(
         wsvc.google_calendar_url(webinar, detail_url),
     )
     ics = wsvc.build_ics(webinar, detail_url)
-    await send_email(reg.email, subject, html, text, attachments=[(f"{webinar.slug}.ics", ics.encode("utf-8"), "text/calendar")])
+    queue_email(reg.email, subject, html, text, attachments=[(f"{webinar.slug}.ics", ics.encode("utf-8"), "text/calendar")])
     return {"success": True, "message": "Confirmation email re-sent."}
 
 
