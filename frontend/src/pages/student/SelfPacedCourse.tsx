@@ -86,6 +86,22 @@ export default function SelfPacedCourse() {
     };
   }, [batchId]);
 
+  // Poll while any lesson's video is still optimizing so it flips to
+  // playable live, instead of requiring a manual page refresh.
+  useEffect(() => {
+    if (!batchId) return;
+    const hasPending = lessons.some(
+      (l) => l.video && (l.video.status === "uploaded" || l.video.status === "queued" || l.video.status === "processing")
+    );
+    if (!hasPending) return;
+    const id = setInterval(() => {
+      fetchBatchSessions(batchId)
+        .then((sessions) => setLessons(lessonsFromSessions(sessions)))
+        .catch(() => {});
+    }, 5000);
+    return () => clearInterval(id);
+  }, [batchId, lessons]);
+
   const activeLesson = lessons[activeIdx];
 
   const totalReady = useMemo(
@@ -220,7 +236,7 @@ export default function SelfPacedCourse() {
                       <p className="text-white/60 text-body-sm mt-1 max-w-md mx-auto">
                         {activeLesson.video.status === "failed"
                           ? "Your instructor has been notified."
-                          : "This lesson will be available after tonight's optimization."}
+                          : "This lesson will be available once optimization finishes — usually just a few minutes."}
                       </p>
                     </div>
                   </div>

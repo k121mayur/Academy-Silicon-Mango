@@ -90,13 +90,27 @@ export default function SessionsResources() {
     );
     if (finished.length === 0) return;
     for (const u of finished) {
-      if (u.status === "done") toast.success("Video uploaded — it will be optimized to 720p tonight.");
+      if (u.status === "done") toast.success("Video uploaded — optimizing to 720p now.");
       else toast.error(u.error || "Video upload failed");
       clearUpload(u.sessionId);
     }
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoUploads]);
+
+  // Poll while any video is still optimizing so the badge flips to
+  // Ready/Failed live, instead of requiring a manual page refresh.
+  useEffect(() => {
+    const hasPending = sessions.some((s) =>
+      s.resources.some(
+        (r) => r.resource_type === "video" && (r.status === "uploaded" || r.status === "queued" || r.status === "processing")
+      )
+    );
+    if (!hasPending) return;
+    const id = setInterval(reload, 5000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions]);
 
   const isSelfPaced = batch?.delivery_mode === "recorded";
 
