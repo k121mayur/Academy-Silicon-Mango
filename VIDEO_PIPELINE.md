@@ -1,6 +1,6 @@
 # Silicon Mango Academy — Self-Paced Video Pipeline
 
-**What this document covers:** How videos are uploaded by instructors, optimised at midnight, stored securely, and streamed to students with watermarks and access control.
+**What this document covers:** How videos are uploaded by instructors, optimised immediately (with a nightly batch as a safety-net fallback), stored securely, and streamed to students with watermarks and access control.
 
 ---
 
@@ -11,7 +11,7 @@
 3. [How Docker Is Set Up](#3-how-docker-is-set-up)
 4. [Database Tables](#4-database-tables)
 5. [Upload Flow (Instructor Side)](#5-upload-flow-instructor-side)
-6. [Nightly Optimization (Celery + FFmpeg)](#6-nightly-optimization-celery--ffmpeg)
+6. [Optimization (Celery + FFmpeg)](#6-optimization-celery--ffmpeg)
 7. [Secure Streaming (Student Side)](#7-secure-streaming-student-side)
 8. [Security Architecture](#8-security-architecture)
 9. [File Size Limits](#9-file-size-limits)
@@ -33,7 +33,7 @@ Before this system, instructors could only attach generic files to sessions (PDF
 |---|---|
 | **Upload** | Instructor uploads a raw video (up to 500 MB) |
 | **Store** | Video saved in a private `/app/media` folder, never publicly accessible |
-| **Optimise** | At midnight, a background job compresses the video to a single **720p** HLS stream (any higher resolution is scaled down; lower-res uploads are re-encoded, never upscaled) |
+| **Optimise** | Immediately after upload, a background job compresses the video to a single **720p** HLS stream (any higher resolution is scaled down; lower-res uploads are re-encoded, never upscaled). A nightly midnight sweep re-checks for anything that didn't get picked up (e.g. broker/worker was down) |
 | **Stream** | Student gets time-limited, signed URLs — no direct file access |
 | **Protect** | Student's email overlaid as a watermark on the player |
 | **Revoke** | When a student is unenrolled, their stream access is cut off within 2 minutes |
@@ -57,8 +57,8 @@ SELF-PACED course → Sessions with uploaded video lessons — THIS document cov
 | **SQLAlchemy** (async) | ORM for talking to the PostgreSQL database |
 | **PostgreSQL** | Database storing users, batches, sessions, video metadata |
 | **Redis** | Two jobs: (1) caches JWT blacklists & rate limits, (2) acts as the Celery message broker |
-| **Celery** | Python task queue — runs the midnight encoding job in the background |
-| **Celery Beat** | Scheduler that triggers Celery tasks on a cron schedule (midnight) |
+| **Celery** | Python task queue — runs the encoding job in the background, triggered on upload and as a nightly fallback |
+| **Celery Beat** | Scheduler that triggers the nightly fallback encoding sweep (midnight) plus other cron jobs |
 | **FFmpeg** | Industry-standard video encoder installed inside the Docker image |
 | **aiofiles** | Async file I/O — used to stream uploads to disk without blocking the server |
 
@@ -100,7 +100,7 @@ docker-compose.yml
 ├── sm_redis      — Redis (message broker for Celery + JWT cache)
 ├── sm_backend    — FastAPI API server (port 8085)
 ├── sm_worker     — Celery worker (runs video encoding jobs)
-├── sm_beat       — Celery Beat (scheduler — triggers jobs at midnight)
+├── sm_beat       — Celery Beat (scheduler — triggers the nightly fallback sweep + other cron jobs)
 └── sm_frontend   — Nginx serving the React build (port 5174)
 ```
 
@@ -223,15 +223,15 @@ Video(
 ```json
 {
   "status": "uploaded",
-  "message": "Uploaded. Available after tonight's optimization (runs at midnight)."
+  "message": "Uploaded. Compression has started and the lesson will be playable once it finishes."
 }
 ```
 
-The UI shows a **"Pending optimization"** badge on the resource. Students cannot play the video yet.
+The upload handler immediately calls `enqueue_encoding()`, which publishes `tasks.optimize_pending_videos` to the `encoding` queue right away — the worker usually picks it up within seconds. The UI shows a **"Pending optimization"** badge that flips to **"Optimizing…"** once the worker claims it, then **"Ready"**. Students cannot play the video until it's ready.
 
 ---
 
-## 6. Nightly Optimization (Celery + FFmpeg)
+## 6. Optimization (Celery + FFmpeg)
 
 ### What is Celery?
 
@@ -241,16 +241,21 @@ Celery is a Python library for running tasks in the background, separate from th
 Your request → FastAPI (web server) → Celery task queue → Celery worker runs the job
 ```
 
-### What is Celery Beat?
+### Two triggers, one task
 
-Beat is the scheduler. It's like a cron job manager that says "run this task at midnight every day."
+`tasks.optimize_pending_videos` is enqueued two ways:
+
+1. **On upload/retry (real-time)** — `enqueue_encoding()` in `app/tasks/encoding.py` publishes the task straight to the `encoding` queue as soon as the DB row is created. This is what makes compression start instantly instead of waiting for midnight.
+2. **Nightly Beat schedule (fallback safety net)** — in case the broker publish above failed (e.g. Redis was briefly unreachable) or the worker was down when the task was published, the midnight sweep guarantees any video still sitting in `uploaded`/`queued` eventually gets processed.
+
+Both triggers call the exact same task, which loops over **all** pending videos (not just the one that triggered it) using `FOR UPDATE SKIP LOCKED`, so it's safe to fire repeatedly without double-processing.
 
 ```python
 # celery_app.py
 beat_schedule = {
     "nightly-optimize-videos": {
         "task": "tasks.optimize_pending_videos",
-        "schedule": crontab(hour=0, minute=0),   # Midnight server time
+        "schedule": crontab(hour=0, minute=0),   # Midnight server time — fallback only
     }
 }
 ```
@@ -386,7 +391,7 @@ Verify the GPU is doing the work: `docker compose logs worker | grep FFMPEG` sho
 - Set `Video.status = "failed"`
 - Store the last 1500 characters of ffmpeg's stderr in `Video.error_message`
 - The instructor sees a **"Optimization failed"** badge
-- They can click **Retry** which flips status back to `queued` for the next midnight run
+- They can click **Retry** which flips status back to `queued` and immediately re-enqueues encoding (no waiting for the nightly run)
 
 ---
 
@@ -588,7 +593,7 @@ Videos use a separate 500 MB limit enforced inside `video_service.py`.
 | `app/services/video_service.py` | Saves uploads, creates DB rows, deletes videos |
 | `app/services/ffmpeg_service.py` | Probes source file, selects encoder (GPU-first: VAAPI/NVENC → CPU), builds the ffmpeg command, runs it with CPU fallback |
 | `app/services/stream_token_service.py` | Issues and verifies HMAC-signed tokens for streaming |
-| `app/celery_app.py` | Celery configuration + midnight Beat schedule |
+| `app/celery_app.py` | Celery configuration + nightly fallback Beat schedule |
 | `app/tasks/encoding.py` | The encoding task — picks pending videos, encodes, marks ready/failed |
 | `app/api/v1/instructor/videos.py` | Upload, status, delete, retry endpoints for instructors |
 | `app/api/v1/student/videos.py` | Playback-info, manifest, variant playlist, segment endpoints for students |
@@ -718,7 +723,7 @@ docker compose down
 docker compose logs -f backend worker
 ```
 
-### Trigger encoding immediately (don't wait for midnight)
+### Trigger encoding manually (normally not needed — upload/retry already does this automatically)
 ```powershell
 docker compose exec worker celery -A app.celery_app.celery call tasks.optimize_pending_videos
 ```
