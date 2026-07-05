@@ -12,6 +12,7 @@ from app.models.session import Session as ClassSession
 from app.models.user import User
 from app.models.video import Video, VideoStatus
 from app.services import video_service as vs
+from app.tasks.encoding import enqueue_encoding
 
 router = APIRouter(prefix="/instructor", tags=["instructor:videos"])
 
@@ -78,13 +79,14 @@ async def upload_video(
         size_bytes=size_bytes,
         uploader=instructor,
     )
-    # Compression is deliberately deferred to the nightly midnight batch to keep
-    # daytime server load low — it is NOT triggered on upload.
+    # Kick off encoding right away; the nightly Beat schedule remains a fallback
+    # in case the broker publish above fails or the worker was down.
+    enqueue_encoding()
     return {
         "success": True,
         "data": {
             **_video_dto(video),
-            "message": "Uploaded. The lesson is optimized to 720p in tonight's midnight batch and becomes playable once that completes.",
+            "message": "Uploaded. Compression has started and the lesson will be playable once it finishes.",
         },
     }
 
@@ -156,6 +158,7 @@ async def retry_video(
             message=f"Only failed videos can be retried (current status: {video.status.value}).",
             status_code=400,
         )
-    # Re-queue for the nightly midnight batch (no instant re-encode).
     video = await vs.reset_for_retry(db, video)
+    # Re-trigger encoding immediately instead of waiting for the nightly batch.
+    enqueue_encoding()
     return {"success": True, "data": _video_dto(video)}
