@@ -24,7 +24,7 @@ Stack: **FastAPI (async SQLAlchemy 2 + asyncpg) · PostgreSQL 16 · Redis 7 · C
 - `dependencies/auth.py` — `get_current_user` reads JWT from an **httpOnly cookie** (no Authorization header); `require_role(*roles)`. Token `jti` checked vs a Redis blacklist; `iat` vs last password-change (so a password change kills all sessions).
 - `models/` exported via `__init__.py` (keep `__all__` synced); `services/` hold business logic (endpoints stay thin); `tasks/` are Celery jobs.
 
-**Two Celery queues, on purpose** — `encoding` and `webinars` run on separate workers so a multi-hour encode never delays a time-sensitive webinar reminder. Beat: nightly video optimize 00:00, reminder scan every 5 min. TZ `Asia/Kolkata` (`enable_utc=False`); `acks_late` so a crash re-runs the job.
+**Two Celery queues, on purpose** — `encoding` and `webinars` run on separate workers so a multi-hour encode never delays a time-sensitive webinar reminder. Video encoding is triggered in real time on upload/retry (`enqueue_encoding()` in `tasks/encoding.py`); Beat's nightly 00:00 run of the same task is a fallback sweep only, for anything a broker/worker hiccup left un-encoded. Beat also runs the webinar reminder scan every 5 min. TZ `Asia/Kolkata` (`enable_utc=False`); `acks_late` so a crash re-runs the job.
 
 **Video (see `VIDEO_PIPELINE.md`)** — FFmpeg → HLS. Encoder GPU-first via `VIDEO_ENCODER` (prod = AMD VAAPI, CPU fallback). Segment URLs are HMAC-signed with `SEGMENT_SIGNING_SECRET` — **must match the frontend nginx `SM_SEGMENT_SECRET`** — and time-bucketed so concurrent viewers share one CDN-cacheable URL. Prod nginx serves `/media` directly; the app serves it only when `SERVE_SEGMENTS_FROM_APP=true`.
 
@@ -41,4 +41,4 @@ Stack: **FastAPI (async SQLAlchemy 2 + asyncpg) · PostgreSQL 16 · Redis 7 · C
 - **`razorpay` is pinned with `setuptools<81`** (the SDK does `import pkg_resources`); bumping past 81 breaks payments with "Payment library is not installed".
 - **Razorpay secrets live only in env** (`RAZORPAY_{TEST,LIVE}_KEY_*`); the DB test/live toggle only selects which env key pair is active.
 - **Docker volumes `sm_pgdata`/`sm_redisdata` are `external: true`** (fixed names, project pinned `silicon-mango`) so `down -v`/prune can't wipe them. Never change these on a live server. See `scripts/adopt-volumes.sh`.
-- `docker-compose.yml` resource limits are tuned for the 2 vCPU / 6 GB box; summed memory ceilings exceed 6 GB on purpose (daytime traffic and the nightly encode peak are time-disjoint).
+- `docker-compose.yml` resource limits are tuned for the 2 vCPU / 6 GB box; summed memory ceilings exceed 6 GB on purpose, assuming encodes are spread through the day as instructors upload rather than all landing in one nightly peak.
