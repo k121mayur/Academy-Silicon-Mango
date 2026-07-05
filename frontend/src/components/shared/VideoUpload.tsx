@@ -135,7 +135,7 @@ export function VideoUpload({ sessionId, className }: Props) {
       </div>
 
       <p className="text-label text-ink-outline">
-        Videos are automatically optimized to a single 720p stream in the midnight batch to reduce server
+        Videos are automatically optimized to a single 720p stream right after upload, to reduce server
         load and bandwidth. Students can watch once optimization completes.
       </p>
     </div>
