@@ -1,6 +1,7 @@
 import { Suspense, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { InstructorSidebar, InstructorTopBar } from "./InstructorChrome";
+import { PendingAttendanceBanner } from "@/components/instructor/PendingAttendanceBanner";
 import { RouteFallback } from "./RouteFallback";
 
 export default function InstructorLayout() {
@@ -20,6 +21,7 @@ export default function InstructorLayout() {
       )}
       <div className="flex-1 min-w-0 flex flex-col">
         <InstructorTopBar onMenuClick={() => setDrawerOpen(true)} />
+        <PendingAttendanceBanner />
         <main className="flex-1 p-4 md:p-6 lg:p-8">
           <Suspense fallback={<RouteFallback />}>
             <Outlet />

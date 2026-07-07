@@ -9,7 +9,13 @@ celery = Celery(
     "silicon_mango",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=["app.tasks.encoding", "app.tasks.webinars", "app.tasks.batch_emails", "app.tasks.emails"],
+    include=[
+        "app.tasks.encoding",
+        "app.tasks.webinars",
+        "app.tasks.batch_emails",
+        "app.tasks.emails",
+        "app.tasks.attendance",
+    ],
 )
 
 celery.conf.update(
@@ -47,6 +53,9 @@ celery.conf.update(
         # Single transactional emails (OTP, receipts, notifications) — queued so
         # the HTTP request never blocks on a live SMTP round-trip.
         "tasks.send_email": {"queue": "webinars"},
+        # Instructor "attendance not marked" reminder — time-sensitive mail,
+        # same rationale as the webinar reminders.
+        "tasks.dispatch_attendance_reminders": {"queue": "webinars"},
     },
 )
 
@@ -59,5 +68,10 @@ celery.conf.beat_schedule = {
     "dispatch-webinar-reminders": {
         "task": "tasks.dispatch_webinar_reminders",
         "schedule": crontab(minute="*/5"),
+    },
+    # Email the instructor once when a live session ends with attendance unmarked.
+    "dispatch-attendance-reminders": {
+        "task": "tasks.dispatch_attendance_reminders",
+        "schedule": crontab(minute="*/10"),
     },
 }

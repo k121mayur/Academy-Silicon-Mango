@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Select } from "@/components/ui/Select";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { extractErrorMessage } from "@/lib/api";
@@ -19,22 +19,68 @@ import {
 import { useSelectedBatch } from "@/features/instructor/selectedBatchStore";
 import { NoBatchSelected } from "./_NoBatch";
 
-const STATUS = [
-  { value: "not_marked", label: "Not marked" },
-  { value: "present", label: "Present" },
-  { value: "absent", label: "Absent" },
-  { value: "late", label: "Late" },
-  { value: "excused", label: "Excused" },
+type AttStatus = InstructorAttendanceRow["status"];
+
+const STATUS_SEGMENTS: { value: AttStatus; label: string; activeClass: string }[] = [
+  { value: "present", label: "Present", activeClass: "bg-success text-white border-success" },
+  { value: "absent", label: "Absent", activeClass: "bg-danger text-white border-danger" },
+  { value: "late", label: "Late", activeClass: "bg-primary-fill text-primary-on border-primary-fill" },
+  { value: "excused", label: "Excused", activeClass: "bg-secondary text-secondary-on border-secondary" },
 ];
 
+// Fast one-click marking; clicking the active status again resets to "not marked".
+function StatusSegment({ value, onChange }: { value: AttStatus; onChange: (v: AttStatus) => void }) {
+  return (
+    <div className="flex rounded-lg overflow-hidden border border-ink-outlineVariant divide-x divide-ink-outlineVariant shrink-0">
+      {STATUS_SEGMENTS.map((seg) => {
+        const active = value === seg.value;
+        return (
+          <button
+            key={seg.value}
+            type="button"
+            onClick={() => onChange(active ? "not_marked" : seg.value)}
+            className={`px-2.5 py-1.5 text-label font-medium transition-colors ${
+              active ? seg.activeClass : "bg-surface-lowest text-ink-variant hover:bg-surface-container"
+            }`}
+            title={seg.label}
+          >
+            {seg.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function AttendancePage() {
-  const { selectedBatchId } = useSelectedBatch();
+  const { selectedBatchId, setSelectedBatchId } = useSelectedBatch();
   const [plans, setPlans] = useState<InstructorPlanItem[]>([]);
   const [sessions, setSessions] = useState<InstructorSession[]>([]);
   const [selected, setSelected] = useState<InstructorSession | null>(null);
   const [rows, setRows] = useState<InstructorAttendanceRow[]>([]);
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState("");
+  const [searchParams] = useSearchParams();
+  const rosterRef = useRef<HTMLDivElement | null>(null);
+
+  // Deep link from the "session ended" prompt / reminder email:
+  // /instructor/attendance?session=<id>&batch=<id>
+  useEffect(() => {
+    const batchParam = searchParams.get("batch");
+    if (batchParam && batchParam !== selectedBatchId) setSelectedBatchId(batchParam);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const sessionParam = searchParams.get("session");
+    if (!sessionParam || sessions.length === 0) return;
+    const target = sessions.find((s) => s.id === sessionParam);
+    if (target) {
+      setSelected(target);
+      setTimeout(() => rosterRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 150);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions]);
 
   useEffect(() => {
     if (!selectedBatchId) return;
@@ -72,6 +118,12 @@ export default function AttendancePage() {
 
   const setRow = (idx: number, patch: Partial<InstructorAttendanceRow>) => {
     setRows((rs) => rs.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+  };
+
+  // Bulk-mark: applies to the rows currently shown (all, or the search subset).
+  const markAllShown = (status: AttStatus) => {
+    const shownIds = new Set(filtered.map((r) => r.student_id));
+    setRows((rs) => rs.map((r) => (shownIds.has(r.student_id) ? { ...r, status } : r)));
   };
 
   const submit = async () => {
@@ -214,6 +266,7 @@ export default function AttendancePage() {
 
       {/* Roster for the selected session */}
       {selected && (
+        <div ref={rosterRef}>
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -223,12 +276,28 @@ export default function AttendancePage() {
                   {new Date(selected.scheduled_at).toLocaleString()} · {rows.length} students
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <Input
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
                   placeholder="Search by name or email"
                 />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  leftIcon="done_all"
+                  onClick={() => markAllShown("present")}
+                >
+                  {filter.trim() ? `Mark ${filtered.length} shown present` : "Mark all present"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  leftIcon="remove_done"
+                  onClick={() => markAllShown("absent")}
+                >
+                  {filter.trim() ? `Mark ${filtered.length} shown absent` : "Mark all absent"}
+                </Button>
                 <Button onClick={submit} loading={saving} leftIcon="save">Save all</Button>
               </div>
             </div>
@@ -240,15 +309,14 @@ export default function AttendancePage() {
             {filtered.map((r) => {
               const origIdx = rows.findIndex((rr) => rr.student_id === r.student_id);
               return (
-                <div key={r.student_id} className="grid md:grid-cols-[1fr_160px_1fr] items-center gap-3 p-3 rounded-lg bg-surface-containerLow">
+                <div key={r.student_id} className="grid md:grid-cols-[1fr_auto_1fr] items-center gap-3 p-3 rounded-lg bg-surface-containerLow">
                   <div className="min-w-0">
                     <p className="font-medium text-ink truncate">{r.student_name}</p>
                     <p className="text-label text-ink-outline truncate">{r.student_email}</p>
                   </div>
-                  <Select
+                  <StatusSegment
                     value={r.status}
-                    onChange={(e) => setRow(origIdx, { status: e.target.value as any })}
-                    options={STATUS}
+                    onChange={(v) => setRow(origIdx, { status: v })}
                   />
                   <Input
                     value={r.notes ?? ""}
@@ -260,6 +328,7 @@ export default function AttendancePage() {
             })}
           </CardBody>
         </Card>
+        </div>
       )}
 
       {selected && rows.length > 0 && (

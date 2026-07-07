@@ -19,6 +19,9 @@ export const qk = {
     blogs: (search?: string) => ["public", "blogs", search ?? ""] as const,
     blog: (idOrSlug: string) => ["public", "blog", idOrSlug] as const,
   },
+  instructor: {
+    pendingAttendance: () => ["instructor", "pendingAttendance"] as const,
+  },
   admin: {
     blogs: (search?: string, status?: string) => ["admin", "blogs", search ?? "", status ?? ""] as const,
     blog: (id: string) => ["admin", "blog", id] as const,

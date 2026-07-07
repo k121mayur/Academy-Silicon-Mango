@@ -231,6 +231,38 @@ def render_session_changed_email(
     return subject, html, text
 
 
+def render_attendance_reminder_email(
+    instructor_name: str,
+    batch_name: str,
+    session_title: str,
+    session_when: str,
+    attendance_url: str,
+) -> tuple[str, str, str]:
+    subject = f"Mark attendance: {session_title} — {batch_name}"
+    text = (
+        f"Hi {instructor_name},\n\n"
+        f"Your session \"{session_title}\" in {batch_name} ({session_when}) has ended, "
+        "but attendance hasn't been marked yet.\n\n"
+        f"Mark it here: {attendance_url}\n\n"
+        "— Silicon Mango Academy"
+    )
+    html = f"""
+    <!doctype html><html><body style="font-family:Inter,sans-serif;background:#f8f9fa;padding:32px;">
+      <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;">
+        <h2 style="font-family:Manrope,sans-serif;color:#7c5800;margin:0 0 8px;">Attendance pending</h2>
+        <p style="color:#514532;line-height:1.5;">Hi {instructor_name}, your session in <strong>{batch_name}</strong> has ended but attendance hasn't been marked yet.</p>
+        <div style="background:#f3f4f5;border-radius:12px;padding:16px;margin:20px 0;">
+          <p style="margin:0 0 4px;font-weight:600;color:#191c1d;">{session_title}</p>
+          <p style="margin:0;color:#514532;">{session_when}</p>
+        </div>
+        <a href="{attendance_url}" style="display:inline-block;background:#7c5800;color:#fff;text-decoration:none;padding:10px 20px;border-radius:24px;font-weight:600;">Mark attendance</a>
+        <p style="color:#837560;font-size:13px;margin-top:20px;">You'll only receive this reminder once per session.</p>
+      </div>
+    </body></html>
+    """
+    return subject, html, text
+
+
 def render_certificate_issued_email(
     student_name: str,
     course_title: str,

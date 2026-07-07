@@ -53,6 +53,11 @@ class Session(Base):
     recording_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     duration_mins: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
+    # Dedup marker for the "attendance not marked" instructor reminder email —
+    # set once when the reminder is sent so it never fires twice for a session.
+    attendance_reminder_sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

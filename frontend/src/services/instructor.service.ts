@@ -130,6 +130,7 @@ export interface InstructorSubmission {
   student_email: string;
   content: string | null;
   file_url: string | null;
+  file_urls: string[];
   score: number | null;
   feedback: string | null;
   status: "submitted" | "graded" | "late" | "missing";
@@ -281,6 +282,21 @@ export async function gradeSubmission(
 export async function fetchAttendance(sessionId: string) {
   const res = await api.get(`/instructor/sessions/${sessionId}/attendance`);
   return res.data.data as InstructorAttendanceRow[];
+}
+
+export interface PendingAttendanceItem {
+  session_id: string;
+  session_title: string;
+  batch_id: string;
+  batch_name: string;
+  scheduled_at: string;
+  duration_mins: number;
+  ended_at: string;
+}
+
+export async function fetchPendingAttendance() {
+  const res = await api.get("/instructor/attendance/pending");
+  return res.data.data as PendingAttendanceItem[];
 }
 
 export async function setAttendance(

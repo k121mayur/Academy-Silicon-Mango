@@ -37,6 +37,10 @@ from app.models.session import (
     SessionType,
 )
 from app.models.user import InstructorProfile, StudentProfile, User, UserRole
+from app.services.attendance_service import (
+    find_ended_sessions_without_attendance,
+    session_end_at,
+)
 from app.services.certificate_issue_service import issue_and_email_all_for_batch
 from app.services.email_service import (
     render_session_changed_email,
@@ -642,6 +646,10 @@ async def add_resource(
         final_url = await save_upload(file, "session_resources")
     elif url and url.strip():
         final_url = url.strip()
+        # A scheme-less external link ("meet.google.com/xyz") would render as a
+        # relative URL and redirect to our own site — normalize to https://.
+        if rtype == ResourceType.link and not final_url.lower().startswith(("http://", "https://")):
+            final_url = f"https://{final_url}"
     else:
         raise APIError(code="VALIDATION", message="Either a file or a URL must be provided")
 
@@ -859,6 +867,8 @@ async def list_submissions(
     )
     items = []
     for sub, a, user, prof in res.all():
+        is_file_type = a.assignment_type in (AssignmentType.pdf_upload, AssignmentType.file_upload)
+        file_urls = (sub.file_urls or ([sub.file_url] if sub.file_url else [])) if is_file_type else []
         items.append(
             {
                 "id": str(sub.id),
@@ -872,6 +882,7 @@ async def list_submissions(
                 "student_email": user.email,
                 "content": sub.content,
                 "file_url": (f"/api/v1/instructor/submissions/{sub.id}/file" if sub.file_url else None),
+                "file_urls": [f"/api/v1/instructor/submissions/{sub.id}/file?index={i}" for i in range(len(file_urls))],
                 "score": float(sub.score) if sub.score is not None else None,
                 "feedback": sub.feedback,
                 "status": sub.status.value,
@@ -888,12 +899,16 @@ async def list_submissions(
 @router.get("/submissions/{submission_id}/file")
 async def download_submission_file(
     submission_id: str,
+    index: int = 0,
     instructor: User = Depends(require_instructor),
     db: AsyncSession = Depends(get_db),
 ):
     """Stream a student's submitted file to the instructor — but only if the
     instructor is assigned to the batch the submission belongs to. Replaces the
-    old public /uploads/submissions/<id> path."""
+    old public /uploads/submissions/<id> path.
+
+    `index` selects which file when the submission has multiple; defaults to
+    the first (and for legacy single-file rows, only) file."""
     sub = await db.get(Submission, submission_id)
     if not sub:
         raise APIError(code="NOT_FOUND", message="Submission not found", status_code=404)
@@ -902,9 +917,10 @@ async def download_submission_file(
         raise APIError(code="NOT_FOUND", message="Submission not found", status_code=404)
     # Ownership: instructor must be assigned to this submission's batch.
     await _assert_batch_assigned(db, instructor, str(assignment.batch_id))
-    if not sub.file_url:
+    urls = sub.file_urls or ([sub.file_url] if sub.file_url else [])
+    if not urls or index < 0 or index >= len(urls):
         raise APIError(code="NOT_FOUND", message="No file on this submission", status_code=404)
-    path = resolve_upload_path(sub.file_url)
+    path = resolve_upload_path(urls[index])
     return FileResponse(str(path), filename=path.name)
 
 
@@ -1016,6 +1032,35 @@ async def get_attendance(
             }
         )
     return {"success": True, "data": items}
+
+
+@router.get("/attendance/pending")
+async def pending_attendance(
+    within_hours: int = 72,
+    instructor: User = Depends(require_instructor),
+    db: AsyncSession = Depends(get_db),
+):
+    """Recently-ended live sessions of this instructor's batches with no
+    attendance marked yet — powers the "mark attendance" prompt in the portal."""
+    within_hours = max(1, min(within_hours, 24 * 14))
+    pending = await find_ended_sessions_without_attendance(
+        db, within_hours=within_hours, instructor_id=instructor.id
+    )
+    return {
+        "success": True,
+        "data": [
+            {
+                "session_id": str(sess.id),
+                "session_title": sess.title,
+                "batch_id": str(batch.id),
+                "batch_name": batch.name,
+                "scheduled_at": sess.scheduled_at.isoformat(),
+                "duration_mins": sess.duration_mins,
+                "ended_at": session_end_at(sess).isoformat(),
+            }
+            for sess, batch in pending
+        ],
+    }
 
 
 class AttendanceEntry(BaseModel):
