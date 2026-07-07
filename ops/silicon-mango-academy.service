@@ -1,0 +1,44 @@
+# =============================================================================
+#  systemd unit for Silicon Mango Academy Docker Compose stack
+#
+#  Responsibilities:
+#    1. Start the stack at boot (After=docker.service, Wants=docker.service)
+#    2. Keep it running (Restart=on-failure)
+#    3. Clean shutdown on stop (ExecStop=docker compose down)
+#
+#  docker-compose.override.yml sets restart:"no" for local dev; this unit
+#  uses explicit -f flags so the override is NEVER loaded. That keeps
+#  restart: unless-stopped from docker-compose.yml intact on the server.
+#
+#  Install + enable once:
+#    sudo cp ops/silicon-mango-academy.service /etc/systemd/system/
+#    sudo systemctl daemon-reload
+#    sudo systemctl enable --now silicon-mango-academy.service
+# =============================================================================
+[Unit]
+Description=Silicon Mango Academy (Docker Compose)
+Documentation=https://github.com/nous-core/silicon-mango
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+
+WorkingDirectory=/home/mayur/Projects/Academy-Silicon-Mango
+
+# Explicit -f so docker-compose.override.yml is NOT auto-loaded.
+# That override sets restart:"no" for local dev; production MUST NOT apply it.
+ExecStart=/usr/bin/docker compose -f docker-compose.yml up -d --remove-orphans
+ExecStop=/usr/bin/docker compose -f docker-compose.yml down --remove-orphans
+ExecReload=/usr/bin/docker compose -f docker-compose.yml up -d --remove-orphans
+
+# If the up command itself fails (network hiccup, etc.), retry after 15s.
+Restart=on-failure
+RestartSec=15s
+TimeoutStartSec=120
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target
