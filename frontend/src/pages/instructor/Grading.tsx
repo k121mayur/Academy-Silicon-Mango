@@ -113,13 +113,15 @@ export default function GradingPage() {
                   {s.score !== null && ` · score ${s.score}${s.assignment_max_points ? "/" + s.assignment_max_points : ""}`}
                 </p>
                 {s.content && <p className="text-body-sm text-ink-variant truncate mt-1">{s.content}</p>}
-                {s.file_url && (
-                  <a href={absoluteApiUrl(s.file_url)} target="_blank" rel="noreferrer" className="text-body-sm text-primary hover:underline">
-                    Open file ↗
-                  </a>
-                )}
+                <SubmissionFileLinks submission={s} />
               </div>
-              <Button onClick={() => setGrading(s)} leftIcon="grading">Grade</Button>
+              <Button
+                onClick={() => setGrading(s)}
+                leftIcon="grading"
+                variant={s.status === "graded" ? "outline" : "primary"}
+              >
+                {s.status === "graded" ? "Re-Grade" : "Grade"}
+              </Button>
             </CardBody>
           </Card>
         ))}
@@ -152,7 +154,17 @@ function GradeModal({
   const [score, setScore] = useState<string>(submission.score?.toString() ?? "");
   const [feedback, setFeedback] = useState(submission.feedback ?? "");
   const [status, setStatus] = useState(submission.status);
+  // Track whether the instructor explicitly picked a status; otherwise assigning
+  // a score flips the submission to "graded" automatically.
+  const [statusTouched, setStatusTouched] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!statusTouched && score.trim() !== "" && status !== "graded") {
+      setStatus("graded");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [score, statusTouched]);
 
   const submit = async () => {
     let s: number | undefined = undefined;
@@ -170,7 +182,11 @@ function GradeModal({
     }
     setSaving(true);
     try {
-      await gradeSubmission(submission.id, { score: s, feedback: feedback.trim() || undefined, status });
+      await gradeSubmission(submission.id, {
+        score: s,
+        feedback: feedback.trim() || undefined,
+        status: statusTouched ? status : s !== undefined ? "graded" : undefined,
+      });
       onSaved();
     } catch (e) {
       toast.error(extractErrorMessage(e));
@@ -203,11 +219,7 @@ function GradeModal({
             <pre className="text-body-sm text-ink whitespace-pre-wrap bg-surface-containerLow p-3 rounded-md">{submission.content}</pre>
           </div>
         )}
-        {submission.file_url && (
-          <a href={absoluteApiUrl(submission.file_url)} target="_blank" rel="noreferrer" className="text-body-sm text-primary hover:underline">
-            Open submitted file ↗
-          </a>
-        )}
+        <SubmissionFileLinks submission={submission} label="Open submitted file" />
         <div className="grid sm:grid-cols-2 gap-3">
           <Input
             label={`Score${submission.assignment_max_points ? ` (max ${submission.assignment_max_points})` : ""}`}
@@ -216,7 +228,15 @@ function GradeModal({
             type="number"
             step="0.5"
           />
-          <Select label="Status" value={status} onChange={(e) => setStatus(e.target.value as any)} options={STATUS} />
+          <Select
+            label="Status"
+            value={status}
+            onChange={(e) => {
+              setStatusTouched(true);
+              setStatus(e.target.value as any);
+            }}
+            options={STATUS}
+          />
         </div>
         <div>
           <label className="text-label text-ink-variant font-medium">Feedback</label>
@@ -228,6 +248,20 @@ function GradeModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+function SubmissionFileLinks({ submission, label = "Open file" }: { submission: InstructorSubmission; label?: string }) {
+  const urls = submission.file_urls?.length ? submission.file_urls : submission.file_url ? [submission.file_url] : [];
+  if (urls.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-3 mt-1">
+      {urls.map((u, i) => (
+        <a key={u} href={absoluteApiUrl(u)} target="_blank" rel="noreferrer" className="text-body-sm text-primary hover:underline">
+          {urls.length > 1 ? `${label} ${i + 1} ↗` : `${label} ↗`}
+        </a>
+      ))}
+    </div>
   );
 }
 

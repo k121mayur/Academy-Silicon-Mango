@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, Numeric, String, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -66,7 +66,12 @@ class Submission(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     content: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # Primary/first file — kept for backward compatibility with existing rows and
+    # with the link_submission flow (which also stores its URL in this column).
     file_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # Full list of uploaded file URLs when a student attaches more than one file.
+    # NULL on rows created before multi-file support — those are read via file_url.
+    file_urls: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
     score: Mapped[Optional[Decimal]] = mapped_column(Numeric(6, 2), nullable=True)
     feedback: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     graded_by: Mapped[Optional[uuid.UUID]] = mapped_column(
