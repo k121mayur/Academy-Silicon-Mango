@@ -44,6 +44,20 @@ export function relativeTime(value: string | Date): string {
   return formatDate(d);
 }
 
+/** "8 hours to go" / "3 hours to go" / "30 mins to go" — a live countdown to a
+ * future timestamp. Never negative; once the moment passes, reads "Starting now". */
+export function countdownLabel(value: string | Date): string {
+  const d = typeof value === "string" ? new Date(value) : value;
+  const diffMs = d.getTime() - Date.now();
+  if (diffMs <= 0) return "Starting now";
+  const mins = Math.max(1, Math.round(diffMs / 60000));
+  if (mins < 60) return `${mins} min${mins === 1 ? "" : "s"} to go`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} to go`;
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} to go`;
+}
+
 /** Convert a JS `Date.getDay()` (Sun=0…Sat=6) to the Mon-first index used by
  * WEEKDAY_LABELS / the backend (Mon=0…Sun=6). */
 export function mondayFirstWeekday(value: string | Date): number {

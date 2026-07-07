@@ -7,7 +7,12 @@ const DEFAULT_MAX_BYTES = 2 * 1024 * 1024; // 2 MB — matches backend MAX_DOC_M
 
 interface Props {
   value?: string | null;
-  onChange: (file: File) => void;
+  onChange?: (file: File) => void;
+  /** When `multiple` is true, called with the full set of files picked in one dialog. */
+  onFilesSelected?: (files: File[]) => void;
+  /** Allow selecting more than one file in the OS picker. Defaults to false to
+   * preserve existing single-file callers. */
+  multiple?: boolean;
   accept?: string;
   hint?: string;
   label?: string;
@@ -15,11 +20,11 @@ interface Props {
   className?: string;
   /** When provided, shows a remove button that clears the current/selected file. */
   onClear?: () => void;
-  /** Max bytes the user can pick. Defaults to 2 MB to match backend doc cap. */
+  /** Max bytes per file the user can pick. Defaults to 2 MB to match backend doc cap. */
   maxBytes?: number;
 }
 
-export function FileUpload({ value, onChange, accept = "image/*", hint, label, preview = true, className, onClear, maxBytes = DEFAULT_MAX_BYTES }: Props) {
+export function FileUpload({ value, onChange, onFilesSelected, multiple = false, accept = "image/*", hint, label, preview = true, className, onClear, maxBytes = DEFAULT_MAX_BYTES }: Props) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(value || null);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -43,17 +48,28 @@ export function FileUpload({ value, onChange, accept = "image/*", hint, label, p
   })();
 
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    // Reset so the same file can be re-selected
+    const selected = Array.from(e.target.files ?? []);
+    if (!selected.length) return;
+    // Reset so the same file(s) can be re-selected
     e.target.value = "";
 
-    if (file.size > maxBytes) {
-      const capMb = Math.max(1, Math.floor(maxBytes / (1024 * 1024)));
-      toast.error(`File is too large — max ${capMb} MB.`);
+    const capMb = Math.max(1, Math.floor(maxBytes / (1024 * 1024)));
+    const oversized = selected.filter((f) => f.size > maxBytes);
+    if (oversized.length) {
+      toast.error(
+        oversized.length > 1 ? `${oversized.length} files are too large — max ${capMb} MB each.` : `File is too large — max ${capMb} MB.`
+      );
       return;
     }
 
+    if (multiple) {
+      setSelectedFileName(selected.length === 1 ? selected[0].name : `${selected.length} files selected`);
+      setDirty(true);
+      onFilesSelected?.(selected);
+      return;
+    }
+
+    const file = selected[0];
     if (preview && file.type.startsWith("image/")) {
       setPreviewUrl(URL.createObjectURL(file));
       setSelectedFileName(null);
@@ -61,7 +77,7 @@ export function FileUpload({ value, onChange, accept = "image/*", hint, label, p
       setSelectedFileName(file.name);
     }
     setDirty(true);
-    onChange(file);
+    onChange?.(file);
   };
 
   const handleClear = (e: MouseEvent) => {
@@ -127,6 +143,7 @@ export function FileUpload({ value, onChange, accept = "image/*", hint, label, p
         ref={inputRef}
         type="file"
         accept={accept === "*" || accept === "*/*" ? undefined : accept}
+        multiple={multiple}
         onChange={handleChange}
         className="hidden"
       />

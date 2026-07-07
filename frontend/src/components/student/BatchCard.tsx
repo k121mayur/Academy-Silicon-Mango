@@ -81,7 +81,7 @@ export function BatchCard({
             />
             <Stat
               icon="fact_check"
-              label="Attended"
+              label="Sessions Attended"
               value={`${progress.attendance.present}/${progress.attendance.total}`}
             />
           </div>

@@ -19,7 +19,7 @@ export function SubmitModal({
 }) {
   const [content, setContent] = useState(assignment.submission?.content ?? "");
   const [url, setUrl] = useState(assignment.submission?.file_url ?? "");
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
 
   const t = assignment.assignment_type;
@@ -30,13 +30,13 @@ export function SubmitModal({
   const submit = async () => {
     if (needsText && !content.trim()) return toast.error("Text is required");
     if (needsUrl && !url.trim()) return toast.error("URL is required");
-    if (needsFile && !file) return toast.error("Pick a file");
+    if (needsFile && files.length === 0) return toast.error("Pick a file");
     setBusy(true);
     try {
       await submitAssignment(assignment.id, {
         content: needsText ? content.trim() : undefined,
         url: needsUrl ? url.trim() : undefined,
-        file: needsFile ? file ?? undefined : undefined,
+        files: needsFile ? files : undefined,
       });
       onSubmitted();
     } catch (e) {
@@ -82,10 +82,11 @@ export function SubmitModal({
         )}
         {needsFile && (
           <FileUpload
-            onChange={(f) => setFile(f)}
+            multiple
+            onFilesSelected={(fs) => setFiles(fs)}
             preview={false}
-            accept={t === "pdf_upload" ? ".pdf" : undefined}
-            hint={t === "pdf_upload" ? "PDF only" : "Any file"}
+            accept={t === "pdf_upload" ? ".pdf" : "*"}
+            hint={t === "pdf_upload" ? "PDF only · you can select multiple files" : "Any file type · you can select multiple files"}
           />
         )}
       </div>

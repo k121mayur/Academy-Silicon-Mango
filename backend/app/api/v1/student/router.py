@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import FileResponse
@@ -24,6 +24,8 @@ from app.models.video import Video
 from app.services.storage_service import resolve_upload_path, save_upload
 
 router = APIRouter(prefix="/student", tags=["student"])
+
+MAX_SUBMISSION_FILES = 10
 
 
 def _batch_dict(b: Batch, course: Optional[Course], instructor_name: Optional[str]) -> dict:
@@ -151,17 +153,22 @@ async def my_batch_sessions(
 @router.get("/submissions/{submission_id}/file")
 async def download_my_submission(
     submission_id: str,
+    index: int = 0,
     student: User = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ):
     """Stream a student's own submitted file. Replaces the old public
-    /uploads/submissions/<id> path so only the owner can fetch it."""
+    /uploads/submissions/<id> path so only the owner can fetch it.
+
+    `index` selects which file when the submission has multiple; defaults to
+    the first (and for legacy single-file rows, only) file."""
     sub = await db.get(Submission, submission_id)
     if not sub or sub.student_id != student.id:
         raise APIError(code="NOT_FOUND", message="Submission not found", status_code=404)
-    if not sub.file_url:
+    urls = sub.file_urls or ([sub.file_url] if sub.file_url else [])
+    if not urls or index < 0 or index >= len(urls):
         raise APIError(code="NOT_FOUND", message="No file on this submission", status_code=404)
-    path = resolve_upload_path(sub.file_url)
+    path = resolve_upload_path(urls[index])
     return FileResponse(str(path), filename=path.name)
 
 
@@ -195,6 +202,24 @@ async def my_batch_assignments(
     items = []
     for a in assignments:
         sub = subs_by_assignment.get(a.id)
+        submission_dict = None
+        if sub:
+            # Files only apply to pdf_upload/file_upload; link_submission reuses
+            # file_url to hold the submitted link text, not a file — leave it out
+            # of file_urls so the "view files" UI never tries to download a link.
+            is_file_type = a.assignment_type in (AssignmentType.pdf_upload, AssignmentType.file_upload)
+            file_urls = (sub.file_urls or ([sub.file_url] if sub.file_url else [])) if is_file_type else []
+            submission_dict = {
+                "id": str(sub.id),
+                "content": sub.content,
+                "file_url": (f"/api/v1/student/submissions/{sub.id}/file" if sub.file_url else None),
+                "file_urls": [f"/api/v1/student/submissions/{sub.id}/file?index={i}" for i in range(len(file_urls))],
+                "score": float(sub.score) if sub.score is not None else None,
+                "feedback": sub.feedback,
+                "status": sub.status.value,
+                "submitted_at": sub.submitted_at.isoformat() if sub.submitted_at else None,
+                "graded_at": sub.graded_at.isoformat() if sub.graded_at else None,
+            }
         items.append(
             {
                 "id": str(a.id),
@@ -204,18 +229,7 @@ async def my_batch_assignments(
                 "due_date": a.due_date.isoformat() if a.due_date else None,
                 "max_points": a.max_points,
                 "allow_late": a.allow_late,
-                "submission": {
-                    "id": str(sub.id),
-                    "content": sub.content,
-                    "file_url": (f"/api/v1/student/submissions/{sub.id}/file" if sub.file_url else None),
-                    "score": float(sub.score) if sub.score is not None else None,
-                    "feedback": sub.feedback,
-                    "status": sub.status.value,
-                    "submitted_at": sub.submitted_at.isoformat() if sub.submitted_at else None,
-                    "graded_at": sub.graded_at.isoformat() if sub.graded_at else None,
-                }
-                if sub
-                else None,
+                "submission": submission_dict,
             }
         )
     return {"success": True, "data": items}
@@ -227,6 +241,7 @@ async def submit_assignment(
     content: Optional[str] = Form(None),
     url: Optional[str] = Form(None),
     file: Optional[UploadFile] = File(None),
+    files: List[UploadFile] = File(default=[]),
     student: User = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ):
@@ -242,9 +257,16 @@ async def submit_assignment(
     if not enr:
         raise APIError(code="FORBIDDEN", message="Not enrolled in this batch", status_code=403)
 
+    # Merge the legacy single "file" field with the new "files" list so a
+    # cached old frontend bundle mid-rollout keeps working.
+    all_files = [f for f in ([file] if file is not None else []) + files if f.filename]
+    if len(all_files) > MAX_SUBMISSION_FILES:
+        raise APIError(code="VALIDATION", message=f"You can attach at most {MAX_SUBMISSION_FILES} files")
+
     # Validate input matches assignment type
     final_content: Optional[str] = None
     final_url: Optional[str] = None
+    final_urls: Optional[List[str]] = None
     if a.assignment_type == AssignmentType.text_upload:
         if not content or not content.strip():
             raise APIError(code="VALIDATION", message="Text content is required")
@@ -254,11 +276,14 @@ async def submit_assignment(
             raise APIError(code="VALIDATION", message="A URL is required")
         final_url = url.strip()
     elif a.assignment_type in (AssignmentType.pdf_upload, AssignmentType.file_upload):
-        if file is None or not file.filename:
+        if not all_files:
             raise APIError(code="VALIDATION", message="A file is required")
-        if a.assignment_type == AssignmentType.pdf_upload and not file.filename.lower().endswith(".pdf"):
+        if a.assignment_type == AssignmentType.pdf_upload and any(
+            not f.filename.lower().endswith(".pdf") for f in all_files
+        ):
             raise APIError(code="VALIDATION", message="Only PDF files are accepted for this assignment")
-        final_url = await save_upload(file, "submissions")
+        final_urls = [await save_upload(f, "submissions") for f in all_files]
+        final_url = final_urls[0]
     elif a.assignment_type == AssignmentType.quiz:
         if not content or not content.strip():
             raise APIError(code="VALIDATION", message="Quiz answers are required")
@@ -283,6 +308,7 @@ async def submit_assignment(
             student_id=student.id,
             content=final_content,
             file_url=final_url,
+            file_urls=final_urls,
             status=SubmissionStatus.late if is_late else SubmissionStatus.submitted,
             submitted_at=now,
         )
@@ -290,6 +316,7 @@ async def submit_assignment(
     else:
         sub.content = final_content if final_content is not None else sub.content
         sub.file_url = final_url if final_url is not None else sub.file_url
+        sub.file_urls = final_urls if final_urls is not None else sub.file_urls
         sub.status = SubmissionStatus.late if is_late else SubmissionStatus.submitted
         sub.submitted_at = now
         sub.score = None
@@ -357,8 +384,8 @@ async def my_batch_progress(
             )
         ).scalar_one()
 
-    # Attendance is measured against sessions actually held (completed).
-    attendance_total = sessions_done
+    # Attendance is shown as "attended / total sessions in the batch".
+    attendance_total = sessions_total
     attendance_present = (
         await db.execute(
             select(func.count(AttendanceRecord.id))

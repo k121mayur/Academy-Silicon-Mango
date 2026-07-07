@@ -56,6 +56,7 @@ export interface StudentAssignment {
     id: string;
     content: string | null;
     file_url: string | null;
+    file_urls: string[];
     score: number | null;
     feedback: string | null;
     status: "submitted" | "graded" | "late" | "missing";
@@ -90,12 +91,12 @@ export async function fetchBatchAssignments(batchId: string) {
 
 export async function submitAssignment(
   assignmentId: string,
-  payload: { content?: string; url?: string; file?: File }
+  payload: { content?: string; url?: string; files?: File[] }
 ) {
   const fd = new FormData();
   if (payload.content) fd.append("content", payload.content);
   if (payload.url) fd.append("url", payload.url);
-  if (payload.file) fd.append("file", payload.file);
+  payload.files?.forEach((f) => fd.append("files", f));
   const res = await api.post(`/student/assignments/${assignmentId}/submit`, fd);
   return res.data.data as { id: string; status: string; submitted_at: string; is_late: boolean };
 }
