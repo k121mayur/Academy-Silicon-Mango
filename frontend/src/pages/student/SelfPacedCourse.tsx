@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { extractErrorMessage } from "@/lib/api";
+import { extractErrorMessage, normalizeExternalUrl } from "@/lib/api";
 import { fetchBatchSessions, fetchMyBatches, StudentBatch, StudentResource, StudentSession } from "@/services/student.service";
 import { SecureVideoPlayer } from "@/components/shared/SecureVideoPlayer";
 import { RichTextView } from "@/components/shared/RichTextView";
@@ -263,7 +263,7 @@ export default function SelfPacedCourse() {
                     {activeLesson.otherResources.map((r) => (
                       <li key={r.id}>
                         <a
-                          href={r.url}
+                          href={r.resource_type === "link" ? normalizeExternalUrl(r.url) : r.url}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="flex items-center gap-3 p-3 bg-surface-containerLow rounded-lg hover:bg-surface-container transition-colors"

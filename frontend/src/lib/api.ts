@@ -22,6 +22,15 @@ export function absoluteApiUrl(url: string): string {
   return `${API_ORIGIN}${url.startsWith("/") ? url : `/${url}`}`;
 }
 
+// External links (meeting links, link resources) may have been saved without a
+// scheme (e.g. "meet.google.com/xyz"); a scheme-less href resolves relative to
+// the app origin and lands on our own site. Prepend https:// so they open externally.
+export function normalizeExternalUrl(url: string): string {
+  const u = url.trim();
+  if (/^https?:\/\//i.test(u)) return u;
+  return `https://${u}`;
+}
+
 const api = axios.create({
   baseURL: API_V1_BASE_URL,
   withCredentials: true,

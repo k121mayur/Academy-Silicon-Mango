@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import toast from "react-hot-toast";
@@ -8,8 +8,8 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { SubmitModal } from "@/components/student/SubmitModal";
 import { QueryErrorState } from "@/components/student/QueryErrorState";
-import { absoluteApiUrl } from "@/lib/api";
-import { formatDate, formatDateTime, relativeTime } from "@/lib/utils";
+import { absoluteApiUrl, normalizeExternalUrl } from "@/lib/api";
+import { countdownLabel, formatDate, formatDateTime } from "@/lib/utils";
 import { queryClient } from "@/lib/queryClient";
 import { qk } from "@/lib/queryKeys";
 import { ROUTES } from "@/router/routes";
@@ -71,6 +71,13 @@ export default function BatchWorkspace() {
   const sessions = sessionsQ.data ?? [];
   const assignments = assignmentsQ.data ?? [];
   const progress = progressQ.data;
+
+  // Ticks every 30s purely to force a re-render so the countdown below stays live.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   const nextLive = useMemo(() => {
     const now = Date.now();
@@ -143,12 +150,12 @@ export default function BatchWorkspace() {
                 <p className="font-display font-semibold text-title-md text-ink mt-0.5">{nextLive.title}</p>
                 <p className="text-body-sm text-ink-variant">
                   {nextLive.scheduled_at ? formatDateTime(nextLive.scheduled_at) : "—"} ·{" "}
-                  {nextLive.scheduled_at ? relativeTime(nextLive.scheduled_at) : ""} · {nextLive.duration_mins} mins
+                  {nextLive.scheduled_at ? countdownLabel(nextLive.scheduled_at) : ""} · {nextLive.duration_mins} mins
                 </p>
               </div>
             </div>
             {nextLive.meeting_link && (
-              <a href={nextLive.meeting_link} target="_blank" rel="noreferrer">
+              <a href={normalizeExternalUrl(nextLive.meeting_link)} target="_blank" rel="noreferrer">
                 <Button leftIcon="videocam">Join meeting</Button>
               </a>
             )}
@@ -185,7 +192,7 @@ export default function BatchWorkspace() {
                     icon="assignment_turned_in"
                   />
                   <Metric
-                    label="Attended"
+                    label="Sessions Attended"
                     value={`${progress.attendance.present}/${progress.attendance.total}`}
                     icon="fact_check"
                   />
@@ -372,7 +379,7 @@ function ResourceRow({
       navigate(ROUTES.student.selfPaced(batchId));
     } else {
       const url = (res as { url: string }).url;
-      window.open(res.resource_type === "link" ? url : absoluteApiUrl(url), "_blank");
+      window.open(res.resource_type === "link" ? normalizeExternalUrl(url) : absoluteApiUrl(url), "_blank");
     }
   };
 

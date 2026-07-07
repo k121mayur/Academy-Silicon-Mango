@@ -8,7 +8,7 @@ import { Select } from "@/components/ui/Select";
 import { Modal } from "@/components/ui/Modal";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { FileUpload } from "@/components/shared/FileUpload";
-import { absoluteApiUrl, extractErrorMessage } from "@/lib/api";
+import { absoluteApiUrl, extractErrorMessage, normalizeExternalUrl } from "@/lib/api";
 import {
   addResource,
   createSession,
@@ -158,7 +158,7 @@ export default function SessionsResources() {
           {s.meeting_link && (
             <p className="truncate">
               <span className="text-ink-outline">Meeting:</span>{" "}
-              <a href={s.meeting_link} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+              <a href={normalizeExternalUrl(s.meeting_link)} target="_blank" rel="noreferrer" className="text-primary hover:underline">
                 {s.meeting_link}
               </a>
             </p>
@@ -166,7 +166,7 @@ export default function SessionsResources() {
           {s.recording_url && (
             <p className="truncate">
               <span className="text-ink-outline">Recording:</span>{" "}
-              <a href={s.recording_url} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+              <a href={normalizeExternalUrl(s.recording_url)} target="_blank" rel="noreferrer" className="text-primary hover:underline">
                 {s.recording_url}
               </a>
             </p>
@@ -198,7 +198,12 @@ export default function SessionsResources() {
                           {videoStatus === "missing" && <Badge tone="danger">Missing</Badge>}
                         </div>
                       ) : (
-                        <a href={absoluteApiUrl(r.url)} target="_blank" rel="noreferrer" className="truncate text-primary hover:underline">
+                        <a
+                          href={r.resource_type === "link" ? normalizeExternalUrl(r.url) : absoluteApiUrl(r.url)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="truncate text-primary hover:underline"
+                        >
                           {r.title}
                         </a>
                       )}
@@ -387,8 +392,8 @@ function EditSessionModal({
         duration_mins: duration,
         session_type: sessionType,
         status,
-        meeting_link: meetingLink.trim(),
-        recording_url: recordingUrl.trim(),
+        meeting_link: meetingLink.trim() ? normalizeExternalUrl(meetingLink) : "",
+        recording_url: recordingUrl.trim() ? normalizeExternalUrl(recordingUrl) : "",
         notify_students: notify,
       });
       onSaved(res.meta?.students_notified ?? 0);
@@ -471,8 +476,8 @@ function CreateSessionModal({
         scheduled_at: new Date(scheduledAt).toISOString(),
         duration_mins: duration,
         session_type: sessionType,
-        meeting_link: meetingLink.trim() || undefined,
-        recording_url: recordingUrl.trim() || undefined,
+        meeting_link: meetingLink.trim() ? normalizeExternalUrl(meetingLink) : undefined,
+        recording_url: recordingUrl.trim() ? normalizeExternalUrl(recordingUrl) : undefined,
       });
       onCreated();
     } catch (e) {
@@ -558,7 +563,7 @@ function AddResourceModal({
         title: title.trim(),
         resource_type: resourceType,
         file: file ?? undefined,
-        url: url.trim() || undefined,
+        url: url.trim() ? (resourceType === "link" ? normalizeExternalUrl(url) : url.trim()) : undefined,
       });
       onAdded();
     } catch (e) {
