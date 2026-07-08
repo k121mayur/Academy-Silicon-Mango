@@ -23,9 +23,17 @@ import {
   EnrollmentRow,
   StudentDTO,
 } from "@/services/admin.service";
-import { formatDate } from "@/lib/utils";
+import { relativeTime, formatDateTime } from "@/lib/utils";
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 20;
+
+const ENROLLED_RANGE_OPTIONS = [
+  { value: "", label: "All Enrollments" },
+  { value: "today", label: "Enrolled Today" },
+  { value: "yesterday", label: "Enrolled Yesterday" },
+  { value: "7d", label: "Last 7 Days" },
+  { value: "30d", label: "Last 30 Days" },
+];
 
 export default function AdminEnrollments() {
   const [items, setItems] = useState<EnrollmentRow[]>([]);
@@ -36,6 +44,7 @@ export default function AdminEnrollments() {
   const [courseId, setCourseId] = useState("");
   const [batchId, setBatchId] = useState("");
   const [status, setStatus] = useState("");
+  const [enrolledRange, setEnrolledRange] = useState("");
   const [page, setPage] = useState(1);
   const [meta, setMeta] = useState({ page: 1, pages: 1, total: 0, limit: PAGE_SIZE });
   const [allBatches, setAllBatches] = useState<BatchDTO[]>([]);
@@ -52,6 +61,7 @@ export default function AdminEnrollments() {
       if (courseId) params.course_id = courseId;
       if (batchId) params.batch_id = batchId;
       if (status) params.status = status;
+      if (enrolledRange) params.enrolled_range = enrolledRange;
       const res = await listAllEnrollments(params);
       setItems(res.data);
       if (res.meta) setMeta(res.meta);
@@ -62,7 +72,7 @@ export default function AdminEnrollments() {
     }
   };
 
-  useEffect(() => { fetchData(); /* eslint-disable-next-line */ }, [search, courseId, batchId, status, page]);
+  useEffect(() => { fetchData(); /* eslint-disable-next-line */ }, [search, courseId, batchId, status, enrolledRange, page]);
   useEffect(() => { listAllBatches().then(setAllBatches).catch(() => {}); }, []);
 
   const resetPage = () => setPage(1);
@@ -79,6 +89,7 @@ export default function AdminEnrollments() {
       if (courseId) params.course_id = courseId;
       if (batchId) params.batch_id = batchId;
       if (status) params.status = status;
+      if (enrolledRange) params.enrolled_range = enrolledRange;
       await exportEnrollmentsCsv(params);
     } catch (e) {
       toast.error(extractErrorMessage(e, "Failed to export enrollments"));
@@ -145,6 +156,12 @@ export default function AdminEnrollments() {
           ]}
           containerClassName="w-40"
         />
+        <Select
+          value={enrolledRange}
+          onChange={(e) => { setEnrolledRange(e.target.value); resetPage(); }}
+          options={ENROLLED_RANGE_OPTIONS}
+          containerClassName="w-48"
+        />
       </div>
 
       {loading ? (
@@ -173,7 +190,7 @@ export default function AdminEnrollments() {
                 <TD className="text-ink-variant">{e.student_email}</TD>
                 <TD>{e.course_title}</TD>
                 <TD>{e.batch_name}</TD>
-                <TD>{formatDate(e.enrolled_at)}</TD>
+                <TD title={formatDateTime(e.enrolled_at)}>{relativeTime(e.enrolled_at)}</TD>
                 <TD><Badge tone={e.status === "active" ? "success" : "neutral"}>{e.status}</Badge></TD>
                 <TD className="text-right">
                   <Button
