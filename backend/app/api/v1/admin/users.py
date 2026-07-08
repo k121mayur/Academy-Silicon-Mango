@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.exceptions import APIError, err_email_exists
 from app.core.security import hash_password
+from app.core.utils import ist_calendar_range
 from app.db.session import get_db
 from app.dependencies.auth import require_admin
 from app.models.batch import Enrollment
@@ -287,7 +288,12 @@ async def delete_instructor(
 
 # ---------------- Students ----------------
 
-def _student_filter_conditions(search: Optional[str], city: Optional[str], profile_complete: Optional[bool]):
+def _student_filter_conditions(
+    search: Optional[str],
+    city: Optional[str],
+    profile_complete: Optional[bool],
+    joined_range: Optional[str] = None,
+):
     """Shared WHERE conditions for the student list and its CSV export, so both
     always apply the same filters."""
     conds = []
@@ -309,6 +315,10 @@ def _student_filter_conditions(search: Optional[str], city: Optional[str], profi
         else:
             # Profileless students are reported as incomplete, so include them here.
             conds.append(or_(StudentProfile.profile_complete.is_(False), StudentProfile.id.is_(None)))
+    bounds = ist_calendar_range(joined_range)
+    if bounds:
+        conds.append(User.created_at >= bounds[0])
+        conds.append(User.created_at < bounds[1])
     return conds
 
 
@@ -316,9 +326,10 @@ def _student_filter_conditions(search: Optional[str], city: Optional[str], profi
 async def list_students(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    search: Optional[str] = Query(None, description="Match name, email, phone or city"),
+    search: Optional[str] = Query(None, description="Match name, email, WhatsApp number or city"),
     city: Optional[str] = Query(None),
     profile_complete: Optional[bool] = Query(None),
+    joined_range: Optional[str] = Query(None, description="today|yesterday|7d|30d — filter by signup date (User.created_at)"),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ):
@@ -336,7 +347,7 @@ async def list_students(
         .where(User.role == UserRole.student)
     )
 
-    for c in _student_filter_conditions(search, city, profile_complete):
+    for c in _student_filter_conditions(search, city, profile_complete, joined_range):
         base = base.where(c)
         cnt = cnt.where(c)
 
@@ -387,6 +398,7 @@ async def export_students(
     search: Optional[str] = Query(None),
     city: Optional[str] = Query(None),
     profile_complete: Optional[bool] = Query(None),
+    joined_range: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ):
@@ -420,7 +432,7 @@ async def export_students(
         )
 
     headers = [
-        "Name", "Email", "Phone", "City", "Profile Complete",
+        "Name", "Email", "WhatsApp Number", "City", "Profile Complete",
         "Enrollments", "Sign-in Method", "Active", "Joined",
     ]
     data_rows = [
