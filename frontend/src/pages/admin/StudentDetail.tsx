@@ -48,7 +48,7 @@ export default function StudentDetail() {
         <Card>
           <CardHeader><p className="text-title-md font-semibold">Contact</p></CardHeader>
           <CardBody className="space-y-1 text-body-sm">
-            <Row label="Phone" value={student.phone || "—"} />
+            <Row label="WhatsApp Number" value={student.phone || "—"} />
             <Row label="City" value={student.city || "—"} />
             <Row label="Joined" value={formatDate(student.created_at)} />
           </CardBody>
