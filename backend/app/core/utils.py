@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from typing import Any
+from datetime import datetime, timedelta
+from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 
 def get_client_ip(request: Any) -> str:
@@ -27,3 +29,30 @@ def slugify(text: str) -> str:
     text = re.sub(r"[^\w\s-]", "", text).strip().lower()
     text = re.sub(r"[-\s]+", "-", text)
     return text or "untitled"
+
+
+# Mirrors the IST pattern in app/services/payment_service.py:28 — kept as its own
+# constant here rather than imported from there, since app.core must not depend
+# on app.services (layering).
+IST = ZoneInfo("Asia/Kolkata")
+
+
+def ist_calendar_range(key: Optional[str]) -> Optional[tuple[datetime, datetime]]:
+    """[start, end) UTC-aware bounds for a named IST calendar-day bucket.
+
+    "7d"/"30d" are calendar-anchored and inclusive of today (today back through
+    the 6/29 preceding IST calendar days), not a rolling 24h*N window from now.
+    Returns None for falsy/unrecognized keys; callers should skip filtering.
+    """
+    if not key:
+        return None
+    today_start = datetime.now(IST).replace(hour=0, minute=0, second=0, microsecond=0)
+    if key == "today":
+        return today_start, today_start + timedelta(days=1)
+    if key == "yesterday":
+        return today_start - timedelta(days=1), today_start
+    if key == "7d":
+        return today_start - timedelta(days=6), today_start + timedelta(days=1)
+    if key == "30d":
+        return today_start - timedelta(days=29), today_start + timedelta(days=1)
+    return None
