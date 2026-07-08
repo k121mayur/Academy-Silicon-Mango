@@ -136,7 +136,7 @@ export default function StudentProfile() {
     const e: Record<string, string> = {};
     if (!form.first_name.trim()) e.first_name = "First name is required";
     if (!form.last_name.trim()) e.last_name = "Last name is required";
-    if (!/^[6-9]\d{9}$/.test(form.mobile)) e.mobile = "Enter a valid 10-digit mobile number";
+    if (!/^[6-9]\d{9}$/.test(form.mobile)) e.mobile = "Enter a valid 10-digit WhatsApp number";
     if (!form.city.trim()) e.city = "City is required";
 
     form.education.forEach((edu, i) => {
@@ -277,7 +277,7 @@ export default function StudentProfile() {
               <div className="grid sm:grid-cols-2 gap-3">
                 {/* Mobile with +91 chip */}
                 <div className="flex flex-col gap-1.5" data-error={!!errors.mobile}>
-                  <label className="text-label text-ink-variant font-medium">Mobile number *</label>
+                  <label className="text-label text-ink-variant font-medium">WhatsApp Number *</label>
                   <div className="flex">
                     <span className="inline-flex items-center px-3 h-10 rounded-l-md bg-surface-container border border-r-0 border-ink-outlineVariant text-body-sm text-ink-variant font-medium">
                       +91
@@ -295,10 +295,14 @@ export default function StudentProfile() {
                       }`}
                     />
                   </div>
-                  {errors.mobile && (
+                  {errors.mobile ? (
                     <p className="text-label text-danger flex items-center gap-1">
                       <span className="icon text-[14px]">error</span>
                       {errors.mobile}
+                    </p>
+                  ) : (
+                    <p className="text-label text-ink-outline">
+                      We'll use this number to add you to your batch's WhatsApp group.
                     </p>
                   )}
                 </div>
