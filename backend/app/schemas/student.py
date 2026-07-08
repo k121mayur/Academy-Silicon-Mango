@@ -36,7 +36,7 @@ class StudentProfileUpdateIn(BaseModel):
         if len(digits) == 12 and digits.startswith("91"):
             digits = digits[2:]
         if len(digits) != 10 or digits[0] not in "6789":
-            raise ValueError("Enter a valid 10-digit Indian mobile number")
+            raise ValueError("Enter a valid 10-digit Indian WhatsApp number")
         return digits
 
     @model_validator(mode="after")
