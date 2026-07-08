@@ -412,7 +412,7 @@ async def export_students(
         .outerjoin(StudentProfile, StudentProfile.user_id == User.id)
         .where(User.role == UserRole.student)
     )
-    for c in _student_filter_conditions(search, city, profile_complete):
+    for c in _student_filter_conditions(search, city, profile_complete, joined_range):
         stmt = stmt.where(c)
     stmt = stmt.order_by(User.created_at.desc())
     rows = (await db.execute(stmt)).all()
