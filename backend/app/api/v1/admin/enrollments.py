@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import APIError
+from app.core.utils import ist_calendar_range
 from app.db.session import get_db
 from app.dependencies.auth import require_admin
 from app.models.batch import Batch, Enrollment, EnrollmentStatus
@@ -27,7 +28,11 @@ logger = logging.getLogger(__name__)
 
 
 def _enrollment_filter_conditions(
-    search: Optional[str], course_id: Optional[str], batch_id: Optional[str], status: Optional[str]
+    search: Optional[str],
+    course_id: Optional[str],
+    batch_id: Optional[str],
+    status: Optional[str],
+    enrolled_range: Optional[str] = None,
 ):
     """Shared WHERE conditions for the enrollment list and its CSV export."""
     conds = []
@@ -49,6 +54,10 @@ def _enrollment_filter_conditions(
             conds.append(Enrollment.status == EnrollmentStatus(status))
         except ValueError:
             pass
+    bounds = ist_calendar_range(enrolled_range)
+    if bounds:
+        conds.append(Enrollment.enrolled_at >= bounds[0])
+        conds.append(Enrollment.enrolled_at < bounds[1])
     return conds
 
 
@@ -60,6 +69,7 @@ async def list_enrollments(
     course_id: Optional[str] = Query(None),
     batch_id: Optional[str] = Query(None),
     status: Optional[str] = Query(None, description="Enrollment status: active/dropped/completed"),
+    enrolled_range: Optional[str] = Query(None, description="today|yesterday|7d|30d — filter by enrollment date (Enrollment.enrolled_at)"),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ):
@@ -81,7 +91,7 @@ async def list_enrollments(
         .outerjoin(StudentProfile, StudentProfile.user_id == User.id)
     )
 
-    for c in _enrollment_filter_conditions(search, course_id, batch_id, status):
+    for c in _enrollment_filter_conditions(search, course_id, batch_id, status, enrolled_range):
         base = base.where(c)
         cnt = cnt.where(c)
 
@@ -116,6 +126,7 @@ async def export_enrollments(
     course_id: Optional[str] = Query(None),
     batch_id: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
+    enrolled_range: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ):
@@ -127,7 +138,7 @@ async def export_enrollments(
         .join(Course, Course.id == Batch.course_id)
         .outerjoin(StudentProfile, StudentProfile.user_id == User.id)
     )
-    for c in _enrollment_filter_conditions(search, course_id, batch_id, status):
+    for c in _enrollment_filter_conditions(search, course_id, batch_id, status, enrolled_range):
         stmt = stmt.where(c)
     stmt = stmt.order_by(Enrollment.enrolled_at.desc())
     rows = (await db.execute(stmt)).all()
