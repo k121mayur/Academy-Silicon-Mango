@@ -12,9 +12,18 @@ import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Pagination } from "@/components/ui/Pagination";
 import { extractErrorMessage } from "@/lib/api";
+import { relativeTime, formatDateTime } from "@/lib/utils";
 import { createStudent, deleteStudent, exportStudentsCsv, listStudents, updateStudent, StudentDTO } from "@/services/admin.service";
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 20;
+
+const JOINED_RANGE_OPTIONS = [
+  { value: "", label: "All Students" },
+  { value: "today", label: "Enrolled Today" },
+  { value: "yesterday", label: "Enrolled Yesterday" },
+  { value: "7d", label: "Last 7 Days" },
+  { value: "30d", label: "Last 30 Days" },
+];
 
 export default function AdminStudents() {
   const [items, setItems] = useState<StudentDTO[]>([]);
@@ -22,6 +31,7 @@ export default function AdminStudents() {
   const [search, setSearch] = useState("");
   const [city, setCity] = useState("");
   const [profileComplete, setProfileComplete] = useState("");
+  const [joinedRange, setJoinedRange] = useState("");
   const [page, setPage] = useState(1);
   const [meta, setMeta] = useState({ page: 1, pages: 1, total: 0, limit: PAGE_SIZE });
   const [createOpen, setCreateOpen] = useState(false);
@@ -37,6 +47,7 @@ export default function AdminStudents() {
       if (search) params.search = search;
       if (city) params.city = city;
       if (profileComplete) params.profile_complete = profileComplete === "true";
+      if (joinedRange) params.joined_range = joinedRange;
       const res = await listStudents(params);
       setItems(res.data);
       if (res.meta) setMeta(res.meta);
@@ -47,7 +58,7 @@ export default function AdminStudents() {
     }
   };
 
-  useEffect(() => { fetchData(); /* eslint-disable-next-line */ }, [search, city, profileComplete, page]);
+  useEffect(() => { fetchData(); /* eslint-disable-next-line */ }, [search, city, profileComplete, joinedRange, page]);
 
   const resetPage = () => setPage(1);
 
@@ -58,6 +69,7 @@ export default function AdminStudents() {
       if (search) params.search = search;
       if (city) params.city = city;
       if (profileComplete) params.profile_complete = profileComplete === "true";
+      if (joinedRange) params.joined_range = joinedRange;
       await exportStudentsCsv(params);
     } catch (e) {
       toast.error(extractErrorMessage(e, "Failed to export students"));
@@ -96,7 +108,7 @@ export default function AdminStudents() {
 
       <div className="flex flex-wrap gap-3">
         <Input
-          placeholder="Search by name, email, phone or city"
+          placeholder="Search by name, email, WhatsApp number or city"
           value={search}
           onChange={(e) => { setSearch(e.target.value); resetPage(); }}
           leftIcon="search"
@@ -119,6 +131,12 @@ export default function AdminStudents() {
           ]}
           containerClassName="w-48"
         />
+        <Select
+          value={joinedRange}
+          onChange={(e) => { setJoinedRange(e.target.value); resetPage(); }}
+          options={JOINED_RANGE_OPTIONS}
+          containerClassName="w-48"
+        />
       </div>
 
       {loading ? (
@@ -131,7 +149,7 @@ export default function AdminStudents() {
             <tr>
               <TH>Name</TH>
               <TH>Email</TH>
-              <TH>Phone</TH>
+              <TH>WhatsApp Number</TH>
               <TH>City</TH>
               <TH>Profile</TH>
               <TH>Enrollments</TH>
@@ -153,7 +171,9 @@ export default function AdminStudents() {
                 <TD>{u.city || "—"}</TD>
                 <TD><Badge tone={u.profile_complete ? "success" : "warning"}>{u.profile_complete ? "Complete" : "Incomplete"}</Badge></TD>
                 <TD>{u.enrollments_count ?? 0}</TD>
-                <TD>{u.created_at ? new Date(u.created_at).toLocaleDateString() : "—"}</TD>
+                <TD title={u.created_at ? formatDateTime(u.created_at) : undefined}>
+                  {u.created_at ? relativeTime(u.created_at) : "—"}
+                </TD>
                 <TD>
                   <div className="flex items-center justify-end gap-1">
                     <Link to={`/admin/users/students/${u.user_id}`}>
@@ -261,7 +281,7 @@ function EditStudentModal({ student, onClose, onSaved }: { student: StudentDTO |
       <form onSubmit={submit} className="space-y-3">
         <Input label="Email" type="email" value={email} onChange={(e) => { setEmail(e.target.value); clearErr("email"); }} leftIcon="mail" error={errors.email} />
         <Input label="Display name" value={name} onChange={(e) => { setName(e.target.value); clearErr("display_name"); }} leftIcon="person" error={errors.display_name} />
-        <Input label="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} leftIcon="phone" />
+        <Input label="WhatsApp Number" value={phone} onChange={(e) => setPhone(e.target.value)} leftIcon="phone" />
         <Input label="City" value={city} onChange={(e) => setCity(e.target.value)} leftIcon="location_on" />
         <Select
           label="Status"
@@ -303,9 +323,9 @@ function CreateStudentModal({ open, onClose, onCreated }: { open: boolean; onClo
     }
     const phoneTrimmed = phone.trim();
     if (!phoneTrimmed) {
-      e.phone = "Phone number is required";
+      e.phone = "WhatsApp number is required";
     } else if (!/^[0-9+\-\s()]{7,20}$/.test(phoneTrimmed)) {
-      e.phone = "Enter a valid phone number";
+      e.phone = "Enter a valid WhatsApp number";
     }
     if (!city.trim()) e.city = "City is required";
     if (!batchName.trim()) e.batchName = "Batch name is required";
@@ -381,7 +401,7 @@ function CreateStudentModal({ open, onClose, onCreated }: { open: boolean; onClo
           hint="Min 8 characters"
           error={errors.password}
         />
-        <Input label="Phone" value={phone} onChange={(e) => { setPhone(e.target.value); clearErr("phone"); }} leftIcon="phone" error={errors.phone} />
+        <Input label="WhatsApp Number" value={phone} onChange={(e) => { setPhone(e.target.value); clearErr("phone"); }} leftIcon="phone" error={errors.phone} />
         <Input label="City" value={city} onChange={(e) => { setCity(e.target.value); clearErr("city"); }} leftIcon="location_on" error={errors.city} />
         <div className="border-t border-ink-outlineVariant/40 pt-3">
           <p className="text-label text-ink-outline mb-2">For welcome email</p>
