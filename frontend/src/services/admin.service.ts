@@ -248,7 +248,14 @@ export async function createInstructor(payload: { email: string; display_name: s
   return { ...data, warning: res.data.warning as string | undefined };
 }
 export async function listStudents(
-  params: { page?: number; limit?: number; search?: string; city?: string; profile_complete?: boolean } = {}
+  params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    city?: string;
+    profile_complete?: boolean;
+    joined_range?: string;
+  } = {}
 ) {
   const res = await api.get<PaginatedResponse<StudentDTO>>("/admin/users/students", { params });
   return res.data;
@@ -328,6 +335,7 @@ export async function listAllEnrollments(
     course_id?: string;
     batch_id?: string;
     status?: string;
+    enrolled_range?: string;
   } = {}
 ) {
   const res = await api.get<PaginatedResponse<EnrollmentRow>>("/admin/enrollments", { params });
@@ -355,12 +363,12 @@ async function downloadCsv(url: string, params: Record<string, unknown>, filenam
   window.URL.revokeObjectURL(blobUrl);
 }
 export async function exportStudentsCsv(
-  params: { search?: string; city?: string; profile_complete?: boolean } = {}
+  params: { search?: string; city?: string; profile_complete?: boolean; joined_range?: string } = {}
 ) {
   await downloadCsv("/admin/users/students/export", params, "students.csv");
 }
 export async function exportEnrollmentsCsv(
-  params: { search?: string; course_id?: string; batch_id?: string; status?: string } = {}
+  params: { search?: string; course_id?: string; batch_id?: string; status?: string; enrolled_range?: string } = {}
 ) {
   await downloadCsv("/admin/enrollments/export", params, "enrollments.csv");
 }
