@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -25,6 +25,7 @@ function passwordStrength(pwd: string): { score: number; label: string; color: s
 
 export default function Signup() {
   const navigate = useNavigate();
+  const location = useLocation();
   const setUser = useAuthStore((s) => s.setUser);
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
@@ -80,7 +81,14 @@ export default function Signup() {
       console.log("[SIGNUP] OK", res.user);
       setUser({ ...res.user, profile_complete: res.profile_complete });
       toast.success("Account created. Welcome!");
-      navigate(res.profile_complete ? "/portal/my-courses" : "/portal/profile", { replace: true });
+      const from = (location.state as any)?.from;
+      if (res.profile_complete) {
+        navigate(from && typeof from === "string" ? from : "/portal/my-courses", { replace: true });
+      } else {
+        // Profile incomplete — go to profile page, carrying the 'from' so the
+        // user lands on the course after completing their profile.
+        navigate("/portal/profile", { replace: true, state: from ? { from } : undefined });
+      }
     } catch (e) {
       const msg = extractErrorMessage(e, "Verification failed");
       setOtpError(msg);

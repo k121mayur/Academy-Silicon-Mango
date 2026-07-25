@@ -84,6 +84,22 @@ async def _enriched_batch(db: AsyncSession, batch: Batch) -> BatchPublic:
             )
         )
     ).scalar_one()
+    # Schedule slots
+    slot_rows = (
+        await db.execute(
+            select(BatchScheduleSlot).where(BatchScheduleSlot.batch_id == batch.id)
+        )
+    ).scalars().all()
+    schedule_slots = [
+        {
+            "slot_type": s.slot_type.value,
+            "weekday": s.weekday,
+            "slot_date": s.slot_date.isoformat() if s.slot_date else None,
+            "start_time": s.start_time.strftime("%H:%M") if s.start_time else None,
+            "end_time": s.end_time.strftime("%H:%M") if s.end_time else None,
+        }
+        for s in slot_rows
+    ]
     return BatchPublic(
         id=str(batch.id),
         course_id=str(batch.course_id),
@@ -99,6 +115,7 @@ async def _enriched_batch(db: AsyncSession, batch: Batch) -> BatchPublic:
         enrolled_count=enrolled,
         is_locked=batch.is_locked,
         created_at=batch.created_at,
+        schedule_slots=schedule_slots,
     )
 
 
@@ -270,6 +287,9 @@ async def update_batch(
 
     data = payload.model_dump(exclude_unset=True)
 
+    # Pop schedule_slots — handle separately below
+    schedule_slots_data = data.pop("schedule_slots", None)
+
     # Validate the resulting date range (fall back to current values for unset fields).
     new_start = data.get("start_date", batch.start_date)
     new_end = data.get("end_date", batch.end_date)
@@ -291,6 +311,34 @@ async def update_batch(
     for k, v in data.items():
         if k in _BATCH_UPDATE_FIELDS:
             setattr(batch, k, v)
+
+    # Replace schedule slots when provided
+    if schedule_slots_data is not None:
+        # Delete old slots
+        old_slots = (
+            await db.execute(
+                select(BatchScheduleSlot).where(BatchScheduleSlot.batch_id == batch.id)
+            )
+        ).scalars().all()
+        for old in old_slots:
+            await db.delete(old)
+        await db.flush()
+        # Insert new slots
+        for s in schedule_slots_data:
+            try:
+                st = SlotType(s["slot_type"])
+            except (ValueError, KeyError):
+                continue
+            slot = BatchScheduleSlot(
+                batch_id=batch.id,
+                slot_type=st,
+                weekday=s.get("weekday"),
+                slot_date=s.get("slot_date"),
+                start_time=s.get("start_time"),
+                end_time=s.get("end_time"),
+            )
+            db.add(slot)
+
     await db.commit()
     await db.refresh(batch)
     return await _enriched_batch(db, batch)

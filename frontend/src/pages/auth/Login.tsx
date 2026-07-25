@@ -42,6 +42,11 @@ export default function Login() {
       console.log("[LOGIN] OK", res.user);
       setUser({ ...res.user, profile_complete: res.profile_complete });
       toast.success("Welcome back!");
+      const from = (location.state as any)?.from;
+      if (from && typeof from === "string") {
+        navigate(from, { replace: true });
+        return;
+      }
       const role = res.user.role;
       if (role === "admin") navigate("/admin/dashboard", { replace: true });
       else if (role === "instructor") navigate("/instructor/dashboard", { replace: true });

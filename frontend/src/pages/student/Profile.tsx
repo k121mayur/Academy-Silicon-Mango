@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 
@@ -61,6 +61,7 @@ const EMPTY_FORM: FormState = {
 
 export default function StudentProfile() {
   const navigate = useNavigate();
+  const location = useLocation();
   const user = useAuthStore((s) => s.user);
   const setUser = useAuthStore((s) => s.setUser);
 
@@ -175,7 +176,8 @@ export default function StudentProfile() {
       setDirty(false);
       toast.success("Profile saved");
       if (wasIncomplete && updated.profile_complete) {
-        navigate(ROUTES.student.myCourses);
+        const from = (location.state as any)?.from;
+        navigate(from && typeof from === "string" ? from : ROUTES.student.myCourses);
       }
     },
     onError: (err) => toast.error(extractErrorMessage(err)),

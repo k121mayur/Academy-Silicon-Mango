@@ -47,14 +47,18 @@ export default function CourseDetails() {
     enabled: !!courseId,
   });
 
-  // Allow deep-linking to a specific tab, e.g. `?tab=demo` from the landing page.
-  const demoVideoId = course?.demo_youtube_url
+  // Allow deep-linking to a specific tab, e.g. `?tab=batches` from the auth redirect.
+  const demoTabVideoId = course?.demo_youtube_url
     ? extractYouTubeId(course.demo_youtube_url)
     : null;
   useEffect(() => {
     const requested = searchParams.get("tab");
-    if (requested === "demo" && demoVideoId) setTab("demo");
-  }, [searchParams, demoVideoId]);
+    if (requested === "demo" && demoTabVideoId) setTab("demo");
+    else if (requested === "batches") setTab("batches");
+    else if (requested === "syllabus") setTab("syllabus");
+    else if (requested === "certificate") setTab("certificate");
+    else if (requested === "faqs") setTab("faqs");
+  }, [searchParams, demoTabVideoId]);
 
   const prefetchBatches = () =>
     queryClient.prefetchQuery({
@@ -109,10 +113,10 @@ export default function CourseDetails() {
         description="You need a Silicon Mango account to enroll in this course. Sign in or sign up — it only takes a minute."
         footer={
           <>
-            <Button variant="outline" onClick={() => navigate(ROUTES.login, { state: { from: ROUTES.public.courseDetails(course.id) } })}>
+            <Button variant="outline" onClick={() => navigate(ROUTES.login, { state: { from: `${ROUTES.student.courseDetails(course.id)}?tab=batches` } })}>
               Sign in
             </Button>
-            <Button rightIcon="arrow_forward" onClick={() => navigate(ROUTES.signup, { state: { from: ROUTES.public.courseDetails(course.id) } })}>
+            <Button rightIcon="arrow_forward" onClick={() => navigate(ROUTES.signup, { state: { from: `${ROUTES.student.courseDetails(course.id)}?tab=batches` } })}>
               Create account
             </Button>
           </>
@@ -158,7 +162,7 @@ export default function CourseDetails() {
             {[
               { id: "overview" as const, label: "Overview", icon: "info" },
               { id: "syllabus" as const, label: "Syllabus", icon: "list_alt" },
-              ...(demoVideoId
+              ...(demoTabVideoId
                 ? [{ id: "demo" as const, label: "Demo Session", icon: "play_circle" }]
                 : []),
               { id: "batches" as const, label: "Batches", icon: "groups" },
@@ -185,7 +189,7 @@ export default function CourseDetails() {
           <div className="animate-fade-in">
             {tab === "overview" && <OverviewTab course={course} />}
             {tab === "syllabus" && <SyllabusTab course={course} />}
-            {tab === "demo" && demoVideoId && <DemoSessionTab videoId={demoVideoId} />}
+            {tab === "demo" && demoTabVideoId && <DemoSessionTab videoId={demoTabVideoId} />}
             {tab === "batches" && (
               <BatchesTab
                 course={course}

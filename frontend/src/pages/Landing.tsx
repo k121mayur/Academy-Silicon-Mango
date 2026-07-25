@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "@/lib/api";
 import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
 import { Reveal } from "@/components/ui/Reveal";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { Img } from "@/components/ui/Img";
@@ -25,12 +24,11 @@ interface PublicCourse {
   tags?: string[];
 }
 
-// Warm-toned learning photo for the full-bleed hero. If it fails to load the
-// brand gradient underneath shows through (see onError below).
+// Warm-toned learning photo for the full-bleed hero.
 const HERO_IMAGE =
   "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=1920&q=80";
 
-// Shown as Card 1 in the course section when the API returns no published courses.
+// Fallback when API returns no courses
 const EXCEL_FALLBACK: PublicCourse = {
   id: "excel-mastery",
   slug: "",
@@ -56,24 +54,14 @@ export default function Landing() {
       .finally(() => setLoadingCourses(false));
   }, []);
 
-  // Surface the live Excel Mastery course from the API if it exists.
-  const liveCourse =
-    courses.find(
-      (c) => c.title.toLowerCase().includes("excel") || c.slug.includes("excel")
-    ) ?? (courses[0] || null);
-
-  const displayCourse = liveCourse ?? EXCEL_FALLBACK;
-
   return (
     <div className="bg-surface overflow-x-clip">
       {/* ───────────────────── Hero (full-bleed image) ───────────────────── */}
       <section className="relative isolate flex items-center justify-center min-h-[88dvh] overflow-hidden">
-        {/* Brand gradient base — always renders, even before/without the photo */}
         <div
           className="absolute inset-0 bg-gradient-to-br from-[#5c3800] via-[#a85f00] to-[#3d2b00]"
           aria-hidden
         />
-        {/* Curated warm photo */}
         <img
           src={HERO_IMAGE}
           alt=""
@@ -83,16 +71,13 @@ export default function Landing() {
             (e.currentTarget as HTMLImageElement).style.display = "none";
           }}
         />
-        {/* Readability scrim — warm mango-tinted, darker at the edges */}
         <div
           className="absolute inset-0 bg-gradient-to-b from-[#2a1c00]/85 via-[#3d2b00]/55 to-[#2a1c00]/80"
           aria-hidden
         />
         <div className="absolute inset-0 grid-pattern opacity-20 pointer-events-none" aria-hidden />
 
-        {/* Centered overlay content */}
         <div className="relative z-10 max-w-3xl mx-auto px-4 md:px-6 py-24 text-center text-white">
-          {/* Trust strip */}
           <div
             className="inline-flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-body-sm mb-6 px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-sm border border-white/15 animate-slide-up"
           >
@@ -143,7 +128,6 @@ export default function Landing() {
           </div>
         </div>
 
-        {/* Scroll cue */}
         <a
           href="#courses"
           aria-label="Scroll to courses"
@@ -215,17 +199,19 @@ export default function Landing() {
                 <SkeletonCard key={i} />
               ))}
             </div>
-          ) : (
+          ) : courses.length === 0 ? (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
               <Reveal as="article" className="h-full">
-                <ExcelCourseCard course={displayCourse} />
+                <CourseCard course={EXCEL_FALLBACK} />
               </Reveal>
-              <Reveal delay={70} as="article" className="h-full">
-                <PythonComingSoon />
-              </Reveal>
-              <Reveal delay={140} as="article" className="h-full">
-                <RoadmapTeaserCard />
-              </Reveal>
+            </div>
+          ) : (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
+              {courses.slice(0, 3).map((c, i) => (
+                <Reveal key={c.id} delay={i * 70} as="article" className="h-full">
+                  <CourseCard course={c} />
+                </Reveal>
+              ))}
             </div>
           )}
 
@@ -249,7 +235,6 @@ export default function Landing() {
             </h2>
           </Reveal>
           <div className="grid md:grid-cols-3 gap-5">
-            {/* Wide feature cell — warm espresso→mango gradient (on-brand, light-theme safe) */}
             <Reveal className="md:col-span-2 md:row-span-2">
               <div className="h-full bg-gradient-to-br from-[#3d2b00] via-[#7a4a00] to-[#a85f00] text-white rounded-3xl p-6 md:p-8 relative overflow-hidden min-h-[220px]">
                 <div className="absolute -right-16 -bottom-16 w-64 h-64 rounded-full bg-primary-fill/20 blur-3xl" />
@@ -389,7 +374,6 @@ export default function Landing() {
               </Reveal>
             ))}
           </div>
-          {/* Trust aggregate below testimonials */}
           <Reveal delay={240} className="mt-8 text-center text-body-sm text-ink-outline flex items-center justify-center gap-2">
             <FilledStars count={5} size={14} className="text-primary-fill" />
             <span>200+ learners enrolled · 4.9 avg rating across all cohorts</span>
@@ -457,7 +441,6 @@ export default function Landing() {
       <section className="pb-16 md:pb-24 pt-4">
         <div className="max-w-7xl mx-auto px-4 md:px-6">
           <Reveal>
-            {/* Warm espresso→mango gradient — on-brand, replaces the old olive bleed. */}
             <div className="bg-gradient-to-br from-[#3d2b00] via-[#a85f00] to-[#5c3800] text-white rounded-3xl p-10 md:p-16 text-center relative overflow-hidden">
               <div className="absolute inset-0 grid-pattern opacity-20" />
               <div className="absolute -top-20 -right-10 w-72 h-72 rounded-full bg-primary-fill/25 blur-3xl" />
@@ -505,7 +488,6 @@ export default function Landing() {
 
 /* ─────────────────── Sub-components ─────────────────── */
 
-/** Renders N filled gold stars using the Material Symbols font's FILL axis. */
 function FilledStars({
   count = 5,
   size = 18,
@@ -530,16 +512,32 @@ function FilledStars({
   );
 }
 
-/** Course catalog flagship card: sourced from the API (Excel Mastery) or the static fallback. */
-function ExcelCourseCard({ course: c }: { course: PublicCourse }) {
-  const features = ["60+ functions", "Dashboard project", "Certificate"];
+/** Generic course card — displays any course from the API. */
+function CourseCard({ course: c }: { course: PublicCourse }) {
   const price = Math.max(c.price - (c.price * (c.discount || 0)) / 100, 0);
   const detailHref = `/courses/${c.slug || c.id}`;
+  const hasDiscount = c.discount > 0;
+  const discountPct = Math.round(c.discount);
 
-  // The whole card is a link to the course detail page, so a click anywhere
-  // opens the full details — not just the CTA button. The "Enroll Now" pill is
-  // rendered as a non-interactive element so we don't nest a button inside a
-  // link (invalid markup); the parent link handles the navigation.
+  // Derive features from tags or use defaults
+  const features = (c.tags && c.tags.length > 0)
+    ? c.tags.slice(0, 3)
+    : ["Live sessions", "Certificate", "Mentor support"];
+
+  // Duration label
+  const durLabel = c.duration_unit === "weeks"
+    ? `${c.duration_value}-week live cohort`
+    : `${c.duration_value}-day live cohort`;
+
+  // Icon per course type/category
+  const icon = c.title.toLowerCase().includes("excel")
+    ? "table_chart"
+    : c.title.toLowerCase().includes("python")
+      ? "code"
+      : c.title.toLowerCase().includes("sql")
+        ? "database"
+        : "school";
+
   return (
     <Link
       to={detailHref}
@@ -557,24 +555,30 @@ function ExcelCourseCard({ course: c }: { course: PublicCourse }) {
           />
         ) : (
           <div className="h-full w-full bg-gradient-to-br from-primary-container to-primary-fixed flex items-center justify-center">
-            <span className="icon text-[52px] text-primary-on/40">table_chart</span>
+            <span className="icon text-[52px] text-primary-on/40">{icon}</span>
           </div>
         )}
         <span className="absolute top-3 left-3 px-2.5 py-1 text-label rounded-full bg-primary-fill text-primary-on font-semibold shadow-sm">
-          Live cohort
+          {c.course_type === "live" ? "Live cohort" : "Self-paced"}
         </span>
-        <span className="absolute top-3 right-3 px-2.5 py-1 text-label rounded-full bg-ink/80 text-white backdrop-blur-sm font-semibold">
-          87% off
-        </span>
-        {/* Reveal-on-hover cue that the whole card opens the course details. */}
+        {hasDiscount && (
+          <span className="absolute top-3 right-3 px-2.5 py-1 text-label rounded-full bg-ink/80 text-white backdrop-blur-sm font-semibold">
+            {discountPct}% off
+          </span>
+        )}
         <div className="absolute inset-x-0 bottom-0 translate-y-full group-hover:translate-y-0 transition-transform duration-300 bg-black/55 backdrop-blur-sm text-white text-body-sm font-medium py-1.5 text-center">
           View details →
         </div>
       </div>
       {/* Body */}
       <div className="p-5 flex flex-col flex-1">
-        <p className="text-label text-ink-outline mb-1">8-day live cohort · Batch starts 6 July 2026</p>
-        <h3 className="font-display font-semibold text-title-lg text-ink mb-3 group-hover:text-primary transition-colors">{c.title}</h3>
+        <p className="text-label text-ink-outline mb-1">{durLabel}</p>
+        <h3 className="font-display font-semibold text-title-lg text-ink mb-3 group-hover:text-primary transition-colors">
+          {c.title}
+        </h3>
+        {c.description && (
+          <p className="text-body-sm text-ink-variant mb-3 line-clamp-2">{c.description}</p>
+        )}
         <ul className="space-y-2 mb-5 flex-1">
           {features.map((f) => (
             <li key={f} className="flex items-center gap-2 text-body-sm text-ink">
@@ -591,9 +595,11 @@ function ExcelCourseCard({ course: c }: { course: PublicCourse }) {
               <span className="font-display font-bold text-title-lg text-ink tabular-nums">
                 {formatCurrency(price)}
               </span>
-              <span className="text-body-sm text-ink-outline line-through tabular-nums">
-                {formatCurrency(2999)}
-              </span>
+              {hasDiscount && (
+                <span className="text-body-sm text-ink-outline line-through tabular-nums">
+                  {formatCurrency(c.price)}
+                </span>
+              )}
             </div>
           </div>
           <span className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-md bg-primary-fill text-primary-on text-body-sm font-medium shadow-sm transition-colors duration-200 group-hover:bg-primary-fillHover">
@@ -603,64 +609,6 @@ function ExcelCourseCard({ course: c }: { course: PublicCourse }) {
         </div>
       </div>
     </Link>
-  );
-}
-
-/** Course catalog Card 2: Python for Career (coming soon — not yet open for enrollment). */
-function PythonComingSoon() {
-  return (
-    <div className="h-full flex flex-col rounded-2xl border border-ink-outlineVariant/60 bg-surface-lowest overflow-hidden">
-      <div className="h-32 relative overflow-hidden bg-gradient-to-br from-tertiary-container/40 to-secondary-container flex items-center justify-center">
-        <span className="icon text-[52px] text-tertiary/30">code</span>
-        <span className="absolute top-3 left-3">
-          <Badge tone="tertiary">Coming soon</Badge>
-        </span>
-      </div>
-      <div className="p-5 flex flex-col flex-1">
-        <p className="text-label text-ink-outline mb-1">8-week live cohort · Launching August 2025</p>
-        <h3 className="font-display font-semibold text-title-lg text-ink mb-2">Python for Career</h3>
-        <p className="text-body-sm text-ink-variant flex-1">
-          For professionals with zero coding background. Automate the boring parts of your job.
-        </p>
-        <div className="mt-5 pt-3 border-t border-ink-outlineVariant/30">
-          <Link to="/signup">
-            <Button variant="outline" fullWidth leftIcon="notifications">
-              Get Notified
-            </Button>
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** Course catalog Card 3: roadmap teaser for SQL & AI (styled as a teaser, not a course). */
-function RoadmapTeaserCard() {
-  return (
-    <div className="h-full flex flex-col rounded-2xl border border-dashed border-ink-outlineVariant/60 bg-surface-lowest/60 overflow-hidden">
-      <div className="h-32 relative overflow-hidden bg-gradient-to-br from-surface-container to-surface-containerHigh flex items-center justify-center gap-4">
-        <span className="icon text-[36px] text-ink-outlineVariant">database</span>
-        <span className="text-ink-outlineVariant/50 text-title-lg font-display">+</span>
-        <span className="icon text-[36px] text-ink-outlineVariant">psychology</span>
-      </div>
-      <div className="p-5 flex flex-col flex-1">
-        <Badge tone="neutral" className="mb-3 self-start">On our roadmap</Badge>
-        <h3 className="font-display font-semibold text-title-lg text-ink mb-2">
-          More tracks coming soon
-        </h3>
-        <p className="text-body-sm text-ink-variant flex-1">
-          SQL and AI tools are next. We build courses based on what learners actually need - leave your
-          email and we will let you know when they launch.
-        </p>
-        <div className="mt-5 pt-3 border-t border-ink-outlineVariant/30">
-          <Link to="/signup">
-            <Button variant="ghost" fullWidth leftIcon="notifications">
-              Get Notified
-            </Button>
-          </Link>
-        </div>
-      </div>
-    </div>
   );
 }
 

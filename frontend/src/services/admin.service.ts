@@ -36,6 +36,13 @@ export interface BatchDTO {
   capacity?: number | null;
   enrolled_count: number;
   is_locked: boolean;
+  schedule_slots?: Array<{
+    slot_type: string;
+    weekday: number | null;
+    slot_date: string | null;
+    start_time: string | null;
+    end_time: string | null;
+  }>;
 }
 
 export interface InstructorDTO {

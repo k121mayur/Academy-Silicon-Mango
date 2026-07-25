@@ -34,6 +34,7 @@ class BatchUpdate(BaseModel):
     end_date: Optional[date] = None
     capacity: Optional[int] = None
     status: Optional[str] = None
+    schedule_slots: Optional[list[ScheduleSlotIn]] = None
 
 
 class BatchPublic(BaseModel):
@@ -51,6 +52,7 @@ class BatchPublic(BaseModel):
     enrolled_count: int = 0
     is_locked: bool = False
     created_at: Optional[datetime] = None
+    schedule_slots: list[dict] = []
 
 
 class BatchPlanIn(BaseModel):

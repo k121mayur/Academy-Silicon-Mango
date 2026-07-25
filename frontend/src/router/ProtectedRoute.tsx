@@ -43,7 +43,7 @@ export default function ProtectedRoute({ roles, requireProfileComplete }: Protec
   if (requireProfileComplete && user.role === "student" && !user.profile_complete) {
     if (location.pathname !== "/portal/profile") {
       console.log("[GUARD] Student profile incomplete — redirecting to /portal/profile");
-      return <Navigate to="/portal/profile" replace />;
+      return <Navigate to="/portal/profile" replace state={{ from: location.pathname }} />;
     }
   }
 

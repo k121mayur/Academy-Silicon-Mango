@@ -27,7 +27,15 @@ import {
   batchAssignInstructor,
   StudentDTO,
 } from "@/services/admin.service";
-import { formatDate, formatDateTime } from "@/lib/utils";
+import { formatDate, formatDateTime, WEEKDAY_LABELS } from "@/lib/utils";
+
+interface Slot {
+  slot_type: "weekday" | "date_based";
+  weekday?: number;
+  slot_date?: string;
+  start_time: string;
+  end_time: string;
+}
 
 export default function BatchDetail() {
   const { id } = useParams();
@@ -45,7 +53,7 @@ export default function BatchDetail() {
   const [completeOpen, setCompleteOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [editForm, setEditForm] = useState({ name: "", start_date: "", end_date: "", capacity: "", status: "upcoming" });
+  const [editForm, setEditForm] = useState({ name: "", start_date: "", end_date: "", capacity: "", status: "upcoming", slots: [] as Slot[] });
   const [savingEdit, setSavingEdit] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -180,6 +188,13 @@ export default function BatchDetail() {
       capacity: batch.capacity != null ? String(batch.capacity) : "",
       // "completed" is reached only through the Complete-batch flow, so it's not offered here.
       status: batch.status === "completed" ? "active" : batch.status,
+      slots: (batch.schedule_slots || []).map((s: any) => ({
+        slot_type: s.slot_type || "weekday",
+        weekday: s.weekday,
+        slot_date: s.slot_date,
+        start_time: s.start_time || "10:00",
+        end_time: s.end_time || "11:30",
+      })),
     });
     setEditOpen(true);
   };
@@ -201,6 +216,7 @@ export default function BatchDetail() {
         end_date: editForm.end_date || undefined,
         capacity: editForm.capacity.trim() === "" ? null : Number(editForm.capacity),
         status: editForm.status,
+        schedule_slots: editForm.slots,
       });
       toast.success("Batch updated");
       setEditOpen(false);
@@ -427,7 +443,7 @@ export default function BatchDetail() {
         onClose={() => setEditOpen(false)}
         title="Edit batch"
         description="Update the batch details. Completed batches are locked and can't be edited."
-        size="md"
+        size="lg"
         footer={<>
           <Button variant="ghost" onClick={() => setEditOpen(false)} disabled={savingEdit}>Cancel</Button>
           <Button onClick={saveEdit} loading={savingEdit}>Save changes</Button>
@@ -472,8 +488,68 @@ export default function BatchDetail() {
               { value: "active", label: "Active" },
               { value: "cancelled", label: "Cancelled" },
             ]}
-            hint="Use “Complete batch” to mark a batch completed and issue certificates."
+            hint="Use \u201cComplete batch\u201d to mark a batch completed and issue certificates."
           />
+
+          {batch.delivery_mode === "live" && (
+            <div className="border-t border-ink-outlineVariant/40 pt-4 mt-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-label font-medium text-ink-variant uppercase tracking-wide">Schedule Slots</p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  leftIcon="add"
+                  onClick={() => {
+                    const used = new Set(editForm.slots.map((s: Slot) => s.weekday));
+                    const next = [0, 1, 2, 3, 4, 5, 6].find((d) => !used.has(d));
+                    if (next === undefined) return;
+                    setEditForm((f) => ({
+                      ...f,
+                      slots: [...f.slots, { slot_type: "weekday" as const, weekday: next, start_time: "10:00", end_time: "11:30" }],
+                    }));
+                  }}
+                  disabled={editForm.slots.length >= 7}
+                >
+                  Add slot
+                </Button>
+              </div>
+              {editForm.slots.length === 0 && (
+                <p className="text-body-sm text-ink-outline">No schedule slots. Click &ldquo;Add slot&rdquo; to set class timings.</p>
+              )}
+              <div className="space-y-2">
+                {editForm.slots.map((s: Slot, i: number) => (
+                  <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end bg-surface-containerLow p-3 rounded-xl">
+                    <Select
+                      label="Day"
+                      value={String(s.weekday ?? 0)}
+                      onChange={(e) => setEditForm((f) => ({ ...f, slots: f.slots.map((x: Slot, j: number) => j === i ? { ...x, weekday: parseInt(e.target.value) } : x) }))}
+                      options={WEEKDAY_LABELS.map((w, idx) => ({ value: String(idx), label: w }))}
+                    />
+                    <Input
+                      label="Start time"
+                      type="time"
+                      value={s.start_time}
+                      onChange={(e) => setEditForm((f) => ({ ...f, slots: f.slots.map((x: Slot, j: number) => j === i ? { ...x, start_time: e.target.value } : x) }))}
+                    />
+                    <Input
+                      label="End time"
+                      type="time"
+                      value={s.end_time}
+                      onChange={(e) => setEditForm((f) => ({ ...f, slots: f.slots.map((x: Slot, j: number) => j === i ? { ...x, end_time: e.target.value } : x) }))}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      leftIcon="delete"
+                      className="text-danger"
+                      onClick={() => setEditForm((f) => ({ ...f, slots: f.slots.filter((_: Slot, j: number) => j !== i) }))}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </Modal>
 
