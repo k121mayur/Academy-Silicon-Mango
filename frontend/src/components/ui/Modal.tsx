@@ -1,4 +1,5 @@
 import { ReactNode, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -30,7 +31,7 @@ export function Modal({ open, onClose, title, description, children, footer, siz
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm animate-fade-in p-4"
       onClick={() => closable && onClose()}
@@ -55,7 +56,7 @@ export function Modal({ open, onClose, title, description, children, footer, siz
               {description && <p className="text-body-sm text-ink-variant mt-1">{description}</p>}
             </div>
             {closable && (
-              <button
+               <button
                 onClick={onClose}
                 className="w-8 h-8 grid place-items-center rounded-md hover:bg-surface-container text-ink-variant"
                 aria-label="Close"
@@ -68,6 +69,7 @@ export function Modal({ open, onClose, title, description, children, footer, siz
         <div className="p-5 flex-1 min-h-0 overflow-y-auto scrollbar-thin">{children}</div>
         {footer && <div className="shrink-0 p-5 border-t border-ink-outlineVariant/30 flex justify-end gap-2">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
