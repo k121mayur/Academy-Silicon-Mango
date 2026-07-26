@@ -8,6 +8,7 @@ import { Img } from "@/components/ui/Img";
 import { FloatingWhatsApp } from "@/components/public/FloatingWhatsApp";
 import { formatCurrency } from "@/lib/utils";
 import { DEMO_YOUTUBE_URL } from "@/lib/media";
+import { stripHtml } from "@/components/shared/RichTextView";
 
 interface PublicCourse {
   id: string;
@@ -577,7 +578,7 @@ function CourseCard({ course: c }: { course: PublicCourse }) {
           {c.title}
         </h3>
         {c.description && (
-          <p className="text-body-sm text-ink-variant mb-3 line-clamp-2">{c.description}</p>
+          <p className="text-body-sm text-ink-variant mb-3 line-clamp-2">{stripHtml(c.description)}</p>
         )}
         <ul className="space-y-2 mb-5 flex-1">
           {features.map((f) => (

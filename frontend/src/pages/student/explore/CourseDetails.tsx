@@ -221,7 +221,7 @@ export default function CourseDetails() {
             <Button
               fullWidth
               size="lg"
-              className="mt-4"
+              className="mt-4 hidden lg:inline-flex"
               rightIcon="arrow_forward"
               onMouseEnter={prefetchBatches}
               onFocus={prefetchBatches}

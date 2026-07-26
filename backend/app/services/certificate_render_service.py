@@ -85,22 +85,18 @@ def _draw_text_on_image(
     y = int(cfg.get("y", 0))
 
     try:
-        font = ImageFont.truetype("arial.ttf", size)
+        font = ImageFont.truetype("times.ttf", size)
     except Exception:
         try:
-            font = ImageFont.truetype("DejaVuSans.ttf", size)
+            font = ImageFont.truetype("arial.ttf", size)
         except Exception:
-            font = ImageFont.load_default()
+            try:
+                font = ImageFont.truetype("DejaVuSans.ttf", size)
+            except Exception:
+                font = ImageFont.load_default()
 
-    bbox = draw.textbbox((0, 0), text, font=font)
-    width = bbox[2] - bbox[0]
-    height = bbox[3] - bbox[1]
-    if align == "center":
-        x = x - width // 2
-    elif align == "right":
-        x = x - width
-    y = y - height // 2
-    draw.text((x, y), text, fill=color, font=font)
+    anchor = "mm" if align == "center" else "rm" if align == "right" else "lm"
+    draw.text((x, y), text, fill=color, font=font, anchor=anchor)
 
 
 def _render_on_image(
@@ -164,8 +160,15 @@ def _render_on_pdf(
             c.setFillColor(HexColor(color))
         except Exception:
             c.setFillColor(HexColor("#000000"))
-        c.setFont("Helvetica-Bold", size)
-        pdf_y = page_h - y - size / 2
+        font_name = "Times-Roman"
+        c.setFont(font_name, size)
+        
+        from reportlab.pdfbase.pdfmetrics import getAscent, getDescent
+        ascent = getAscent(font_name, size)
+        descent = getDescent(font_name, size)
+        
+        pdf_y = page_h - y - (ascent + descent) / 2
+        
         if align == "center":
             c.drawCentredString(x, pdf_y, text)
         elif align == "right":
