@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid as uuid_lib
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, Request, Response
@@ -18,7 +19,7 @@ from app.models.user import InstructorProfile, StudentProfile, User, UserRole
 from app.models.certificate import Certificate, CertificateTemplate
 from app.schemas.newsletter import NewsletterRequest, NewsletterVerify
 from app.services.newsletter_service import request_newsletter_otp, verify_newsletter_otp
-from app.services.payment_service import enrollment_window_end, is_enrollment_open
+from app.services.payment_service import IST, enrollment_window_end, is_enrollment_open
 
 router = APIRouter(prefix="/public", tags=["public"])
 
@@ -30,6 +31,7 @@ def _course_detail_dict(c: Course, instructors: list[dict], certificate_template
         "slug": c.slug,
         "description": c.description,
         "category": c.category,
+        "language": c.language or "English",
         "course_type": c.course_type.value,
         "duration_unit": c.duration_unit.value,
         "duration_value": c.duration_value,
@@ -51,10 +53,175 @@ def _course_detail_dict(c: Course, instructors: list[dict], certificate_template
 _ENROLLABLE_STATUSES = (BatchStatus.upcoming, BatchStatus.active)
 
 
+@router.get("/next-batch")
+async def public_next_batch(
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    viewer: Optional[User] = Depends(get_current_user_optional),
+):
+    """Returns the batch with the earliest upcoming start date across all courses."""
+    is_admin = viewer is not None and viewer.role == UserRole.admin
+    if is_admin:
+        response.headers["Cache-Control"] = "private, no-store"
+
+    stmt = (
+        select(Batch, Course)
+        .join(Course, Course.id == Batch.course_id)
+        .where(
+            Batch.is_locked == False,  # noqa: E712
+            Batch.status.in_(_ENROLLABLE_STATUSES),
+        )
+    )
+    if not is_admin:
+        stmt = stmt.where(Course.is_published == True)  # noqa: E712
+
+    # Query all eligible batches ordered by start_date ascending (lowest date of all)
+    rows = (await db.execute(stmt.order_by(Batch.start_date.asc(), Batch.created_at.asc()))).all()
+
+    if not rows:
+        return {"success": True, "data": None}
+
+    today = datetime.now(IST).date()
+
+    selected_batch: Optional[Batch] = None
+    selected_course: Optional[Course] = None
+    selected_enrolled: int = 0
+
+    # 1st preference: batch with start_date >= today where enrollment is open and seats are available
+    for b, c in rows:
+        if is_enrollment_open(c, b):
+            cnt = (
+                await db.execute(
+                    select(func.count(Enrollment.id)).where(
+                        Enrollment.batch_id == b.id, Enrollment.status == EnrollmentStatus.active
+                    )
+                )
+            ).scalar_one()
+            if b.capacity is not None and cnt >= b.capacity:
+                continue
+            if b.start_date and b.start_date >= today:
+                selected_batch = b
+                selected_course = c
+                selected_enrolled = cnt
+                break
+
+    # 2nd preference: any open batch where enrollment is still active (e.g. within late-enrollment grace window)
+    if not selected_batch:
+        for b, c in rows:
+            if is_enrollment_open(c, b):
+                cnt = (
+                    await db.execute(
+                        select(func.count(Enrollment.id)).where(
+                            Enrollment.batch_id == b.id, Enrollment.status == EnrollmentStatus.active
+                        )
+                    )
+                ).scalar_one()
+                if b.capacity is not None and cnt >= b.capacity:
+                    continue
+                selected_batch = b
+                selected_course = c
+                selected_enrolled = cnt
+                break
+
+    # 3rd preference: fallback to the earliest scheduled batch
+    if not selected_batch and rows:
+        b, c = rows[0]
+        cnt = (
+            await db.execute(
+                select(func.count(Enrollment.id)).where(
+                    Enrollment.batch_id == b.id, Enrollment.status == EnrollmentStatus.active
+                )
+            )
+        ).scalar_one()
+        selected_batch = b
+        selected_course = c
+        selected_enrolled = cnt
+
+    if not selected_batch or not selected_course:
+        return {"success": True, "data": None}
+
+    seats_left = (
+        (selected_batch.capacity - selected_enrolled)
+        if selected_batch.capacity is not None
+        else None
+    )
+    is_full = seats_left is not None and seats_left <= 0
+    enrollment_open = is_enrollment_open(selected_course, selected_batch)
+
+    # Schedule slots
+    slots_res = await db.execute(
+        select(BatchScheduleSlot).where(BatchScheduleSlot.batch_id == selected_batch.id)
+    )
+    schedule_slots = [
+        {
+            "slot_type": slot.slot_type.value,
+            "weekday": slot.weekday,
+            "slot_date": slot.slot_date.isoformat() if slot.slot_date else None,
+            "start_time": slot.start_time.strftime("%H:%M") if slot.start_time else None,
+            "end_time": slot.end_time.strftime("%H:%M") if slot.end_time else None,
+        }
+        for slot in slots_res.scalars().all()
+    ]
+
+    # Instructor name
+    instructor_name = None
+    if selected_batch.instructor_id:
+        ip = (
+            await db.execute(
+                select(InstructorProfile).where(
+                    InstructorProfile.user_id == selected_batch.instructor_id
+                )
+            )
+        ).scalar_one_or_none()
+        if ip:
+            instructor_name = ip.display_name
+
+    return {
+        "success": True,
+        "data": {
+            "batch": {
+                "id": str(selected_batch.id),
+                "name": selected_batch.name,
+                "delivery_mode": selected_batch.delivery_mode.value,
+                "status": selected_batch.status.value,
+                "start_date": selected_batch.start_date.isoformat() if selected_batch.start_date else None,
+                "end_date": selected_batch.end_date.isoformat() if selected_batch.end_date else None,
+                "capacity": selected_batch.capacity,
+                "enrolled_count": selected_enrolled,
+                "seats_left": seats_left,
+                "is_full": is_full,
+                "enrollment_open": enrollment_open,
+                "enrollment_closes_on": enrollment_window_end(
+                    selected_course, selected_batch
+                ).isoformat(),
+                "instructor_name": instructor_name,
+                "schedule_slots": schedule_slots,
+            },
+            "course": {
+                "id": str(selected_course.id),
+                "title": selected_course.title,
+                "slug": selected_course.slug,
+                "description": selected_course.description,
+                "category": selected_course.category,
+                "language": selected_course.language or "English",
+                "course_type": selected_course.course_type.value,
+                "duration_unit": selected_course.duration_unit.value,
+                "duration_value": selected_course.duration_value,
+                "price": float(selected_course.price),
+                "discount": float(selected_course.discount),
+                "banner_url": selected_course.banner_url,
+                "tags": selected_course.tags or [],
+                "demo_youtube_url": selected_course.demo_youtube_url,
+            },
+        },
+    }
+
+
 @router.get("/courses")
 async def public_courses(
     response: Response,
     search: Optional[str] = Query(None),
+    language: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     viewer: Optional[User] = Depends(get_current_user_optional),
@@ -71,8 +238,12 @@ async def public_courses(
     if search and search.strip():
         term = f"%{search.strip().lower()}%"
         stmt = stmt.where(
-            func.lower(Course.title).like(term) | func.lower(func.coalesce(Course.category, "")).like(term)
+            func.lower(Course.title).like(term)
+            | func.lower(func.coalesce(Course.category, "")).like(term)
+            | func.lower(func.coalesce(Course.language, "")).like(term)
         )
+    if language and language.strip() and language.strip().lower() != "all":
+        stmt = stmt.where(func.lower(Course.language) == language.strip().lower())
     rows = (await db.execute(stmt.order_by(Course.created_at.desc()).limit(limit))).scalars().all()
 
     course_ids = [c.id for c in rows]
@@ -99,6 +270,7 @@ async def public_courses(
                 "slug": c.slug,
                 "description": c.description,
                 "category": c.category,
+                "language": c.language or "English",
                 "course_type": c.course_type.value,
                 "duration_unit": c.duration_unit.value,
                 "duration_value": c.duration_value,

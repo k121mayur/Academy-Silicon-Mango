@@ -32,6 +32,7 @@ def _to_public(c: Course, batches_count: int = 0) -> CoursePublic:
         slug=c.slug,
         description=c.description,
         category=c.category,
+        language=c.language or "English",
         course_type=c.course_type.value,
         duration_unit=c.duration_unit.value,
         duration_value=c.duration_value,
@@ -72,6 +73,7 @@ async def list_courses(
     type: Optional[str] = None,
     published: Optional[bool] = None,
     category: Optional[str] = None,
+    language: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ):
@@ -88,6 +90,7 @@ async def list_courses(
         cond = or_(
             Course.title.ilike(like),
             Course.category.ilike(like),
+            Course.language.ilike(like),
             Course.description.ilike(like),
             cast(Course.tags, SAString).ilike(like),
             batch_match,
@@ -107,6 +110,9 @@ async def list_courses(
     if category:
         stmt = stmt.where(Course.category == category)
         count_stmt = count_stmt.where(Course.category == category)
+    if language and language.strip() and language.strip().lower() != "all":
+        stmt = stmt.where(func.lower(Course.language) == language.strip().lower())
+        count_stmt = count_stmt.where(func.lower(Course.language) == language.strip().lower())
 
     total = (await db.execute(count_stmt)).scalar_one()
     stmt = stmt.order_by(Course.created_at.desc()).offset((page - 1) * limit).limit(limit)
@@ -147,6 +153,7 @@ async def create_course(
         slug=slug,
         description=payload.description,
         category=payload.category,
+        language=payload.language or "English",
         course_type=ct,
         duration_unit=du,
         duration_value=payload.duration_value,
@@ -203,7 +210,7 @@ async def update_course(
         course.certification_criteria = [i if isinstance(i, dict) else i.model_dump() for i in data.pop("certification_criteria")]
 
     _COURSE_UPDATE_FIELDS = {
-        "title", "description", "category", "duration_value", "price", "discount",
+        "title", "description", "category", "language", "duration_value", "price", "discount",
         "demo_youtube_url", "tags", "is_published",
     }
     for k, v in data.items():

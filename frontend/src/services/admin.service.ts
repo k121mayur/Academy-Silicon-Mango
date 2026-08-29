@@ -6,6 +6,7 @@ export interface CourseDTO {
   slug: string;
   description?: string;
   category?: string;
+  language?: string;
   course_type: string;
   duration_unit: string;
   duration_value: number;
@@ -112,7 +113,7 @@ export async function fetchUpcomingSessions() {
 }
 
 // ---- Courses ----
-export async function listCourses(params: { page?: number; limit?: number; search?: string; type?: string; published?: boolean; category?: string } = {}) {
+export async function listCourses(params: { page?: number; limit?: number; search?: string; type?: string; published?: boolean; category?: string; language?: string } = {}) {
   const res = await api.get<PaginatedResponse<CourseDTO>>("/admin/courses", { params });
   return res.data;
 }

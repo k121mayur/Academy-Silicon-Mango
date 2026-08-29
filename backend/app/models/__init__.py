@@ -18,6 +18,7 @@ from app.models.course import Course, CourseInstructor, CourseType, DurationUnit
 from app.models.newsletter import NewsletterSubscriber
 from app.models.otp import OTPPurpose, OTPRecord
 from app.models.payment import Payment, PaymentMode, PaymentSettings, PaymentStatus
+from app.models.review import Review, ReviewComment
 from app.models.session import (
     ResourceType,
     Session,
@@ -86,6 +87,8 @@ __all__ = [
     "PaymentSettings",
     "PaymentStatus",
     "ResourceType",
+    "Review",
+    "ReviewComment",
     "Session",
     "SessionOrigin",
     "SessionResource",

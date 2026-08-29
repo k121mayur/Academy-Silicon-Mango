@@ -39,6 +39,7 @@ export default function CourseDetails() {
   const [searchParams] = useSearchParams();
   const [tab, setTab] = useState<Tab>("overview");
   const [authPrompt, setAuthPrompt] = useState(false);
+  const [authBatchId, setAuthBatchId] = useState<string>("");
 
   const { data: course, isLoading, isError, error, refetch } = useQuery({
     queryKey: qk.public.course(courseId),
@@ -47,14 +48,15 @@ export default function CourseDetails() {
     enabled: !!courseId,
   });
 
-  // Allow deep-linking to a specific tab, e.g. `?tab=batches` from the auth redirect.
+  // Allow deep-linking to a specific tab or batch, e.g. `?tab=batches&batch=...` from landing or auth redirect.
   const demoTabVideoId = course?.demo_youtube_url
     ? extractYouTubeId(course.demo_youtube_url)
     : null;
   useEffect(() => {
     const requested = searchParams.get("tab");
+    const hasBatchParam = Boolean(searchParams.get("batch") || searchParams.get("batch_id"));
     if (requested === "demo" && demoTabVideoId) setTab("demo");
-    else if (requested === "batches") setTab("batches");
+    else if (requested === "batches" || hasBatchParam) setTab("batches");
     else if (requested === "syllabus") setTab("syllabus");
     else if (requested === "certificate") setTab("certificate");
     else if (requested === "faqs") setTab("faqs");
@@ -113,10 +115,28 @@ export default function CourseDetails() {
         description="You need a Silicon Mango account to enroll in this course. Sign in or sign up — it only takes a minute."
         footer={
           <>
-            <Button variant="outline" onClick={() => navigate(ROUTES.login, { state: { from: `${ROUTES.student.courseDetails(course.id)}?tab=batches` } })}>
+            <Button
+              variant="outline"
+              onClick={() =>
+                navigate(ROUTES.login, {
+                  state: {
+                    from: `${isStudent ? ROUTES.student.courseDetails(course.id) : ROUTES.public.courseDetails(course.slug || course.id)}?tab=batches${authBatchId ? `&batch=${authBatchId}` : ""}`,
+                  },
+                })
+              }
+            >
               Sign in
             </Button>
-            <Button rightIcon="arrow_forward" onClick={() => navigate(ROUTES.signup, { state: { from: `${ROUTES.student.courseDetails(course.id)}?tab=batches` } })}>
+            <Button
+              rightIcon="arrow_forward"
+              onClick={() =>
+                navigate(ROUTES.signup, {
+                  state: {
+                    from: `${isStudent ? ROUTES.student.courseDetails(course.id) : ROUTES.public.courseDetails(course.slug || course.id)}?tab=batches${authBatchId ? `&batch=${authBatchId}` : ""}`,
+                  },
+                })
+              }
+            >
               Create account
             </Button>
           </>
@@ -149,6 +169,11 @@ export default function CourseDetails() {
                 <span className="opacity-50">·</span>
                 <span>
                   {course.duration_value} {course.duration_unit}
+                </span>
+                <span className="opacity-50">·</span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="icon text-[14px]">translate</span>
+                  {course.language || "English"}
                 </span>
               </div>
               <h1 className="font-display font-bold text-display-md leading-tight drop-shadow-lg">
@@ -196,7 +221,10 @@ export default function CourseDetails() {
                 courseId={courseId}
                 payable={payable}
                 isStudent={isStudent}
-                onRequireAuth={() => setAuthPrompt(true)}
+                onRequireAuth={(batchId) => {
+                  setAuthBatchId(batchId || "");
+                  setAuthPrompt(true);
+                }}
               />
             )}
             {tab === "certificate" && <CertificateTab course={course} />}
@@ -230,6 +258,10 @@ export default function CourseDetails() {
               Enroll now
             </Button>
             <ul className="mt-4 space-y-2 text-body-sm text-ink-variant">
+              <li className="flex items-center gap-2">
+                <span className="icon text-[18px] text-success">translate</span>
+                Language: {course.language || "English"}
+              </li>
               <li className="flex items-center gap-2">
                 <span className="icon text-[18px] text-success">check_circle</span>
                 {course.course_type === "self_paced" ? "Lifetime access to lessons" : "Live instructor-led sessions"}
@@ -485,10 +517,12 @@ function BatchesTab({
   courseId: string;
   payable: number;
   isStudent: boolean;
-  onRequireAuth: () => void;
+  onRequireAuth: (batchId?: string) => void;
 }) {
   const profileComplete = useAuthStore((s) => s.user?.profile_complete ?? false);
-  const [selected, setSelected] = useState<string>("");
+  const [searchParams] = useSearchParams();
+  const batchParam = searchParams.get("batch") || searchParams.get("batch_id") || "";
+  const [selected, setSelected] = useState<string>(batchParam);
   const [payOpen, setPayOpen] = useState(false);
 
   const batchesQ = useQuery({
@@ -500,13 +534,19 @@ function BatchesTab({
   const batches = batchesQ.data ?? [];
   const selectedBatch = batches.find((b) => b.id === selected);
 
+  useEffect(() => {
+    if (batchParam && batches.some((b) => b.id === batchParam)) {
+      setSelected(batchParam);
+    }
+  }, [batchParam, batches]);
+
   const onContinue = () => {
     if (!selected) {
       toast.error("Select a batch to continue.");
       return;
     }
     if (!isStudent) {
-      onRequireAuth();
+      onRequireAuth(selected);
       return;
     }
     if (!profileComplete) {

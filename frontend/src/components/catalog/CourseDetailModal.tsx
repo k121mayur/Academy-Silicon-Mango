@@ -97,6 +97,11 @@ export function CourseDetailModal({ courseId, onClose, onEdit, onTogglePublish }
                   <span className="text-label uppercase tracking-wider opacity-90">
                     {course.duration_value} {course.duration_unit}
                   </span>
+                  <span className="opacity-50">·</span>
+                  <span className="text-label uppercase tracking-wider opacity-90 inline-flex items-center gap-1">
+                    <span className="icon text-[14px]">translate</span>
+                    {course.language || "English"}
+                  </span>
                 </>
               )}
             </div>
@@ -112,6 +117,9 @@ export function CourseDetailModal({ courseId, onClose, onEdit, onTogglePublish }
             <div className="flex items-center gap-3 flex-wrap">
               <Badge tone={course.is_published ? "success" : "neutral"}>
                 {course.is_published ? "Published" : "Draft"}
+              </Badge>
+              <Badge tone="tertiary" icon="translate">
+                {course.language || "English"}
               </Badge>
               {(course.tags || []).slice(0, 4).map((t) => (
                 <Badge key={t} tone="primary">{t}</Badge>

@@ -24,6 +24,10 @@ const CoursesListing = lazy(() => import("@/pages/public/CoursesListing"));
 const PublicCourseDetails = lazy(() => import("@/pages/public/CourseDetailPublic"));
 const BlogListing = lazy(() => import("@/pages/public/BlogListing"));
 const BlogDetail = lazy(() => import("@/pages/public/BlogDetail"));
+const ReviewsListing = lazy(() => import("@/pages/public/ReviewsListing"));
+const RefundPolicy = lazy(() => import("@/pages/public/RefundPolicy"));
+const PrivacyPolicy = lazy(() => import("@/pages/public/PrivacyPolicy"));
+const TermsConditions = lazy(() => import("@/pages/public/TermsConditions"));
 const ChangePasswordPage = lazy(() => import("@/pages/account/ChangePassword"));
 
 // Admin
@@ -48,6 +52,7 @@ const WebinarForm = lazy(() => import("@/pages/admin/WebinarForm"));
 const WebinarDetailAdmin = lazy(() => import("@/pages/admin/WebinarDetailAdmin"));
 const AdminBlogs = lazy(() => import("@/pages/admin/Blogs"));
 const BlogForm = lazy(() => import("@/pages/admin/BlogForm"));
+const AdminReviews = lazy(() => import("@/pages/admin/Reviews"));
 
 // Student
 const StudentProfile = lazy(() => import("@/pages/student/Profile"));
@@ -82,6 +87,13 @@ export default function App() {
           <Route path="courses/:courseId" element={<PublicCourseDetails />} />
           <Route path="blog" element={<BlogListing />} />
           <Route path="blog/:slug" element={<BlogDetail />} />
+          <Route path="reviews" element={<ReviewsListing />} />
+          <Route path="refund-policy" element={<RefundPolicy />} />
+          <Route path="cancellation-and-refund-policy" element={<RefundPolicy />} />
+          <Route path="privacy" element={<PrivacyPolicy />} />
+          <Route path="privacy-policy" element={<PrivacyPolicy />} />
+          <Route path="terms" element={<TermsConditions />} />
+          <Route path="terms-and-conditions" element={<TermsConditions />} />
           <Route path="webinars" element={<WebinarListing />} />
           <Route path="webinars/:idOrSlug" element={<WebinarDetail />} />
           <Route path="webinars/:idOrSlug/register" element={<WebinarRegister />} />
@@ -116,6 +128,7 @@ export default function App() {
             <Route path="blog" element={<AdminBlogs />} />
             <Route path="blog/create" element={<BlogForm />} />
             <Route path="blog/:id/edit" element={<BlogForm />} />
+            <Route path="reviews" element={<AdminReviews />} />
           </Route>
         </Route>
 

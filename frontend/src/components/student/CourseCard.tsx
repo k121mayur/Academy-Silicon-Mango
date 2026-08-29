@@ -58,13 +58,19 @@ export function CourseCard({ course, to }: { course: PublicCourseListItem; to?: 
           </Badge>
         )}
         <div className="absolute top-3 left-3 right-3 flex items-start justify-between gap-2">
-          {course.category && (
-            <span className="px-2.5 py-1 rounded-full text-label font-medium bg-white/95 text-ink backdrop-blur-sm shadow-sm">
-              {course.category}
+          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+            {course.category && (
+              <span className="px-2.5 py-1 rounded-full text-label font-medium bg-white/95 text-ink backdrop-blur-sm shadow-sm truncate max-w-[140px]">
+                {course.category}
+              </span>
+            )}
+            <span className="px-2.5 py-1 rounded-full text-label font-medium bg-white/95 text-ink backdrop-blur-sm shadow-sm inline-flex items-center gap-1">
+              <span className="icon text-[13px]">translate</span>
+              {course.language || "English"}
             </span>
-          )}
+          </div>
           {course.batches_count > 0 && (
-            <span className="px-2.5 py-1 rounded-full text-label font-medium bg-white/90 text-ink-variant backdrop-blur-sm shadow-sm inline-flex items-center gap-1">
+            <span className="px-2.5 py-1 rounded-full text-label font-medium bg-white/90 text-ink-variant backdrop-blur-sm shadow-sm inline-flex items-center gap-1 shrink-0">
               <span className="icon text-[13px]">groups_2</span>
               {course.batches_count} {course.batches_count === 1 ? "batch" : "batches"}
             </span>
@@ -112,6 +118,10 @@ export function CourseCard({ course, to }: { course: PublicCourseListItem; to?: 
                 {course.course_type === "self_paced" ? "self_improvement" : "live_tv"}
               </span>
               {course.course_type === "self_paced" ? "Self-paced" : "Live"}
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="icon text-[16px]">translate</span>
+              {course.language || "English"}
             </span>
           </div>
           <div className="text-right shrink-0">

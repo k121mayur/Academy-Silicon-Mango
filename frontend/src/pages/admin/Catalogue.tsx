@@ -19,10 +19,12 @@ export default function AdminCatalogue() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
+  const [language, setLanguage] = useState("");
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
   const [meta, setMeta] = useState({ page: 1, pages: 1, total: 0, limit: PAGE_SIZE });
   const [categories, setCategories] = useState<string[]>([]);
+  const [languages, setLanguages] = useState<string[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
   const navigate = useNavigate();
 
@@ -32,6 +34,7 @@ export default function AdminCatalogue() {
       const params: any = { page, limit: PAGE_SIZE };
       if (search) params.search = search;
       if (category) params.category = category;
+      if (language) params.language = language;
       if (status) params.published = status === "published";
       const r = await listCourses(params);
       setItems(r.data);
@@ -46,15 +49,20 @@ export default function AdminCatalogue() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, category, status, page]);
+  }, [search, category, language, status, page]);
 
-  // Populate the category dropdown from the full catalogue, independent of pagination.
+  // Populate the category & language dropdowns from the full catalogue, independent of pagination.
   useEffect(() => {
     listCourses({ limit: 100 })
       .then((r) => {
-        const set = new Set<string>();
-        r.data.forEach((c) => c.category && set.add(c.category));
-        setCategories(Array.from(set).sort());
+        const catSet = new Set<string>();
+        const langSet = new Set<string>();
+        r.data.forEach((c) => {
+          if (c.category) catSet.add(c.category);
+          if (c.language) langSet.add(c.language);
+        });
+        setCategories(Array.from(catSet).sort());
+        setLanguages(Array.from(langSet).sort());
       })
       .catch(() => {});
   }, []);
@@ -96,6 +104,15 @@ export default function AdminCatalogue() {
             ...categories.map((c) => ({ value: c, label: c })),
           ]}
           containerClassName="w-48"
+        />
+        <Select
+          value={language}
+          onChange={(e) => { setLanguage(e.target.value); resetPage(); }}
+          options={[
+            { value: "", label: "All languages" },
+            ...languages.map((l) => ({ value: l, label: l })),
+          ]}
+          containerClassName="w-44"
         />
         <Select
           value={status}
@@ -201,13 +218,19 @@ function CourseCard({
         <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
 
         <div className="absolute top-3 left-3 right-3 flex items-start justify-between gap-2">
-          {course.category && (
-            <span className="px-2.5 py-1 rounded-full text-label font-medium bg-white/95 text-ink backdrop-blur-sm shadow-sm">
-              {course.category}
+          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+            {course.category && (
+              <span className="px-2.5 py-1 rounded-full text-label font-medium bg-white/95 text-ink backdrop-blur-sm shadow-sm truncate max-w-[140px]">
+                {course.category}
+              </span>
+            )}
+            <span className="px-2.5 py-1 rounded-full text-label font-medium bg-white/95 text-ink backdrop-blur-sm shadow-sm inline-flex items-center gap-1">
+              <span className="icon text-[13px]">translate</span>
+              {course.language || "English"}
             </span>
-          )}
+          </div>
           <span
-            className={`px-2.5 py-1 rounded-full text-label font-medium backdrop-blur-sm shadow-sm ${
+            className={`px-2.5 py-1 rounded-full text-label font-medium backdrop-blur-sm shadow-sm shrink-0 ${
               course.is_published
                 ? "bg-success/95 text-white"
                 : "bg-white/90 text-ink-variant"
@@ -248,7 +271,7 @@ function CourseCard({
         )}
 
         <div className="flex items-center justify-between mt-auto pt-4 border-t border-ink-outlineVariant/30">
-          <div className="flex items-center gap-3 text-body-sm text-ink-variant">
+          <div className="flex flex-wrap items-center gap-3 text-body-sm text-ink-variant">
             <span className="flex items-center gap-1">
               <span className="icon text-[16px]">schedule</span>
               {course.duration_value} {course.duration_unit}
@@ -258,6 +281,10 @@ function CourseCard({
                 {course.course_type === "self_paced" ? "self_improvement" : "live_tv"}
               </span>
               {course.course_type === "self_paced" ? "Self-paced" : "Live"}
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="icon text-[16px]">translate</span>
+              {course.language || "English"}
             </span>
           </div>
           <div className="text-right">

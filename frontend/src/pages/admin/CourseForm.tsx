@@ -29,6 +29,7 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
   const [title, setTitle] = useState<string>(initial?.title || "");
   const [description, setDescription] = useState(initial?.description || "");
   const [category, setCategory] = useState(initial?.category || "");
+  const [language, setLanguage] = useState<string>(initial?.language || "English");
   const [courseType, setCourseType] = useState(initial?.course_type || "live");
   const [durationUnit, setDurationUnit] = useState(initial?.duration_unit || "weeks");
   const [durationValue, setDurationValue] = useState<number>(initial?.duration_value || 4);
@@ -65,6 +66,7 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
     const e: Record<string, string> = {};
     if (!title.trim()) e.title = "Title is required";
     if (!category.trim()) e.category = "Category is required";
+    if (!language.trim()) e.language = "Language of instruction is required";
     if (!courseType) e.courseType = "Course type is required";
     if (!description || !stripHtml(description)) e.description = "Description is required";
     if (!durationUnit) e.durationUnit = "Duration unit is required";
@@ -131,6 +133,7 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
         title,
         description,
         category,
+        language: language.trim() || "English",
         course_type: courseType,
         duration_unit: durationUnit,
         duration_value: durationValue,
@@ -190,9 +193,10 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
 
       <Card>
         <CardHeader><p className="text-title-md font-semibold">Basic Info</p></CardHeader>
-        <CardBody className="grid md:grid-cols-2 gap-4">
-          <Input label="Title" value={title} onChange={(e) => { setTitle(e.target.value); clearErr("title"); }} containerClassName="md:col-span-2" error={errors.title} />
+        <CardBody className="grid md:grid-cols-3 gap-4">
+          <Input label="Title" value={title} onChange={(e) => { setTitle(e.target.value); clearErr("title"); }} containerClassName="md:col-span-3" error={errors.title} />
           <Input label="Category" value={category} onChange={(e) => { setCategory(e.target.value); clearErr("category"); }} placeholder="e.g. Web Development" error={errors.category} />
+          <Input label="Language of Instruction" value={language} onChange={(e) => { setLanguage(e.target.value); clearErr("language"); }} placeholder="e.g. English, Hindi, Marathi" error={errors.language} />
           <Select
             label="Course Type"
             value={courseType}
@@ -200,7 +204,7 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
             options={[{ value: "live", label: "Live cohort" }, { value: "self_paced", label: "Self-paced" }]}
             error={errors.courseType}
           />
-          <div className="md:col-span-2">
+          <div className="md:col-span-3">
             <RichTextEditor label="Description" value={description} onChange={(v) => { setDescription(v); clearErr("description"); }} placeholder="Describe what students will learn in this course…" minHeight={160} />
             {errors.description && <p className="text-label text-danger mt-1">{errors.description}</p>}
           </div>

@@ -12,6 +12,7 @@ from app.api.v1.admin import (
     enrollments as admin_enrollments,
     organizations as admin_organizations,
     payments as admin_payments,
+    reviews as admin_reviews,
     users as admin_users,
     webinars as admin_webinars,
 )
@@ -25,6 +26,7 @@ from app.api.v1.student import (
 from app.api.v1 import public as public_router
 from app.api.v1 import public_webinars as public_webinars_router
 from app.api.v1 import public_blogs as public_blogs_router
+from app.api.v1 import public_reviews as public_reviews_router
 from app.dependencies.auth import require_admin
 
 api_router = APIRouter()
@@ -32,6 +34,7 @@ api_router.include_router(auth_router.router)
 api_router.include_router(public_router.router)
 api_router.include_router(public_webinars_router.router)
 api_router.include_router(public_blogs_router.router)
+api_router.include_router(public_reviews_router.router)
 
 # Router-level backstop: even if a new admin endpoint is added without its own
 # require_admin dependency, this still blocks non-admins from reaching it.
@@ -46,6 +49,7 @@ admin_router.include_router(admin_payments.router)
 admin_router.include_router(admin_organizations.router)
 admin_router.include_router(admin_webinars.router)
 admin_router.include_router(admin_blogs.router)
+admin_router.include_router(admin_reviews.router)
 api_router.include_router(admin_router)
 
 api_router.include_router(instructor_router.router)

@@ -31,6 +31,7 @@ class Course(Base):
     slug: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     description: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    language: Mapped[str] = mapped_column(String(50), nullable=False, default="English", server_default="English")
     course_type: Mapped[CourseType] = mapped_column(
         Enum(CourseType, name="course_type_enum"), nullable=False, default=CourseType.live
     )

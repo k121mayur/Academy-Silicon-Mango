@@ -28,6 +28,7 @@ class CourseBase(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     description: Optional[str] = None
     category: Optional[str] = None
+    language: str = "English"
     course_type: str = "live"
     duration_unit: str = "weeks"
     duration_value: int = Field(ge=1, le=104)
@@ -48,6 +49,7 @@ class CourseUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     category: Optional[str] = None
+    language: Optional[str] = None
     course_type: Optional[str] = None
     duration_unit: Optional[str] = None
     duration_value: Optional[int] = None
@@ -67,6 +69,7 @@ class CoursePublic(BaseModel):
     slug: str
     description: Optional[str] = None
     category: Optional[str] = None
+    language: str = "English"
     course_type: str
     duration_unit: str
     duration_value: int

@@ -20,6 +20,8 @@ export default function AdminCourses() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [type, setType] = useState("");
+  const [language, setLanguage] = useState("");
+  const [languages, setLanguages] = useState<string[]>([]);
   const [published, setPublished] = useState("");
   const [page, setPage] = useState(1);
   const [meta, setMeta] = useState({ page: 1, pages: 1, total: 0, limit: PAGE_SIZE });
@@ -32,6 +34,7 @@ export default function AdminCourses() {
       const params: any = { page, limit: PAGE_SIZE };
       if (search) params.search = search;
       if (type) params.type = type;
+      if (language) params.language = language;
       if (published) params.published = published === "true";
       const res = await listCourses(params);
       setItems(res.data);
@@ -46,7 +49,19 @@ export default function AdminCourses() {
   useEffect(() => {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, type, published, page]);
+  }, [search, type, language, published, page]);
+
+  useEffect(() => {
+    listCourses({ limit: 100 })
+      .then((r) => {
+        const langSet = new Set<string>();
+        r.data.forEach((c) => {
+          if (c.language) langSet.add(c.language);
+        });
+        setLanguages(Array.from(langSet).sort());
+      })
+      .catch(() => {});
+  }, []);
 
   // Reset to the first page whenever a filter/search changes.
   const resetPage = () => setPage(1);
@@ -104,6 +119,15 @@ export default function AdminCourses() {
             { value: "live", label: "Live" },
             { value: "self_paced", label: "Self-paced" },
           ]}
+          containerClassName="w-36"
+        />
+        <Select
+          value={language}
+          onChange={(e) => { setLanguage(e.target.value); resetPage(); }}
+          options={[
+            { value: "", label: "All languages" },
+            ...languages.map((l) => ({ value: l, label: l })),
+          ]}
           containerClassName="w-40"
         />
         <Select
@@ -114,7 +138,7 @@ export default function AdminCourses() {
             { value: "true", label: "Published" },
             { value: "false", label: "Draft" },
           ]}
-          containerClassName="w-40"
+          containerClassName="w-36"
         />
       </div>
 
@@ -133,6 +157,7 @@ export default function AdminCourses() {
             <tr>
               <TH>Title</TH>
               <TH>Category</TH>
+              <TH>Language</TH>
               <TH>Type</TH>
               <TH>Duration</TH>
               <TH>Price</TH>
@@ -151,6 +176,7 @@ export default function AdminCourses() {
                   <p className="text-label text-ink-outline">/{c.slug}</p>
                 </TD>
                 <TD>{c.category || "—"}</TD>
+                <TD>{c.language || "English"}</TD>
                 <TD>
                   <Badge tone={c.course_type === "live" ? "primary" : "tertiary"}>{c.course_type === "self_paced" ? "Self-paced" : "Live"}</Badge>
                 </TD>

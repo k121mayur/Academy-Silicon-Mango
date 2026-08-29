@@ -38,6 +38,7 @@ const SOCIAL_LINKS: {
     svg: LINKEDIN_SVG,
   },
   { label: "YouTube", slug: "youtube", href: "https://www.youtube.com/@siliconmango" },
+  { label: "Telegram", slug: "telegram", href: "https://t.me/siliconmango" },
 ];
 
 export default function PublicLayout() {
@@ -255,8 +256,9 @@ export default function PublicLayout() {
               <span className="font-display font-extrabold">Silicon Mango</span>
             </Link>
             <p className="text-body-sm text-surface-containerHigh/70 max-w-xs">
-              Affordable, job-ready courses in Excel, Python, SQL, and AI, built for working
-              professionals across India.
+              Affordable, practical, job-ready courses specialized in the development
+              sector, also covering tech, marketing, sales, and management — built for
+              everyone from students and freshers to experienced working professionals.
             </p>
             <div className="flex items-center gap-2.5 mt-5">
               {SOCIAL_LINKS.map((s) => (
@@ -326,9 +328,10 @@ export default function PublicLayout() {
         <div className="border-t border-white/10 relative">
           <div className="max-w-7xl mx-auto px-4 md:px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-2 text-label text-surface-containerHigh/60">
             <p>© {new Date().getFullYear()} Silicon Mango. All rights reserved.</p>
-            <div className="flex gap-4">
-              <a href="#" className="hover:text-white transition-colors">Privacy</a>
-              <a href="#" className="hover:text-white transition-colors">Terms</a>
+            <div className="flex flex-wrap items-center gap-4">
+              <Link to="/refund-policy" className="hover:text-white transition-colors">Refund Policy</Link>
+              <Link to="/privacy" className="hover:text-white transition-colors">Privacy</Link>
+              <Link to="/terms" className="hover:text-white transition-colors">Terms</Link>
             </div>
           </div>
         </div>

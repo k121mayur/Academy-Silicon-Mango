@@ -43,7 +43,10 @@ const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
   },
   {
     title: "Content",
-    items: [{ label: "Blog Posts", to: "/admin/blog", icon: "article" }],
+    items: [
+      { label: "Blog Posts", to: "/admin/blog", icon: "article" },
+      { label: "Reviews", to: "/admin/reviews", icon: "rate_review" },
+    ],
   },
   {
     title: "Finances",

@@ -1,14 +1,19 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Reveal } from "@/components/ui/Reveal";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { Img } from "@/components/ui/Img";
 import { FloatingWhatsApp } from "@/components/public/FloatingWhatsApp";
-import { formatCurrency } from "@/lib/utils";
-import { DEMO_YOUTUBE_URL } from "@/lib/media";
+import { formatCurrency, formatDate } from "@/lib/utils";
 import { stripHtml } from "@/components/shared/RichTextView";
+import { getPublicNextBatch, finalPrice } from "@/services/public.service";
+import { slotLabel } from "@/components/catalog/BatchPicker";
+import { qk } from "@/lib/queryKeys";
+import { WriteReviewModal } from "@/components/public/WriteReviewModal";
+import { listPublicReviews } from "@/services/review.service";
 
 interface PublicCourse {
   id: string;
@@ -16,6 +21,7 @@ interface PublicCourse {
   slug: string;
   description?: string;
   category?: string;
+  language?: string;
   course_type: string;
   duration_unit: string;
   duration_value: number;
@@ -36,6 +42,7 @@ const EXCEL_FALLBACK: PublicCourse = {
   title: "Excel Mastery: Beginner to Pro",
   description: "Go from zero to dashboards in 8 days of live, mentor-led classes designed for working professionals.",
   category: "Live cohort",
+  language: "English",
   course_type: "live",
   duration_unit: "days",
   duration_value: 8,
@@ -46,6 +53,13 @@ const EXCEL_FALLBACK: PublicCourse = {
 export default function Landing() {
   const [courses, setCourses] = useState<PublicCourse[]>([]);
   const [loadingCourses, setLoadingCourses] = useState(true);
+  const [isWriteReviewOpen, setIsWriteReviewOpen] = useState(false);
+
+  const { data: reviewsData, refetch: refetchReviews } = useQuery({
+    queryKey: qk.public.reviews(),
+    queryFn: () => listPublicReviews({ limit: 2 }),
+    staleTime: 60_000,
+  });
 
   useEffect(() => {
     api
@@ -54,6 +68,26 @@ export default function Landing() {
       .catch((e) => console.warn("[LANDING] Failed to load courses", e))
       .finally(() => setLoadingCourses(false));
   }, []);
+
+  const { data: nextBatchData } = useQuery({
+    queryKey: qk.public.nextBatch(),
+    queryFn: getPublicNextBatch,
+    staleTime: 5 * 60_000,
+  });
+
+  const nextBatch = nextBatchData?.batch;
+  const nextCourse = nextBatchData?.course;
+
+  const nextPrice = nextCourse ? Number(nextCourse.price) : 399;
+  const nextDiscount = nextCourse ? Number(nextCourse.discount || 0) : 0;
+  const nextPayable = finalPrice(nextPrice, nextDiscount);
+  const nextHasDiscount = nextDiscount > 0;
+
+  const nextEnrollUrl = nextCourse && nextBatch
+    ? `/courses/${nextCourse.slug || nextCourse.id}?tab=batches&batch=${nextBatch.id}`
+    : nextCourse
+    ? `/courses/${nextCourse.slug || nextCourse.id}?tab=batches`
+    : "/courses";
 
   return (
     <div className="bg-surface overflow-x-clip">
@@ -87,7 +121,7 @@ export default function Landing() {
               4.9 avg rating
             </span>
             <span className="text-white/40 hidden sm:inline">·</span>
-            <span className="text-white/85 hidden sm:inline">300+ students enrolled</span>
+            <span className="text-white/85 hidden sm:inline">1000+ students enrolled</span>
             <span className="text-white/40 hidden md:inline">·</span>
             <span className="text-white/85 hidden md:inline">Certificate recognised by employers</span>
           </div>
@@ -105,27 +139,29 @@ export default function Landing() {
             style={{ animationDelay: "120ms" }}
           >
             Live instructor-led batches, weekly assignments, mentor feedback, and a verifiable
-            certificate - everything at a fraction of the price.
+            certificate - everything at a remarkably affordable price.
           </p>
 
           <div
             className="flex flex-col sm:flex-row flex-wrap gap-3 justify-center pt-8 animate-slide-up"
             style={{ animationDelay: "180ms" }}
           >
-            <Link to="/signup">
+            <Link to={nextEnrollUrl}>
               <Button size="lg" rightIcon="arrow_forward" className="shadow-glow w-full sm:w-auto">
                 Enroll Now
               </Button>
             </Link>
-            <a href={DEMO_YOUTUBE_URL} target="_blank" rel="noreferrer">
-              <button
-                type="button"
-                className="inline-flex items-center justify-center gap-2 h-12 px-6 rounded-xl text-title-md font-medium text-white bg-white/10 hover:bg-white/20 border border-white/25 backdrop-blur-md transition-all duration-200 ease-out active:scale-[0.98] w-full sm:w-auto"
-              >
-                <span className="icon text-[20px]">play_circle</span>
-                Watch the demo
-              </button>
-            </a>
+            {nextCourse?.demo_youtube_url && (
+              <a href={nextCourse.demo_youtube_url} target="_blank" rel="noreferrer">
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center gap-2 h-12 px-6 rounded-xl text-title-md font-medium text-white bg-white/10 hover:bg-white/20 border border-white/25 backdrop-blur-md transition-all duration-200 ease-out active:scale-[0.98] w-full sm:w-auto"
+                >
+                  <span className="icon text-[20px]">play_circle</span>
+                  Watch the demo
+                </button>
+              </a>
+            )}
           </div>
         </div>
 
@@ -145,12 +181,12 @@ export default function Landing() {
             {
               icon: "target",
               title: "Job-ready curriculum",
-              desc: "Designed by working data professionals around what employers actually test for.",
+              desc: "Designed by working industry professionals around what employers actually test for.",
             },
             {
               icon: "support_agent",
-              title: "Weekly live doubt-clearing",
-              desc: "Live sessions included every week - ask anything, get unblocked fast.",
+              title: "Real-time live support",
+              desc: "Dedicated allocated time in every session to resolve your doubts without delay.",
             },
             {
               icon: "rate_review",
@@ -341,30 +377,51 @@ export default function Landing() {
             </h2>
           </Reveal>
           <div className="grid md:grid-cols-2 gap-6 items-stretch">
-            {[
-              {
-                name: "Swapna Ghormode",
-                role: "Technical Assistant",
-                quote:
-                  "An absolutely fantastic basic Excel course. The instructor has a wonderful teaching style that breaks down complex functions into simple, easy-to-understand language. No matter your prior experience, they ensure that absolutely everyone's doubts are cleared. I feel much more confident using Excel now",
-              },
-              {
-                name: "Kiran M.",
-                role: "Process Engineer, Praj Industries",
-                quote:
-                  "Even in an engineering field, we always don't get much exposure to technical skills and expertise in academical content which is required for surviving and growing in corporate world. In such situation, such courses specifically focused on technical content and live experience helps understand things exponentially faster. Such affordable and well designed courses which never felt that your money or time is wasted.",
-              },
-            ].map((t, i) => (
-              <Reveal key={t.name} delay={i * 80} className="h-full">
-                <figure className="bg-surface-lowest rounded-2xl p-6 shadow-card border border-ink-outlineVariant/30 h-full relative">
-                  <span className="icon text-primary-container/60 text-[44px] absolute top-4 right-5 leading-none select-none" aria-hidden style={{ fontVariationSettings: "'FILL' 1" }}>format_quote</span>
-                  <FilledStars count={5} size={18} className="text-primary-fill" />
-                  <blockquote className="text-ink mt-3 mb-4 text-body-lg leading-relaxed relative">
-                    "{t.quote}"
-                  </blockquote>
-                  <figcaption className="flex items-center gap-3">
+            {(
+              reviewsData?.data && reviewsData.data.length > 0
+                ? reviewsData.data.slice(0, 2).map((r) => ({
+                    name: r.name,
+                    role: r.company_or_institution
+                      ? `${r.designation}, ${r.company_or_institution}`
+                      : r.designation,
+                    quote: r.review_text,
+                    rating: r.rating,
+                  }))
+                : [
+                    {
+                      name: "Swapna Ghormode",
+                      role: "Technical Assistant, Silicon Mango Academy",
+                      quote:
+                        "An absolutely fantastic basic Excel course. The instructor has a wonderful teaching style that breaks down complex functions into simple, easy-to-understand language. No matter your prior experience, they ensure that absolutely everyone's doubts are cleared. I feel much more confident using Excel now",
+                      rating: 5,
+                    },
+                    {
+                      name: "Kiran M.",
+                      role: "Process Engineer, Praj Industries",
+                      quote:
+                        "Even in an engineering field, we always don't get much exposure to technical skills and expertise in academical content which is required for surviving and growing in corporate world. In such situation, such courses specifically focused on technical content and live experience helps understand things exponentially faster. Such affordable and well designed courses which never felt that your money or time is wasted.",
+                      rating: 5,
+                    },
+                  ]
+            ).map((t, i) => (
+              <Reveal key={`${t.name}-${i}`} delay={i * 80} className="h-full">
+                <figure className="bg-surface-lowest rounded-2xl p-6 shadow-card border border-ink-outlineVariant/30 h-full flex flex-col justify-between relative">
+                  <span
+                    className="icon text-primary-container/60 text-[44px] absolute top-4 right-5 leading-none select-none pointer-events-none"
+                    aria-hidden
+                    style={{ fontVariationSettings: "'FILL' 1" }}
+                  >
+                    format_quote
+                  </span>
+                  <div>
+                    <FilledStars count={t.rating || 5} size={18} className="text-primary-fill" />
+                    <blockquote className="text-ink mt-3 mb-4 text-body-lg leading-relaxed relative">
+                      "{t.quote}"
+                    </blockquote>
+                  </div>
+                  <figcaption className="flex items-center gap-3 pt-4 border-t border-ink-outlineVariant/20">
                     <span className="grid place-items-center w-10 h-10 rounded-full bg-gradient-to-br from-primary-container to-primary-fixed text-primary-on font-display font-bold text-title-md shrink-0">
-                      {t.name[0]}
+                      {t.name ? t.name[0].toUpperCase() : "U"}
                     </span>
                     <div className="leading-tight">
                       <p className="font-semibold text-ink">{t.name}</p>
@@ -375,9 +432,35 @@ export default function Landing() {
               </Reveal>
             ))}
           </div>
-          <Reveal delay={240} className="mt-8 text-center text-body-sm text-ink-outline flex items-center justify-center gap-2">
+
+          {/* Action buttons: Write a Review & View All Reviews */}
+          <Reveal delay={160} className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Button
+              variant="primary"
+              leftIcon="rate_review"
+              onClick={() => setIsWriteReviewOpen(true)}
+              className="shadow-sm w-full sm:w-auto"
+            >
+              Write a Review
+            </Button>
+            <Link
+              to="/reviews"
+              className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border border-ink-outlineVariant/40 bg-surface-lowest hover:bg-surface-containerLow text-body-md font-semibold text-ink transition-colors group w-full sm:w-auto"
+            >
+              <span>View all Reviews</span>
+              <span className="icon text-[18px] text-primary transition-transform group-hover:translate-x-1">
+                arrow_forward
+              </span>
+            </Link>
+          </Reveal>
+
+          <Reveal delay={240} className="mt-6 text-center text-body-sm text-ink-outline flex items-center justify-center gap-2">
             <FilledStars count={5} size={14} className="text-primary-fill" />
-            <span>200+ learners enrolled · 4.9 avg rating across all cohorts</span>
+            <span>
+              {reviewsData?.stats?.total_reviews
+                ? `${reviewsData.stats.total_reviews}+ verified reviews · ${reviewsData.stats.average_rating.toFixed(1)} avg rating`
+                : "200+ learners enrolled · 4.9 avg rating across all cohorts"}
+            </span>
           </Reveal>
         </div>
       </section>
@@ -397,7 +480,7 @@ export default function Landing() {
             <ul className="space-y-3 text-body-sm mb-6">
               {[
                 "Issued only after completing the capstone project and mentor evaluation",
-                "Curriculum mapped to real job requirements in data and analytics roles",
+                "Curriculum mapped to real job requirements in professional roles",
                 "Instructor-signed with your name, course, and a unique verification ID",
               ].map((b) => (
                 <li key={b} className="flex gap-2.5 items-start">
@@ -429,7 +512,7 @@ export default function Landing() {
           <Reveal className="mb-10 text-center">
             <p className="text-caption text-primary mb-2">FAQ</p>
             <h2 className="font-display font-bold text-display-md md:text-display-lg text-ink">
-              Questions, answered
+              Frequently Asked Questions
             </h2>
           </Reveal>
           <Reveal>
@@ -446,32 +529,91 @@ export default function Landing() {
               <div className="absolute inset-0 grid-pattern opacity-20" />
               <div className="absolute -top-20 -right-10 w-72 h-72 rounded-full bg-primary-fill/25 blur-3xl" />
               <div className="absolute -bottom-20 -left-10 w-64 h-64 rounded-full bg-primary-fill/15 blur-3xl" />
-              <div className="relative max-w-2xl mx-auto">
+              <div className="relative max-w-3xl mx-auto">
+                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 text-body-sm font-medium mb-4 text-white/90">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Next upcoming batch</span>
+                </div>
+
                 <h2 className="font-display font-extrabold text-display-md md:text-display-lg mb-3 text-balance">
-                  Next batch starts 6 July 2026.
+                  {nextBatch?.start_date
+                    ? `Next batch starts ${formatDate(nextBatch.start_date)}.`
+                    : "Next batch starting soon."}
                 </h2>
-                <p className="text-body-lg text-white/85 mb-8">
-                  Excel Mastery · 8 days · Live classes + mentor support + certificate.
-                  All for ₹399 - less than a textbook.
+
+                <p className="text-body-lg text-white/90 mb-6 text-balance">
+                  {nextCourse ? (
+                    <>
+                      <span className="font-semibold text-white">{nextCourse.title}</span>
+                      {nextBatch?.name ? ` (${nextBatch.name})` : ""} ·{" "}
+                      {nextCourse.duration_value} {nextCourse.duration_unit} ·{" "}
+                      {nextBatch?.delivery_mode === "live" ? "Live classes" : "Self-paced"} + mentor support + certificate.
+                      {" "}All for {formatCurrency(nextPayable)}
+                      {nextHasDiscount && (
+                        <span className="text-white/70 line-through ml-1.5 font-mono text-body-sm">
+                          {formatCurrency(nextPrice)}
+                        </span>
+                      )}
+                      .
+                    </>
+                  ) : (
+                    "Excel Mastery · 8 days · Live classes + mentor support + certificate. All for ₹399 - less than a textbook."
+                  )}
                 </p>
+
+                {/* Batch details badges / showcase */}
+                {nextBatch && (
+                  <div className="flex flex-wrap items-center justify-center gap-2.5 mb-8">
+                    {nextBatch.start_date && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/12 border border-white/15 text-body-sm text-white/90 backdrop-blur-sm">
+                        <span className="icon text-[16px] text-white/70">event</span>
+                        {formatDate(nextBatch.start_date)}
+                        {nextBatch.end_date ? ` – ${formatDate(nextBatch.end_date)}` : ""}
+                      </span>
+                    )}
+                    {nextBatch.instructor_name && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/12 border border-white/15 text-body-sm text-white/90 backdrop-blur-sm">
+                        <span className="icon text-[16px] text-white/70">person</span>
+                        Instructor: {nextBatch.instructor_name}
+                      </span>
+                    )}
+                    {nextBatch.delivery_mode && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/12 border border-white/15 text-body-sm text-white/90 backdrop-blur-sm">
+                        <span className="icon text-[16px] text-white/70">
+                          {nextBatch.delivery_mode === "live" ? "live_tv" : "play_circle"}
+                        </span>
+                        {nextBatch.delivery_mode === "live" ? "Live Cohort" : "Self-Paced"}
+                      </span>
+                    )}
+                    {nextBatch.schedule_slots && nextBatch.schedule_slots.length > 0 && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/12 border border-white/15 text-body-sm text-white/90 backdrop-blur-sm">
+                        <span className="icon text-[16px] text-white/70">schedule</span>
+                        {nextBatch.schedule_slots.slice(0, 2).map((s) => slotLabel(s)).join(", ")}
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                  <Link to="/signup">
+                  <Link to={nextEnrollUrl}>
                     <Button
                       size="lg"
                       rightIcon="arrow_forward"
-                      className="bg-primary-fill text-primary-on hover:bg-primary-fillHover shadow-glow"
+                      className="bg-primary-fill text-primary-on hover:bg-primary-fillHover shadow-glow w-full sm:w-auto"
                     >
-                      Enroll Now
+                      Enroll in this Batch
                     </Button>
                   </Link>
-                  <a
-                    href={DEMO_YOUTUBE_URL}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-body-sm text-white/80 hover:text-white underline underline-offset-2 transition-colors"
-                  >
-                    Not ready? Watch the course demo first
-                  </a>
+                  {nextCourse?.demo_youtube_url && (
+                    <a
+                      href={nextCourse.demo_youtube_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-body-sm text-white/80 hover:text-white underline underline-offset-2 transition-colors"
+                    >
+                      Not ready? Watch the course demo first
+                    </a>
+                  )}
                 </div>
                 <p className="text-body-sm text-white/70 mt-6">
                   No hidden fees · Cancel before class starts for a full refund · Certificate issued on completion
@@ -483,6 +625,11 @@ export default function Landing() {
       </section>
 
       <FloatingWhatsApp />
+      <WriteReviewModal
+        open={isWriteReviewOpen}
+        onClose={() => setIsWriteReviewOpen(false)}
+        onSuccess={() => refetchReviews()}
+      />
     </div>
   );
 }
@@ -559,9 +706,15 @@ function CourseCard({ course: c }: { course: PublicCourse }) {
             <span className="icon text-[52px] text-primary-on/40">{icon}</span>
           </div>
         )}
-        <span className="absolute top-3 left-3 px-2.5 py-1 text-label rounded-full bg-primary-fill text-primary-on font-semibold shadow-sm">
-          {c.course_type === "live" ? "Live cohort" : "Self-paced"}
-        </span>
+        <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
+          <span className="px-2.5 py-1 text-label rounded-full bg-primary-fill text-primary-on font-semibold shadow-sm">
+            {c.course_type === "live" ? "Live cohort" : "Self-paced"}
+          </span>
+          <span className="px-2.5 py-1 text-label rounded-full bg-white/90 text-ink backdrop-blur-sm font-semibold shadow-sm inline-flex items-center gap-1">
+            <span className="icon text-[13px]">translate</span>
+            {c.language || "English"}
+          </span>
+        </div>
         {hasDiscount && (
           <span className="absolute top-3 right-3 px-2.5 py-1 text-label rounded-full bg-ink/80 text-white backdrop-blur-sm font-semibold">
             {discountPct}% off
@@ -573,7 +726,14 @@ function CourseCard({ course: c }: { course: PublicCourse }) {
       </div>
       {/* Body */}
       <div className="p-5 flex flex-col flex-1">
-        <p className="text-label text-ink-outline mb-1">{durLabel}</p>
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
+          <p className="text-label text-ink-outline">{durLabel}</p>
+          <span className="text-ink-outline/50">·</span>
+          <span className="inline-flex items-center gap-1 text-label text-ink-outline">
+            <span className="icon text-[14px]">translate</span>
+            {c.language || "English"}
+          </span>
+        </div>
         <h3 className="font-display font-semibold text-title-lg text-ink mb-3 group-hover:text-primary transition-colors">
           {c.title}
         </h3>

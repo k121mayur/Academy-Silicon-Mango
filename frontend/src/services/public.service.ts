@@ -6,6 +6,7 @@ export interface PublicCourseListItem {
   slug: string;
   description: string | null;
   category: string | null;
+  language?: string;
   course_type: "live" | "self_paced";
   duration_unit: "weeks" | "days";
   duration_value: number;
@@ -31,6 +32,7 @@ export interface PublicCourseDetail {
   slug: string;
   description: string | null;
   category: string | null;
+  language?: string;
   course_type: "live" | "self_paced";
   duration_unit: "weeks" | "days";
   duration_value: number;
@@ -81,9 +83,23 @@ export interface PublicBatch {
   schedule_slots: PublicScheduleSlot[];
 }
 
-export async function listPublicCourses(search?: string) {
+export interface PublicNextBatchCourse extends PublicCourseListItem {
+  demo_youtube_url?: string | null;
+}
+
+export interface PublicNextBatchResponse {
+  batch: PublicBatch;
+  course: PublicNextBatchCourse;
+}
+
+export async function listPublicCourses(search?: string, language?: string) {
+  const params: Record<string, string> = {};
+  if (search && search.trim()) params.search = search.trim();
+  if (language && language.trim() && language.trim().toLowerCase() !== "all") {
+    params.language = language.trim();
+  }
   const res = await api.get("/public/courses", {
-    params: search && search.trim() ? { search: search.trim() } : undefined,
+    params: Object.keys(params).length > 0 ? params : undefined,
   });
   return res.data.data as PublicCourseListItem[];
 }
@@ -96,6 +112,11 @@ export async function getPublicCourse(idOrSlug: string) {
 export async function getPublicCourseBatches(courseId: string) {
   const res = await api.get(`/public/courses/${courseId}/batches`);
   return res.data.data as PublicBatch[];
+}
+
+export async function getPublicNextBatch(): Promise<PublicNextBatchResponse | null> {
+  const res = await api.get("/public/next-batch");
+  return res.data.data as PublicNextBatchResponse | null;
 }
 
 /** Final payable = price − (price × discount%), matching what the backend charges.

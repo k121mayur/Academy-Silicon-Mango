@@ -10,14 +10,18 @@ export const qk = {
     certificates: () => ["student", "certificates"] as const,
   },
   public: {
-    courses: (search?: string) => ["public", "courses", search ?? ""] as const,
+    courses: (search?: string, language?: string) =>
+      ["public", "courses", search ?? "", language ?? ""] as const,
     course: (id: string) => ["public", "course", id] as const,
     courseBatches: (id: string) => ["public", "course", id, "batches"] as const,
+    nextBatch: () => ["public", "nextBatch"] as const,
     webinars: (status?: string, search?: string) =>
       ["public", "webinars", status ?? "", search ?? ""] as const,
     webinar: (idOrSlug: string) => ["public", "webinar", idOrSlug] as const,
     blogs: (search?: string) => ["public", "blogs", search ?? ""] as const,
     blog: (idOrSlug: string) => ["public", "blog", idOrSlug] as const,
+    reviews: (rating?: number, search?: string) =>
+      ["public", "reviews", rating !== undefined ? String(rating) : "", search ?? ""] as const,
   },
   instructor: {
     pendingAttendance: () => ["instructor", "pendingAttendance"] as const,
@@ -25,5 +29,7 @@ export const qk = {
   admin: {
     blogs: (search?: string, status?: string) => ["admin", "blogs", search ?? "", status ?? ""] as const,
     blog: (id: string) => ["admin", "blog", id] as const,
+    reviews: (page?: number, rating?: number, search?: string) =>
+      ["admin", "reviews", page ?? 1, rating !== undefined ? String(rating) : "", search ?? ""] as const,
   },
 } as const;
