@@ -319,19 +319,22 @@ async def me(user: User = Depends(get_current_user)):
 # -------- Google OAuth --------
 
 @router.get("/google/authorize")
-async def google_authorize(response: Response):
+async def google_authorize(request: Request, response: Response, next: Optional[str] = None):
     if not settings.google_oauth_enabled:
         raise APIError(code="OAUTH_DISABLED", message="Google OAuth is not configured", status_code=503)
 
-    state = secrets.token_urlsafe(24)
-    url = oauth_helpers.build_authorize_url(state)
+    raw_state = secrets.token_urlsafe(24)
+    # Pack the post-login redirect target alongside the CSRF token so it survives
+    # the full Google OAuth round-trip. Format: "csrf_token|next_url"
+    combined_state = f"{raw_state}|{next}" if next else raw_state
+    url = oauth_helpers.build_authorize_url(combined_state)
     if not url:
         raise APIError(code="OAUTH_DISABLED", message="Google OAuth is not configured", status_code=503)
 
     redirect = RedirectResponse(url, status_code=status.HTTP_302_FOUND)
     redirect.set_cookie(
         "oauth_state",
-        state,
+        raw_state,
         httponly=True,
         secure=settings.cookie_secure,
         samesite="lax",
@@ -355,7 +358,13 @@ async def google_callback(
     if error or not code:
         return RedirectResponse(f"{frontend}/login?error=oauth_failed", status_code=302)
 
-    if not state or state != oauth_state:
+    # Unpack the combined state: "CSRF_token|next_url".  Without a '|' there is
+    # no next target (the state is just the CSRF token — legacy or no ?next= param).
+    parts = (state or "").split("|", 1)
+    csrf_from_state = parts[0]
+    next_url = parts[1] if len(parts) > 1 else ""
+
+    if not csrf_from_state or csrf_from_state != oauth_state:
         return RedirectResponse(f"{frontend}/login?error=oauth_state_mismatch", status_code=302)
 
     token_data = await oauth_helpers.exchange_code(code)
@@ -381,7 +390,15 @@ async def google_callback(
 
     access, refresh = await issue_tokens(user)
     profile_complete = is_profile_complete(user)
-    target = "/portal/profile" if not profile_complete else "/portal/dashboard"
+    # If the user came from an enrollment flow (via ?next=), send them back there.
+    # Otherwise use the default landing page.
+    if next_url:
+        # Only accept relative paths (starts with '/') to prevent open-redirect attacks.
+        target = next_url if next_url.startswith("/") else "/portal/my-courses"
+    elif not profile_complete:
+        target = "/portal/profile"
+    else:
+        target = "/portal/my-courses"
     redirect = RedirectResponse(f"{frontend}{target}", status_code=302)
     set_auth_cookies(redirect, access, refresh)
     redirect.delete_cookie("oauth_state", path="/")

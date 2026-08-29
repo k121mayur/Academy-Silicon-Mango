@@ -119,7 +119,7 @@ export default function Login() {
             <div className="flex-1 h-px bg-ink-outlineVariant/40" />
           </div>
 
-          <a href={apiUrl("/auth/google/authorize")}>
+          <a href={apiUrl(`/auth/google/authorize${(location.state as any)?.from ? `?next=${encodeURIComponent((location.state as any).from)}` : ''}`)}>
             <Button type="button" variant="outline" fullWidth size="lg">
               <svg width="18" height="18" viewBox="0 0 18 18" className="mr-1">
                 <g>
