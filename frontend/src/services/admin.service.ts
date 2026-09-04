@@ -27,6 +27,8 @@ export interface BatchDTO {
   id: string;
   course_id: string;
   course_title?: string;
+  course_duration_unit?: string | null;
+  course_duration_value?: number | null;
   instructor_id?: string | null;
   instructor_name?: string | null;
   name: string;
@@ -37,6 +39,7 @@ export interface BatchDTO {
   capacity?: number | null;
   enrolled_count: number;
   is_locked: boolean;
+  is_enrollment_closed?: boolean;
   schedule_slots?: Array<{
     slot_type: string;
     weekday: number | null;
@@ -163,6 +166,10 @@ export async function createBatch(payload: any) {
 }
 export async function updateBatch(id: string, payload: any) {
   const res = await api.put(`/admin/batches/${id}`, payload);
+  return res.data as BatchDTO;
+}
+export async function toggleBatchEnrollment(id: string, isClosed: boolean) {
+  const res = await api.patch(`/admin/batches/${id}/enrollment`, { is_enrollment_closed: isClosed });
   return res.data as BatchDTO;
 }
 export interface BatchDeleteImpact {

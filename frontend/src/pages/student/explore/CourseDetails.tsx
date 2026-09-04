@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import toast from "react-hot-toast";
@@ -27,6 +27,7 @@ import {
   finalPrice,
   getPublicCourse,
   getPublicCourseBatches,
+  type PublicBatch,
   type PublicCourseDetail,
 } from "@/services/public.service";
 
@@ -531,14 +532,19 @@ function BatchesTab({
     enabled: !!courseId,
   });
 
-  const batches = batchesQ.data ?? [];
-  const selectedBatch = batches.find((b) => b.id === selected);
+  const rawBatches = batchesQ.data ?? [];
+  const batches = useMemo(() => rawBatches.filter(isBatchSelectable), [rawBatches]);
+  const selectedBatch = batches.find((b: PublicBatch) => b.id === selected);
 
   useEffect(() => {
-    if (batchParam && batches.some((b) => b.id === batchParam)) {
+    if (batchParam && batches.some((b: PublicBatch) => b.id === batchParam)) {
       setSelected(batchParam);
+    } else if (batches.length > 0 && (!selected || !batches.some((b: PublicBatch) => b.id === selected))) {
+      setSelected(batches[0].id);
+    } else if (batches.length === 0 && selected) {
+      setSelected("");
     }
-  }, [batchParam, batches]);
+  }, [batchParam, batches, selected]);
 
   const onContinue = () => {
     if (!selected) {

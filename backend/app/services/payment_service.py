@@ -11,32 +11,49 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.exceptions import APIError
-from app.models.batch import Batch, Enrollment, EnrollmentStatus
+from app.models.batch import Batch, BatchStatus, Enrollment, EnrollmentStatus
 from app.models.course import Course, DurationUnit
 from app.models.payment import Payment, PaymentSettings, PaymentStatus
 from app.models.user import User
 
-
-# ---- late-enrollment window (shared by the public endpoint and the self-enroll guard) ----
-
-# How long after a batch starts students may still enroll, by course duration unit.
-# Weeks-based courses stay open through their first week; days-based courses a couple of days.
-LATE_ENROLL_GRACE_DAYS = {DurationUnit.weeks: 7, DurationUnit.days: 2}
 
 # Batch dates are India-local; evaluate "today" in IST so the window doesn't flip a
 # day early/late on a UTC server around midnight.
 IST = ZoneInfo("Asia/Kolkata")
 
 
-def enrollment_window_end(course: Course, batch: Batch) -> date:
-    """Last day (inclusive) a student may self-enroll in this batch."""
-    grace = LATE_ENROLL_GRACE_DAYS.get(course.duration_unit, 7)
-    return batch.start_date + timedelta(days=grace)
+def enrollment_window_end(course: Optional[Course], batch: Batch) -> date:
+    """Last day (inclusive) a student may self-enroll in this batch.
+    
+    Enrollment closes after the first day of the course (batch.start_date) passes.
+    """
+    return batch.start_date
 
 
-def is_enrollment_open(course: Course, batch: Batch) -> bool:
-    """Upcoming batches are always open; once started, the grace window applies."""
-    return datetime.now(IST).date() <= enrollment_window_end(course, batch)
+def is_enrollment_open(
+    course: Optional[Course],
+    batch: Batch,
+    enrolled_count: Optional[int] = None,
+) -> bool:
+    """Enrollment is open only if:
+    1. Batch is not locked and status is upcoming or active.
+    2. Admin has not stopped enrollment (is_enrollment_closed is False).
+    3. The first day of the course has not passed (today <= batch.start_date).
+    4. The batch is not full (if capacity and enrolled_count are checked).
+    """
+    if batch.is_locked:
+        return False
+    if batch.status not in (BatchStatus.upcoming, BatchStatus.active):
+        return False
+    if getattr(batch, "is_enrollment_closed", False):
+        return False
+    today = datetime.now(IST).date()
+    if batch.start_date and today > batch.start_date:
+        return False
+    if batch.capacity is not None and enrolled_count is not None:
+        if enrolled_count >= batch.capacity:
+            return False
+    return True
 
 
 # ---- enrollment / capacity helpers (shared by admin-enroll and self-enroll) ----
@@ -129,22 +146,32 @@ async def assert_enrollable(db: AsyncSession, batch: Batch, student: User) -> De
             message="You are already enrolled in another batch of this course",
             status_code=409,
         )
+    if batch.is_locked:
+        raise APIError(code="BATCH_003", message="This batch is locked", status_code=409)
+    if batch.status not in (BatchStatus.upcoming, BatchStatus.active):
+        raise APIError(
+            code="BATCH_NOT_OPEN", message="This batch is not open for enrollment", status_code=409
+        )
+    if getattr(batch, "is_enrollment_closed", False):
+        raise APIError(
+            code="ENROLL_STOPPED",
+            message="Enrollments for this batch have been stopped by the administrator.",
+            status_code=409,
+        )
+    today = datetime.now(IST).date()
+    if batch.start_date and today > batch.start_date:
+        raise APIError(
+            code="ENROLL_CLOSED",
+            message="Enrollment for this batch has closed as the course has already started.",
+            status_code=409,
+        )
     if batch.capacity is not None:
-        # Best-effort pre-check (unlocked) so an obviously-full batch is rejected
-        # before we ever call Razorpay. The AUTHORITATIVE, race-free capacity gate
-        # is acquire_seat_or_raise(), used right before the immediate free/mock
-        # insert — we deliberately do NOT hold a row lock here because on the paid
-        # path this runs before a multi-second Razorpay round-trip.
         cnt = await active_enrollment_count(db, batch.id)
         if cnt >= batch.capacity:
             raise APIError(code="BATCH_FULL", message="This batch is full", status_code=409)
     course = await db.get(Course, batch.course_id)
-    if course and not is_enrollment_open(course, batch):
-        raise APIError(
-            code="ENROLL_CLOSED",
-            message="Enrollment for this batch has closed.",
-            status_code=409,
-        )
+    if not course:
+        raise APIError(code="NOT_FOUND", message="Course not found", status_code=404)
     return payable_amount(course)
 
 

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { formatDate, WEEKDAY_LABELS } from "@/lib/utils";
 import type { PublicBatch, PublicScheduleSlot } from "@/services/public.service";
@@ -23,14 +24,15 @@ interface BatchPickerProps {
 }
 
 export function BatchPicker({ batches, selected, onSelect }: BatchPickerProps) {
+  const openBatches = batches.filter(isBatchSelectable);
   return (
     <div className="space-y-3">
-      {batches.map((b) => (
+      {openBatches.map((b) => (
         <BatchOption
           key={b.id}
           batch={b}
           selected={selected === b.id}
-          onSelect={() => isBatchSelectable(b) && onSelect(b.id)}
+          onSelect={() => onSelect(b.id)}
         />
       ))}
     </div>
@@ -46,9 +48,19 @@ function BatchOption({
   selected: boolean;
   onSelect: () => void;
 }) {
+  const [showAllSlots, setShowAllSlots] = useState(false);
   const full = batch.is_full;
   const closed = !batch.enrollment_open;
   const disabled = full || closed;
+
+  const rawSlots = batch.schedule_slots || [];
+  const sortedSlots = [...rawSlots].sort((a, b) => {
+    if (a.slot_date && b.slot_date) return a.slot_date.localeCompare(b.slot_date);
+    if (a.weekday != null && b.weekday != null) return a.weekday - b.weekday;
+    return 0;
+  });
+  const visibleSlots = showAllSlots ? sortedSlots : sortedSlots.slice(0, 5);
+
   return (
     <button
       type="button"
@@ -62,7 +74,7 @@ function BatchOption({
       } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="font-display text-title-md font-bold text-ink">{batch.name}</p>
             {selected && (
@@ -93,16 +105,41 @@ function BatchOption({
               Enrollment closed on {formatDate(batch.enrollment_closes_on)}
             </p>
           )}
-          {batch.schedule_slots.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              {batch.schedule_slots.slice(0, 5).map((s, i) => (
-                <span
-                  key={i}
-                  className="px-2 py-0.5 rounded-md bg-surface-container text-label text-ink-variant"
-                >
-                  {slotLabel(s)}
-                </span>
-              ))}
+          {sortedSlots.length > 0 && (
+            <div className="mt-2.5">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-label font-medium text-ink-outline">Class schedule:</span>
+                {sortedSlots.length > 5 && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowAllSlots((prev) => !prev);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.stopPropagation();
+                        setShowAllSlots((prev) => !prev);
+                      }
+                    }}
+                    className="inline-flex items-center gap-0.5 text-label font-semibold text-primary hover:underline cursor-pointer"
+                  >
+                    {showAllSlots ? "Show fewer" : `+${sortedSlots.length - 5} more dates`}
+                    <span className="icon text-[16px]">{showAllSlots ? "expand_less" : "expand_more"}</span>
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {visibleSlots.map((s, i) => (
+                  <span
+                    key={i}
+                    className="px-2 py-0.5 rounded-md bg-surface-container text-label text-ink-variant"
+                  >
+                    {slotLabel(s)}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
         </div>

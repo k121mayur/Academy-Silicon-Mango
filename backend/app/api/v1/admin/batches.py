@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import logging
 import math
-from datetime import date as date_type
-from datetime import timedelta
+from datetime import date, datetime, time, timedelta
+
+date_type = date
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -34,6 +35,7 @@ from app.models.user import InstructorProfile, StudentProfile, User, UserRole
 from app.schemas.batch import (
     BatchCreate,
     BatchEmailCreate,
+    BatchEnrollmentToggleIn,
     BatchPlanIn,
     BatchPlanPublic,
     BatchPublic,
@@ -90,6 +92,10 @@ async def _enriched_batch(db: AsyncSession, batch: Batch) -> BatchPublic:
             select(BatchScheduleSlot).where(BatchScheduleSlot.batch_id == batch.id)
         )
     ).scalars().all()
+    slot_rows = sorted(
+        slot_rows,
+        key=lambda s: (s.slot_date or date.min, s.weekday if s.weekday is not None else -1, s.start_time or time.min),
+    )
     schedule_slots = [
         {
             "slot_type": s.slot_type.value,
@@ -104,6 +110,8 @@ async def _enriched_batch(db: AsyncSession, batch: Batch) -> BatchPublic:
         id=str(batch.id),
         course_id=str(batch.course_id),
         course_title=course.title if course else None,
+        course_duration_unit=course.duration_unit.value if course and course.duration_unit else None,
+        course_duration_value=course.duration_value if course else None,
         instructor_id=str(batch.instructor_id) if batch.instructor_id else None,
         instructor_name=instructor_name,
         name=batch.name,
@@ -114,6 +122,7 @@ async def _enriched_batch(db: AsyncSession, batch: Batch) -> BatchPublic:
         capacity=batch.capacity,
         enrolled_count=enrolled,
         is_locked=batch.is_locked,
+        is_enrollment_closed=batch.is_enrollment_closed,
         created_at=batch.created_at,
         schedule_slots=schedule_slots,
     )
@@ -236,6 +245,7 @@ async def create_batch(
         start_date=payload.start_date,
         end_date=end_date,
         capacity=payload.capacity,
+        is_enrollment_closed=payload.is_enrollment_closed,
     )
     db.add(batch)
     await db.flush()
@@ -307,7 +317,7 @@ async def update_batch(
         batch.delivery_mode = DeliveryMode(data.pop("delivery_mode"))
     if "status" in data:
         batch.status = BatchStatus(data.pop("status"))
-    _BATCH_UPDATE_FIELDS = {"name", "start_date", "end_date", "capacity"}
+    _BATCH_UPDATE_FIELDS = {"name", "start_date", "end_date", "capacity", "is_enrollment_closed"}
     for k, v in data.items():
         if k in _BATCH_UPDATE_FIELDS:
             setattr(batch, k, v)
@@ -341,6 +351,34 @@ async def update_batch(
 
     await db.commit()
     await db.refresh(batch)
+
+    # Auto-sync sessions when schedule or dates change
+    if schedule_slots_data is not None or "start_date" in data:
+        try:
+            await sync_inherited_sessions(db, batch.id)
+        except Exception as e:
+            print(f"[ADMIN] Warning: auto-sync sessions failed for batch {batch.id}: {e}")
+
+    return await _enriched_batch(db, batch)
+
+
+@router.patch("/{batch_id}/enrollment", response_model=BatchPublic)
+async def toggle_batch_enrollment(
+    batch_id: str,
+    payload: BatchEnrollmentToggleIn,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    batch = await db.get(Batch, batch_id)
+    if not batch:
+        raise APIError(code="NOT_FOUND", message="Batch not found", status_code=404)
+    if batch.is_locked:
+        raise APIError(code="BATCH_003", message="Batch is locked")
+    batch.is_enrollment_closed = payload.is_enrollment_closed
+    await db.commit()
+    await db.refresh(batch)
+    action = "stopped" if batch.is_enrollment_closed else "reopened"
+    logger.info("[ADMIN] Batch enrollment %s: %s (%s)", action, batch.name, batch.id)
     return await _enriched_batch(db, batch)
 
 

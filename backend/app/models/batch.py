@@ -50,6 +50,7 @@ class Batch(Base):
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
     capacity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     is_locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_enrollment_closed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

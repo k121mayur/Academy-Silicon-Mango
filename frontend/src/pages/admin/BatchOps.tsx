@@ -144,8 +144,9 @@ export default function BatchOps() {
             options={[{ value: "", label: "Select batch" }, ...batches.map((b) => ({ value: b.id, label: `${b.name} — ${b.course_title} (${b.status})` }))]}
           />
           {selected && (
-            <div className="mt-4 grid md:grid-cols-3 gap-3 text-body-sm">
+            <div className="mt-4 grid md:grid-cols-4 gap-3 text-body-sm">
               <Stat label="Status" value={selected.status} />
+              <Stat label="Enrollment" value={selected.is_enrollment_closed ? "Stopped" : "Open"} />
               <Stat label="Enrolled" value={selected.enrolled_count} />
               <Stat label="Locked" value={selected.is_locked ? "Yes" : "No"} />
             </div>

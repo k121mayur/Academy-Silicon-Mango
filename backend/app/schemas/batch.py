@@ -24,6 +24,7 @@ class BatchCreate(BaseModel):
     end_date: Optional[date] = None
     capacity: Optional[int] = None
     instructor_id: Optional[str] = None
+    is_enrollment_closed: bool = False
     schedule_slots: list[ScheduleSlotIn] = []
 
 
@@ -34,13 +35,20 @@ class BatchUpdate(BaseModel):
     end_date: Optional[date] = None
     capacity: Optional[int] = None
     status: Optional[str] = None
+    is_enrollment_closed: Optional[bool] = None
     schedule_slots: Optional[list[ScheduleSlotIn]] = None
+
+
+class BatchEnrollmentToggleIn(BaseModel):
+    is_enrollment_closed: bool
 
 
 class BatchPublic(BaseModel):
     id: str
     course_id: str
     course_title: Optional[str] = None
+    course_duration_unit: Optional[str] = None
+    course_duration_value: Optional[int] = None
     instructor_id: Optional[str] = None
     instructor_name: Optional[str] = None
     name: str
@@ -51,6 +59,7 @@ class BatchPublic(BaseModel):
     capacity: Optional[int] = None
     enrolled_count: int = 0
     is_locked: bool = False
+    is_enrollment_closed: bool = False
     created_at: Optional[datetime] = None
     schedule_slots: list[dict] = []
 

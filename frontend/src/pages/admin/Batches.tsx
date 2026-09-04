@@ -15,6 +15,7 @@ import {
   listBatches,
   listInstructors,
   batchAssignInstructor,
+  toggleBatchEnrollment,
   BatchDTO,
   InstructorDTO,
 } from "@/services/admin.service";
@@ -59,6 +60,17 @@ export default function AdminBatches() {
   }, [search, status, mode, page]);
 
   const resetPage = () => setPage(1);
+
+  const handleToggleEnrollment = async (b: BatchDTO) => {
+    const nextState = !b.is_enrollment_closed;
+    try {
+      await toggleBatchEnrollment(b.id, nextState);
+      toast.success(nextState ? `Enrollments stopped for "${b.name}"` : `Enrollments reopened for "${b.name}"`);
+      fetchData();
+    } catch (e) {
+      toast.error(extractErrorMessage(e));
+    }
+  };
 
   const openAssign = async (b: BatchDTO) => {
     setAssignBatch(b);
@@ -133,12 +145,15 @@ export default function AdminBatches() {
               <TH>Capacity</TH>
               <TH>Enrolled</TH>
               <TH>Status</TH>
+              <TH>Enrollment</TH>
               <TH className="text-right">Actions</TH>
             </tr>
           </THead>
           <tbody>
             {items.map((b) => {
               const unassigned = !b.instructor_id;
+              const isPastStart = new Date(b.start_date + "T23:59:59") < new Date();
+              const isFull = b.capacity != null && b.enrolled_count >= b.capacity;
               return (
                 <TR key={b.id}>
                   <TD>
@@ -165,8 +180,33 @@ export default function AdminBatches() {
                       : "danger"
                     }>{b.status}</Badge>
                   </TD>
+                  <TD>
+                    {b.is_locked ? (
+                      <Badge tone="neutral">Locked</Badge>
+                    ) : b.is_enrollment_closed ? (
+                      <Badge tone="danger">Stopped</Badge>
+                    ) : isFull ? (
+                      <Badge tone="warning">Full</Badge>
+                    ) : isPastStart ? (
+                      <Badge tone="neutral">Started</Badge>
+                    ) : (
+                      <Badge tone="success">Open</Badge>
+                    )}
+                  </TD>
                   <TD className="text-right">
                     <div className="flex items-center justify-end gap-2">
+                      {!b.is_locked && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          leftIcon={b.is_enrollment_closed ? "play_circle" : "pause_circle"}
+                          className={b.is_enrollment_closed ? "text-primary" : "text-amber-700 hover:bg-amber-50 dark:text-amber-400"}
+                          title={b.is_enrollment_closed ? "Reopen enrollments" : "Stop enrollments"}
+                          onClick={() => handleToggleEnrollment(b)}
+                        >
+                          {b.is_enrollment_closed ? "Reopen" : "Stop"}
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant={unassigned ? "primary" : "outline"}
