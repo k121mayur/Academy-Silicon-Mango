@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { Input } from "@/components/ui/Input";
@@ -12,9 +13,33 @@ import { qk } from "@/lib/queryKeys";
 import { listPublicCourses } from "@/services/public.service";
 
 export default function ExploreCatalogue() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState("");
   const [language, setLanguage] = useState("");
   const debounced = useDebouncedValue(search, 250);
+
+  const rawType = (searchParams.get("type") || "").toLowerCase().trim();
+  const selectedType =
+    rawType === "live" || rawType === "live_classes" || rawType === "live-classes"
+      ? "live"
+      : rawType === "self_paced" || rawType === "self-paced" || rawType === "recorded"
+      ? "self_paced"
+      : "";
+
+  const setCourseType = (type: string) => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (type) {
+          next.set("type", type);
+        } else {
+          next.delete("type");
+        }
+        return next;
+      },
+      { replace: true }
+    );
+  };
 
   // Discover all distinct languages available in published courses
   const { data: allCourses } = useQuery({
@@ -34,27 +59,85 @@ export default function ExploreCatalogue() {
   }, [allCourses]);
 
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
-    queryKey: qk.public.courses(debounced, language),
-    queryFn: () => listPublicCourses(debounced, language),
+    queryKey: qk.public.courses(debounced, language, selectedType),
+    queryFn: () => listPublicCourses(debounced, language, selectedType),
     placeholderData: keepPreviousData,
     staleTime: 5 * 60_000,
   });
 
   const courses = data ?? [];
-  const hasActiveFilters = Boolean(debounced.trim() || language);
+  const hasActiveFilters = Boolean(debounced.trim() || language || selectedType);
 
   const resetFilters = () => {
     setSearch("");
     setLanguage("");
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("type");
+        return next;
+      },
+      { replace: true }
+    );
   };
 
   return (
     <div className="space-y-5">
       <div className="animate-slide-up">
-        <h1 className="font-display font-bold text-display-md text-ink">Explore courses</h1>
+        <h1 className="font-display font-bold text-display-md text-ink">
+          {selectedType === "live"
+            ? "Live Classes"
+            : selectedType === "self_paced"
+            ? "Self-paced Courses"
+            : "Explore courses"}
+        </h1>
         <p className="text-body-sm text-ink-variant">
-          Browse the catalogue, pick a course and a batch, and enroll in minutes.
+          {selectedType === "live"
+            ? "Browse live cohorts, view schedules, and enroll in interactive live classes."
+            : selectedType === "self_paced"
+            ? "Browse self-paced courses with video lessons, mentor support, and instant access."
+            : "Browse the catalogue, pick a course and a batch, and enroll in minutes."}
         </p>
+      </div>
+
+      {/* Course Type Filter Tabs */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-ink-outlineVariant/30 pb-3 animate-slide-up">
+        <button
+          type="button"
+          onClick={() => setCourseType("")}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-body-sm transition-all ${
+            !selectedType
+              ? "bg-primary text-white shadow-sm font-semibold"
+              : "bg-surface-container hover:bg-surface-containerHigh text-ink font-medium"
+          }`}
+        >
+          <span className="icon text-[18px]">apps</span>
+          All Courses
+        </button>
+        <button
+          type="button"
+          onClick={() => setCourseType("live")}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-body-sm transition-all ${
+            selectedType === "live"
+              ? "bg-primary text-white shadow-sm font-semibold"
+              : "bg-surface-container hover:bg-surface-containerHigh text-ink font-medium"
+          }`}
+        >
+          <span className="icon text-[18px]">live_tv</span>
+          Live Classes
+        </button>
+        <button
+          type="button"
+          onClick={() => setCourseType("self_paced")}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-body-sm transition-all ${
+            selectedType === "self_paced"
+              ? "bg-primary text-white shadow-sm font-semibold"
+              : "bg-surface-container hover:bg-surface-containerHigh text-ink font-medium"
+          }`}
+        >
+          <span className="icon text-[18px]">play_circle</span>
+          Self-paced Courses
+        </button>
       </div>
 
       <div className="space-y-3 animate-slide-up" style={{ animationDelay: "40ms" }}>
@@ -138,11 +221,9 @@ export default function ExploreCatalogue() {
           title={hasActiveFilters ? "No matching courses" : "No courses yet"}
           description={
             hasActiveFilters
-              ? language && debounced
-                ? `No courses found matching "${debounced}" with language of instruction "${language}".`
-                : language
-                ? `No courses found with language of instruction "${language}".`
-                : `No courses found matching "${debounced}". Try a different search term.`
+              ? `No ${selectedType === "live" ? "live " : selectedType === "self_paced" ? "self-paced " : ""}courses found${
+                  debounced ? ` matching "${debounced}"` : ""
+                }${language ? ` with language "${language}"` : ""}. Try adjusting your filters.`
               : "New courses are on the way — check back soon."
           }
           icon="travel_explore"

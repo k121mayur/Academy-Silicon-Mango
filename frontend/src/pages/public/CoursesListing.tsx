@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { Input } from "@/components/ui/Input";
@@ -21,9 +21,33 @@ import { listPublicCourses } from "@/services/public.service";
  */
 export default function CoursesListing() {
   const { user } = useAuthStore();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState("");
   const [language, setLanguage] = useState("");
   const debounced = useDebouncedValue(search, 250);
+
+  const rawType = (searchParams.get("type") || "").toLowerCase().trim();
+  const selectedType =
+    rawType === "live" || rawType === "live_classes" || rawType === "live-classes"
+      ? "live"
+      : rawType === "self_paced" || rawType === "self-paced" || rawType === "recorded"
+      ? "self_paced"
+      : "";
+
+  const setCourseType = (type: string) => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (type) {
+          next.set("type", type);
+        } else {
+          next.delete("type");
+        }
+        return next;
+      },
+      { replace: true }
+    );
+  };
 
   // Discover all distinct languages available in published courses
   const { data: allCourses } = useQuery({
@@ -43,18 +67,26 @@ export default function CoursesListing() {
   }, [allCourses]);
 
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
-    queryKey: qk.public.courses(debounced, language),
-    queryFn: () => listPublicCourses(debounced, language),
+    queryKey: qk.public.courses(debounced, language, selectedType),
+    queryFn: () => listPublicCourses(debounced, language, selectedType),
     placeholderData: keepPreviousData,
     staleTime: 5 * 60_000,
   });
 
   const courses = data ?? [];
-  const hasActiveFilters = Boolean(debounced.trim() || language);
+  const hasActiveFilters = Boolean(debounced.trim() || language || selectedType);
 
   const resetFilters = () => {
     setSearch("");
     setLanguage("");
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("type");
+        return next;
+      },
+      { replace: true }
+    );
   };
 
   return (
@@ -62,9 +94,19 @@ export default function CoursesListing() {
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 animate-slide-up">
         <div>
           <p className="text-caption text-tertiary mb-2">CATALOG</p>
-          <h1 className="font-display font-bold text-display-md md:text-display-lg text-ink">Explore courses</h1>
+          <h1 className="font-display font-bold text-display-md md:text-display-lg text-ink">
+            {selectedType === "live"
+              ? "Live Classes"
+              : selectedType === "self_paced"
+              ? "Self-paced Courses"
+              : "Explore courses"}
+          </h1>
           <p className="text-body-sm text-ink-variant mt-1 max-w-xl">
-            Browse every course with full details — no account needed. Create a free account when you're ready to enroll.
+            {selectedType === "live"
+              ? "Join live interactive cohorts with expert mentors, live doubt clearing, and hands-on projects."
+              : selectedType === "self_paced"
+              ? "Learn on your own schedule with recorded lessons, assignments, mentor support, and verifiable certificates."
+              : "Browse every course with full details — no account needed. Create a free account when you're ready to enroll."}
           </p>
         </div>
         {!user && (
@@ -72,6 +114,46 @@ export default function CoursesListing() {
             <Button rightIcon="arrow_forward">Create free account</Button>
           </Link>
         )}
+      </div>
+
+      {/* Course Type Filter Tabs */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-ink-outlineVariant/30 pb-3 animate-slide-up">
+        <button
+          type="button"
+          onClick={() => setCourseType("")}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-body-sm transition-all ${
+            !selectedType
+              ? "bg-primary text-white shadow-sm font-semibold"
+              : "bg-surface-container hover:bg-surface-containerHigh text-ink font-medium"
+          }`}
+        >
+          <span className="icon text-[18px]">apps</span>
+          All Courses
+        </button>
+        <button
+          type="button"
+          onClick={() => setCourseType("live")}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-body-sm transition-all ${
+            selectedType === "live"
+              ? "bg-primary text-white shadow-sm font-semibold"
+              : "bg-surface-container hover:bg-surface-containerHigh text-ink font-medium"
+          }`}
+        >
+          <span className="icon text-[18px]">live_tv</span>
+          Live Classes
+        </button>
+        <button
+          type="button"
+          onClick={() => setCourseType("self_paced")}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-body-sm transition-all ${
+            selectedType === "self_paced"
+              ? "bg-primary text-white shadow-sm font-semibold"
+              : "bg-surface-container hover:bg-surface-containerHigh text-ink font-medium"
+          }`}
+        >
+          <span className="icon text-[18px]">play_circle</span>
+          Self-paced Courses
+        </button>
       </div>
 
       <div className="space-y-3 animate-slide-up" style={{ animationDelay: "40ms" }}>
@@ -155,11 +237,9 @@ export default function CoursesListing() {
           title={hasActiveFilters ? "No matching courses" : "No courses yet"}
           description={
             hasActiveFilters
-              ? language && debounced
-                ? `No courses found matching "${debounced}" with language of instruction "${language}".`
-                : language
-                ? `No courses found with language of instruction "${language}".`
-                : `No courses found matching "${debounced}". Try a different search term.`
+              ? `No ${selectedType === "live" ? "live " : selectedType === "self_paced" ? "self-paced " : ""}courses found${
+                  debounced ? ` matching "${debounced}"` : ""
+                }${language ? ` with language "${language}"` : ""}. Try adjusting your filters.`
               : "New courses are on the way — check back soon."
           }
           icon="travel_explore"

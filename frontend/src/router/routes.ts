@@ -5,10 +5,13 @@ export const ROUTES = {
   forgotPassword: "/forgot-password",
   public: {
     courses: "/courses",
+    liveCourses: "/courses?type=live",
+    selfPacedCourses: "/courses?type=self_paced",
     courseDetails: (idOrSlug: string) => `/courses/${idOrSlug}`,
     webinars: "/webinars",
     blog: "/blog",
     blogDetail: (slug: string) => `/blog/${slug}`,
+    unsubscribe: "/unsubscribe",
   },
   admin: {
     root: "/admin",
@@ -22,6 +25,7 @@ export const ROUTES = {
     instructors: "/admin/users/instructors",
     students: "/admin/users/students",
     studentDetail: (id: string) => `/admin/users/students/${id}`,
+    emailSubscribers: "/admin/email-subscribers",
     enrollments: "/admin/enrollments",
     batchOps: "/admin/batch-ops",
     certificates: "/admin/certificates",

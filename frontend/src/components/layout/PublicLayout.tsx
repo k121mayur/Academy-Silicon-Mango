@@ -299,8 +299,8 @@ export default function PublicLayout() {
             <p className="text-label uppercase tracking-wider text-surface-containerHigh/60 mb-3">Learn</p>
             <ul className="space-y-2.5 text-body-sm">
               <li><Link to="/courses" className="text-surface-containerHigh/80 hover:text-white transition-colors">Courses</Link></li>
-              <li><Link to="/webinars" className="text-surface-containerHigh/80 hover:text-white transition-colors">Live Classes</Link></li>
-              <li><Link to="/courses" className="text-surface-containerHigh/80 hover:text-white transition-colors">Self-paced</Link></li>
+              <li><Link to="/courses?type=live" className="text-surface-containerHigh/80 hover:text-white transition-colors">Live Classes</Link></li>
+              <li><Link to="/courses?type=self_paced" className="text-surface-containerHigh/80 hover:text-white transition-colors">Self-paced</Link></li>
               <li><Link to="/webinars" className="text-surface-containerHigh/80 hover:text-white transition-colors">Webinars</Link></li>
             </ul>
           </div>

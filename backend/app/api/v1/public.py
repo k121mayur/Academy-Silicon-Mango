@@ -14,11 +14,19 @@ from app.core.utils import get_client_ip
 from app.db.session import get_db
 from app.dependencies.auth import get_current_user_optional
 from app.models.batch import Batch, BatchScheduleSlot, BatchStatus, Enrollment, EnrollmentStatus
-from app.models.course import Course, CourseInstructor
+from app.models.course import Course, CourseInstructor, CourseType
 from app.models.user import InstructorProfile, StudentProfile, User, UserRole
 from app.models.certificate import Certificate, CertificateTemplate
-from app.schemas.newsletter import NewsletterRequest, NewsletterVerify
-from app.services.newsletter_service import request_newsletter_otp, verify_newsletter_otp
+from app.models.newsletter import NewsletterSubscriber
+from app.schemas.newsletter import NewsletterRequest, NewsletterVerify, UnsubscribeRequest
+from app.services.newsletter_service import (
+    generate_unsubscribe_token,
+    get_unsubscribe_url,
+    request_newsletter_otp,
+    unsubscribe_email,
+    verify_newsletter_otp,
+    verify_unsubscribe_token,
+)
 from app.services.payment_service import IST, enrollment_window_end, is_enrollment_open
 
 router = APIRouter(prefix="/public", tags=["public"])
@@ -64,12 +72,15 @@ async def public_next_batch(
     if is_admin:
         response.headers["Cache-Control"] = "private, no-store"
 
+    today = datetime.now(IST).date()
     stmt = (
         select(Batch, Course)
         .join(Course, Course.id == Batch.course_id)
         .where(
             Batch.is_locked == False,  # noqa: E712
+            Batch.is_enrollment_closed == False,  # noqa: E712
             Batch.status.in_(_ENROLLABLE_STATUSES),
+            Batch.start_date >= today,
         )
     )
     if not is_admin:
@@ -81,51 +92,12 @@ async def public_next_batch(
     if not rows:
         return {"success": True, "data": None}
 
-    today = datetime.now(IST).date()
-
     selected_batch: Optional[Batch] = None
     selected_course: Optional[Course] = None
     selected_enrolled: int = 0
 
-    # 1st preference: batch with start_date >= today where enrollment is open and seats are available
+    # Pick the earliest batch where enrollment is open and seats are available
     for b, c in rows:
-        if is_enrollment_open(c, b):
-            cnt = (
-                await db.execute(
-                    select(func.count(Enrollment.id)).where(
-                        Enrollment.batch_id == b.id, Enrollment.status == EnrollmentStatus.active
-                    )
-                )
-            ).scalar_one()
-            if b.capacity is not None and cnt >= b.capacity:
-                continue
-            if b.start_date and b.start_date >= today:
-                selected_batch = b
-                selected_course = c
-                selected_enrolled = cnt
-                break
-
-    # 2nd preference: any open batch where enrollment is still active (e.g. within late-enrollment grace window)
-    if not selected_batch:
-        for b, c in rows:
-            if is_enrollment_open(c, b):
-                cnt = (
-                    await db.execute(
-                        select(func.count(Enrollment.id)).where(
-                            Enrollment.batch_id == b.id, Enrollment.status == EnrollmentStatus.active
-                        )
-                    )
-                ).scalar_one()
-                if b.capacity is not None and cnt >= b.capacity:
-                    continue
-                selected_batch = b
-                selected_course = c
-                selected_enrolled = cnt
-                break
-
-    # 3rd preference: fallback to the earliest scheduled batch
-    if not selected_batch and rows:
-        b, c = rows[0]
         cnt = (
             await db.execute(
                 select(func.count(Enrollment.id)).where(
@@ -133,9 +105,13 @@ async def public_next_batch(
                 )
             )
         ).scalar_one()
-        selected_batch = b
-        selected_course = c
-        selected_enrolled = cnt
+        if b.capacity is not None and cnt >= b.capacity:
+            continue
+        if is_enrollment_open(c, b, enrolled_count=cnt):
+            selected_batch = b
+            selected_course = c
+            selected_enrolled = cnt
+            break
 
     if not selected_batch or not selected_course:
         return {"success": True, "data": None}
@@ -150,7 +126,13 @@ async def public_next_batch(
 
     # Schedule slots
     slots_res = await db.execute(
-        select(BatchScheduleSlot).where(BatchScheduleSlot.batch_id == selected_batch.id)
+        select(BatchScheduleSlot)
+        .where(BatchScheduleSlot.batch_id == selected_batch.id)
+        .order_by(
+            BatchScheduleSlot.slot_date.asc().nulls_last(),
+            BatchScheduleSlot.weekday.asc().nulls_last(),
+            BatchScheduleSlot.start_time.asc(),
+        )
     )
     schedule_slots = [
         {
@@ -222,6 +204,7 @@ async def public_courses(
     response: Response,
     search: Optional[str] = Query(None),
     language: Optional[str] = Query(None),
+    course_type: Optional[str] = Query(None, alias="type"),
     limit: int = Query(100, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     viewer: Optional[User] = Depends(get_current_user_optional),
@@ -244,17 +227,26 @@ async def public_courses(
         )
     if language and language.strip() and language.strip().lower() != "all":
         stmt = stmt.where(func.lower(Course.language) == language.strip().lower())
+    if course_type and course_type.strip() and course_type.strip().lower() != "all":
+        raw_type = course_type.strip().lower()
+        if raw_type in ("live", "live_classes", "live-classes"):
+            stmt = stmt.where(Course.course_type == CourseType.live)
+        elif raw_type in ("self_paced", "self-paced", "recorded"):
+            stmt = stmt.where(Course.course_type == CourseType.self_paced)
     rows = (await db.execute(stmt.order_by(Course.created_at.desc()).limit(limit))).scalars().all()
 
     course_ids = [c.id for c in rows]
     batches_count: dict = {cid: 0 for cid in course_ids}
     if course_ids:
+        today = datetime.now(IST).date()
         bres = await db.execute(
             select(Batch.course_id, func.count(Batch.id))
             .where(
                 Batch.course_id.in_(course_ids),
                 Batch.is_locked == False,  # noqa: E712
+                Batch.is_enrollment_closed == False,  # noqa: E712
                 Batch.status.in_(_ENROLLABLE_STATUSES),
+                Batch.start_date >= today,
             )
             .group_by(Batch.course_id)
         )
@@ -382,13 +374,16 @@ async def public_course_batches(
         response.headers["Cache-Control"] = "private, no-store"
     course = await _resolve_course(db, course_id, include_unpublished=is_admin)
 
+    today = datetime.now(IST).date()
     batches = (
         await db.execute(
             select(Batch)
             .where(
                 Batch.course_id == course.id,
                 Batch.is_locked == False,  # noqa: E712
+                Batch.is_enrollment_closed == False,  # noqa: E712
                 Batch.status.in_(_ENROLLABLE_STATUSES),
+                Batch.start_date >= today,
             )
             .order_by(Batch.start_date)
         )
@@ -411,7 +406,13 @@ async def public_course_batches(
     slots_by_batch: dict = {bid: [] for bid in batch_ids}
     if batch_ids:
         sres = await db.execute(
-            select(BatchScheduleSlot).where(BatchScheduleSlot.batch_id.in_(batch_ids))
+            select(BatchScheduleSlot)
+            .where(BatchScheduleSlot.batch_id.in_(batch_ids))
+            .order_by(
+                BatchScheduleSlot.slot_date.asc().nulls_last(),
+                BatchScheduleSlot.weekday.asc().nulls_last(),
+                BatchScheduleSlot.start_time.asc(),
+            )
         )
         for slot in sres.scalars().all():
             slots_by_batch.setdefault(slot.batch_id, []).append(
@@ -440,7 +441,13 @@ async def public_course_batches(
         enrolled = enrolled_by_batch.get(b.id, 0)
         seats_left = (b.capacity - enrolled) if b.capacity is not None else None
         is_full = seats_left is not None and seats_left <= 0
-        enrollment_open = is_enrollment_open(course, b)
+        if is_full:
+            # If batch is full, enrollment is closed -> hide from course page
+            continue
+        enrollment_open = is_enrollment_open(course, b, enrolled_count=enrolled)
+        if not enrollment_open:
+            # Closed batches must not be visible on the course page
+            continue
         items.append(
             {
                 "id": str(b.id),
@@ -548,3 +555,59 @@ async def newsletter_verify(payload: NewsletterVerify, db: AsyncSession = Depend
         "success": True,
         "data": {"message": "Subscribed successfully", "subscribed": True},
     }
+
+
+@router.post("/newsletter/unsubscribe")
+@router.post("/unsubscribe")
+async def newsletter_unsubscribe(payload: UnsubscribeRequest, db: AsyncSession = Depends(get_db)):
+    """Public unsubscribe endpoint. Deactivates subscriber and records reason."""
+    await unsubscribe_email(
+        db=db,
+        email=payload.email,
+        reason=payload.reason,
+        token=payload.token,
+    )
+    return {
+        "success": True,
+        "data": {
+            "message": "You have been successfully unsubscribed.",
+            "unsubscribed": True,
+        },
+    }
+
+
+@router.get("/newsletter/unsubscribe-status")
+@router.get("/unsubscribe/status")
+async def newsletter_unsubscribe_status(
+    email: str = Query(..., description="Email address to check"),
+    token: Optional[str] = Query(None, description="Optional HMAC token"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Check subscription status for pre-filling or informing user on the unsubscribe page."""
+    clean_email = email.strip().lower()
+    res = await db.execute(
+        select(NewsletterSubscriber).where(NewsletterSubscriber.email == clean_email)
+    )
+    sub = res.scalar_one_or_none()
+    token_valid = verify_unsubscribe_token(clean_email, token) if token else False
+    if not sub:
+        return {
+            "success": True,
+            "data": {
+                "exists": False,
+                "is_active": True,
+                "email": clean_email,
+                "token_valid": token_valid,
+            },
+        }
+    return {
+        "success": True,
+        "data": {
+            "exists": True,
+            "is_active": sub.is_active,
+            "email": sub.email,
+            "unsubscribed_at": sub.unsubscribed_at.isoformat() if sub.unsubscribed_at else None,
+            "token_valid": token_valid,
+        },
+    }
+

@@ -11,7 +11,7 @@ import ProtectedRoute from "@/router/ProtectedRoute";
 import { RouteFallback } from "@/components/layout/RouteFallback";
 
 // Public
-const Landing = lazy(() => import("@/pages/Landing"));
+import Landing from "@/pages/Landing";
 const Login = lazy(() => import("@/pages/auth/Login"));
 const Signup = lazy(() => import("@/pages/auth/Signup"));
 const ForgotPassword = lazy(() => import("@/pages/auth/ForgotPassword"));
@@ -28,6 +28,7 @@ const ReviewsListing = lazy(() => import("@/pages/public/ReviewsListing"));
 const RefundPolicy = lazy(() => import("@/pages/public/RefundPolicy"));
 const PrivacyPolicy = lazy(() => import("@/pages/public/PrivacyPolicy"));
 const TermsConditions = lazy(() => import("@/pages/public/TermsConditions"));
+const Unsubscribe = lazy(() => import("@/pages/public/Unsubscribe"));
 const ChangePasswordPage = lazy(() => import("@/pages/account/ChangePassword"));
 
 // Admin
@@ -53,6 +54,7 @@ const WebinarDetailAdmin = lazy(() => import("@/pages/admin/WebinarDetailAdmin")
 const AdminBlogs = lazy(() => import("@/pages/admin/Blogs"));
 const BlogForm = lazy(() => import("@/pages/admin/BlogForm"));
 const AdminReviews = lazy(() => import("@/pages/admin/Reviews"));
+const AdminEmailSubscribers = lazy(() => import("@/pages/admin/EmailSubscribers"));
 
 // Student
 const StudentProfile = lazy(() => import("@/pages/student/Profile"));
@@ -97,6 +99,7 @@ export default function App() {
           <Route path="webinars" element={<WebinarListing />} />
           <Route path="webinars/:idOrSlug" element={<WebinarDetail />} />
           <Route path="webinars/:idOrSlug/register" element={<WebinarRegister />} />
+          <Route path="unsubscribe" element={<Unsubscribe />} />
         </Route>
 
         <Route path="verify/:certId" element={<VerifyCertificate />} />
@@ -129,6 +132,8 @@ export default function App() {
             <Route path="blog/create" element={<BlogForm />} />
             <Route path="blog/:id/edit" element={<BlogForm />} />
             <Route path="reviews" element={<AdminReviews />} />
+            <Route path="email-subscribers" element={<AdminEmailSubscribers />} />
+            <Route path="subscribers" element={<Navigate to="/admin/email-subscribers" replace />} />
           </Route>
         </Route>
 
