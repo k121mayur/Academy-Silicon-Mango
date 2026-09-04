@@ -9,7 +9,7 @@ import { Img } from "@/components/ui/Img";
 import { FloatingWhatsApp } from "@/components/public/FloatingWhatsApp";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { stripHtml } from "@/components/shared/RichTextView";
-import { getPublicNextBatch, finalPrice } from "@/services/public.service";
+import { getPublicNextBatch, finalPrice, listPublicCourses } from "@/services/public.service";
 import { slotLabel } from "@/components/catalog/BatchPicker";
 import { qk } from "@/lib/queryKeys";
 import { WriteReviewModal } from "@/components/public/WriteReviewModal";
@@ -31,8 +31,12 @@ interface PublicCourse {
   tags?: string[];
 }
 
-// Warm-toned learning photo for the full-bleed hero.
-const HERO_IMAGE =
+// Warm-toned learning photo for the full-bleed hero in responsive resolutions.
+const HERO_IMAGE_SM =
+  "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=640&q=75";
+const HERO_IMAGE_MD =
+  "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=1080&q=80";
+const HERO_IMAGE_LG =
   "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=1920&q=80";
 
 // Fallback when API returns no courses
@@ -51,23 +55,20 @@ const EXCEL_FALLBACK: PublicCourse = {
 };
 
 export default function Landing() {
-  const [courses, setCourses] = useState<PublicCourse[]>([]);
-  const [loadingCourses, setLoadingCourses] = useState(true);
   const [isWriteReviewOpen, setIsWriteReviewOpen] = useState(false);
+
+  const { data: coursesData, isLoading: loadingCourses } = useQuery({
+    queryKey: qk.public.courses(),
+    queryFn: () => listPublicCourses(),
+    staleTime: 5 * 60_000,
+  });
+  const courses = (coursesData || []) as PublicCourse[];
 
   const { data: reviewsData, refetch: refetchReviews } = useQuery({
     queryKey: qk.public.reviews(),
     queryFn: () => listPublicReviews({ limit: 2 }),
     staleTime: 60_000,
   });
-
-  useEffect(() => {
-    api
-      .get("/public/courses?limit=6")
-      .then((res) => setCourses(res.data?.data || []))
-      .catch((e) => console.warn("[LANDING] Failed to load courses", e))
-      .finally(() => setLoadingCourses(false));
-  }, []);
 
   const { data: nextBatchData } = useQuery({
     queryKey: qk.public.nextBatch(),
@@ -98,9 +99,14 @@ export default function Landing() {
           aria-hidden
         />
         <img
-          src={HERO_IMAGE}
-          alt=""
-          aria-hidden
+          src={HERO_IMAGE_LG}
+          srcSet={`${HERO_IMAGE_SM} 640w, ${HERO_IMAGE_MD} 1080w, ${HERO_IMAGE_LG} 1920w`}
+          sizes="100vw"
+          alt="Silicon Mango Academy live learning environment"
+          fetchPriority="high"
+          width={1920}
+          height={1080}
+          decoding="async"
           className="absolute inset-0 w-full h-full object-cover"
           onError={(e) => {
             (e.currentTarget as HTMLImageElement).style.display = "none";
@@ -168,9 +174,11 @@ export default function Landing() {
         <a
           href="#courses"
           aria-label="Scroll to courses"
-          className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 grid place-items-center w-10 h-10 rounded-full text-white/70 hover:text-white animate-float"
+          className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 flex items-center justify-center w-10 h-10 rounded-full text-white/70 hover:text-white animate-float"
         >
-          <span className="icon text-[28px]">keyboard_arrow_down</span>
+          <span className="icon text-[28px]" aria-hidden="true">
+            keyboard_arrow_down
+          </span>
         </a>
       </section>
 
@@ -498,8 +506,11 @@ export default function Landing() {
               <img
                 src="/certificate-sample.webp"
                 alt="Silicon Mango certificate of completion"
-                className="w-full rounded-2xl shadow-modal"
+                width={1600}
+                height={1141}
+                className="w-full h-auto aspect-[1600/1141] rounded-2xl shadow-modal object-cover"
                 loading="lazy"
+                decoding="async"
               />
             </div>
           </Reveal>

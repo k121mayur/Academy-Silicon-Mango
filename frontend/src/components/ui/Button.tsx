@@ -15,17 +15,17 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variants: Record<Variant, string> = {
   primary:
-    "bg-primary-fill text-primary-on hover:bg-primary-fillHover active:bg-primary-fillActive shadow-sm hover:shadow-md hover:-translate-y-px active:translate-y-0 active:shadow-sm",
+    "bg-primary-fill text-primary-on hover:bg-primary-fillHover active:bg-primary-fillActive shadow-sm hover:shadow-md hover:-translate-y-px active:translate-y-0 active:shadow-sm font-semibold",
   secondary:
     "bg-secondary-container text-secondary hover:bg-[#bbd4f0] active:bg-[#a8c8eb] hover:-translate-y-px active:translate-y-0",
   tertiary:
-    "bg-tertiary text-white hover:bg-[#005466] active:bg-[#004552] shadow-sm hover:shadow-md hover:-translate-y-px active:translate-y-0 active:shadow-sm",
+    "bg-tertiary text-white hover:bg-[#005466] active:bg-[#004552] shadow-sm hover:shadow-md hover:-translate-y-px active:translate-y-0 active:shadow-sm font-semibold",
   ghost:
     "bg-transparent text-ink hover:bg-surface-container active:bg-surface-containerHigh",
   outline:
     "bg-white text-ink border border-ink-outlineVariant hover:bg-surface-containerLow active:bg-surface-container hover:border-ink-outline",
   danger:
-    "bg-danger text-white hover:bg-[#9c1616] active:bg-[#7e1212] shadow-sm hover:shadow-md hover:-translate-y-px active:translate-y-0 active:shadow-sm",
+    "bg-danger text-white hover:bg-[#9c1616] active:bg-[#7e1212] shadow-sm hover:shadow-md hover:-translate-y-px active:translate-y-0 active:shadow-sm font-semibold",
 };
 
 const sizes: Record<Size, string> = {
@@ -60,8 +60,8 @@ export const Button = forwardRef<HTMLButtonElement, Props>(function Button(
         "active:scale-[0.98]",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-1",
         "disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 disabled:hover:transform-none disabled:hover:shadow-none",
-        variants[variant],
         sizes[size],
+        variants[variant],
         fullWidth && "w-full",
         className
       )}

@@ -10,3 +10,7 @@ Disallow: /account
 Disallow: /api/
 
 Sitemap: https://academy.siliconmango.in/sitemap.xml
+# AI agent index
+# https://llmstxt.org/
+# Allows AI assistants and agents to quickly discover site structure
+

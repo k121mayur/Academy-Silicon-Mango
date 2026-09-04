@@ -1,0 +1,21 @@
+# Silicon Mango Academy
+
+> Live instructor-led cohorts, self-paced tracks, and expert webinars in Excel, Python, SQL, and AI for working professionals across India. Verifiable certificates on completion.
+
+## Programs & Courses
+- [All Courses](https://academy.siliconmango.in/courses): Browse live cohorts and self-paced programs in Excel, Python, SQL, and AI.
+- [Live Batches](https://academy.siliconmango.in/courses?type=live): Cohort-based live online classes with mentor doubt-clearing and capstone projects.
+- [Self-Paced Courses](https://academy.siliconmango.in/courses?type=self_paced): Learn on your schedule with mobile-optimized video lessons.
+
+## Live Masterclasses
+- [Upcoming Webinars](https://academy.siliconmango.in/webinars): Live workshops and interactive training sessions with industry experts.
+
+## Credentials & Trust
+- [Verify Certificate](https://academy.siliconmango.in/verify): Instant online verification of Silicon Mango completion certificates by unique ID.
+- [Learner Reviews](https://academy.siliconmango.in/reviews): 4.9-star rated reviews from verified learners across corporate and academic fields.
+
+## Knowledge & Policies
+- [Blog & Guides](https://academy.siliconmango.in/blog): Tutorials, case studies, and career tips from instructors.
+- [FAQ](https://academy.siliconmango.in/#faq): Cohort schedules, recordings access, and 100% money-back refund guarantee before class starts.
+- [Terms & Privacy](https://academy.siliconmango.in/terms): Service terms, code of conduct, and privacy policy.
+- [Email Preferences](https://academy.siliconmango.in/unsubscribe): Manage newsletter and communication preferences.
