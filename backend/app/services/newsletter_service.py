@@ -90,13 +90,81 @@ async def verify_newsletter_otp(db: AsyncSession, email: str, otp: str) -> None:
             is_active=True,
             source="landing_footer",
             confirmed_at=now,
+            unsubscribed_at=None,
+            unsubscribe_reason=None,
         )
         db.add(subscriber)
     else:
         subscriber.is_active = True
+        subscriber.unsubscribed_at = None
+        subscriber.unsubscribe_reason = None
         if subscriber.confirmed_at is None:
             subscriber.confirmed_at = now
     await db.commit()
 
     await clear_newsletter_otp(email)
     print(f"[NEWSLETTER] Subscription confirmed for {_mask_email(email)}")
+
+
+def generate_unsubscribe_token(email: str) -> str:
+    """Generate a tamper-proof HMAC token for an email address to use in unsubscribe links."""
+    import hashlib
+    import hmac
+    from app.core.config import settings
+
+    key = settings.SECRET_KEY.encode("utf-8")
+    msg = email.strip().lower().encode("utf-8")
+    return hmac.new(key, msg, hashlib.sha256).hexdigest()[:32]
+
+
+def verify_unsubscribe_token(email: str, token: str) -> bool:
+    """Verify the HMAC token for an email address."""
+    import hmac
+
+    expected = generate_unsubscribe_token(email)
+    return hmac.compare_digest(expected, token.strip().lower())
+
+
+def get_unsubscribe_url(email: str) -> str:
+    """Construct an unsubscribe link with email and token query parameters."""
+    import urllib.parse
+    from app.core.config import settings
+
+    token = generate_unsubscribe_token(email)
+    base = settings.FRONTEND_URL.rstrip("/")
+    return f"{base}/unsubscribe?email={urllib.parse.quote(email.strip())}&token={token}"
+
+
+async def unsubscribe_email(
+    db: AsyncSession,
+    email: str,
+    reason: str | None = None,
+    token: str | None = None,
+) -> bool:
+    """Unsubscribe an email from the newsletter and marketing campaigns."""
+    clean_email = email.strip().lower()
+    if token and not verify_unsubscribe_token(clean_email, token):
+        print(f"[NEWSLETTER] Warning: Invalid unsubscribe token provided for {_mask_email(clean_email)}")
+
+    now = datetime.now(timezone.utc)
+    subscriber = await _get_subscriber(db, clean_email)
+    clean_reason = reason.strip() if reason and reason.strip() else None
+
+    if subscriber is None:
+        subscriber = NewsletterSubscriber(
+            email=clean_email,
+            is_active=False,
+            source="unsubscribe_form",
+            unsubscribed_at=now,
+            unsubscribe_reason=clean_reason,
+        )
+        db.add(subscriber)
+    else:
+        subscriber.is_active = False
+        subscriber.unsubscribed_at = now
+        if clean_reason:
+            subscriber.unsubscribe_reason = clean_reason
+
+    await db.commit()
+    print(f"[NEWSLETTER] Unsubscribed {_mask_email(clean_email)} (reason: {clean_reason})")
+    return True

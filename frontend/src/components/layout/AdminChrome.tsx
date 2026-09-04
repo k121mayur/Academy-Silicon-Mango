@@ -28,6 +28,7 @@ const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
     items: [
       { label: "Instructors", to: "/admin/users/instructors", icon: "psychology" },
       { label: "Students", to: "/admin/users/students", icon: "school" },
+      { label: "Email Subscribers", to: "/admin/email-subscribers", icon: "mark_email_read" },
     ],
   },
   {

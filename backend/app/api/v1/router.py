@@ -13,6 +13,7 @@ from app.api.v1.admin import (
     organizations as admin_organizations,
     payments as admin_payments,
     reviews as admin_reviews,
+    subscribers as admin_subscribers,
     users as admin_users,
     webinars as admin_webinars,
 )
@@ -50,6 +51,7 @@ admin_router.include_router(admin_organizations.router)
 admin_router.include_router(admin_webinars.router)
 admin_router.include_router(admin_blogs.router)
 admin_router.include_router(admin_reviews.router)
+admin_router.include_router(admin_subscribers.router)
 api_router.include_router(admin_router)
 
 api_router.include_router(instructor_router.router)

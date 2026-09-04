@@ -30,3 +30,42 @@ class NewsletterRequestResponse(BaseModel):
 class NewsletterVerifyResponse(BaseModel):
     message: str
     subscribed: bool = True
+
+
+class NewsletterSubscriberPublic(BaseModel):
+    id: str
+    email: str
+    is_active: bool
+    source: str | None = None
+    confirmed_at: str | None = None
+    unsubscribed_at: str | None = None
+    unsubscribe_reason: str | None = None
+    created_at: str | None = None
+
+
+class NewsletterSubscriberCreate(BaseModel):
+    email: EmailStr
+    source: str | None = "admin_manual"
+
+
+class NewsletterSubscriberUpdate(BaseModel):
+    is_active: bool | None = None
+    source: str | None = None
+    unsubscribe_reason: str | None = None
+
+
+class NewsletterSubscriberStats(BaseModel):
+    total: int
+    active: int
+    inactive: int
+
+
+class UnsubscribeRequest(BaseModel):
+    email: EmailStr
+    reason: str | None = Field(None, max_length=500)
+    token: str | None = None
+
+
+class UnsubscribeResponse(BaseModel):
+    message: str
+    unsubscribed: bool = True

@@ -28,4 +28,6 @@ class NewsletterSubscriber(Base):
     # Where the sign-up came from (e.g. "landing_footer"); free-text, optional.
     source: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    unsubscribed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    unsubscribe_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
