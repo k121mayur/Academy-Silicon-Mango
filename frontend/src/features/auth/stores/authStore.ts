@@ -19,36 +19,55 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isInitialized: false,
 
   setUser: (u) => {
-    console.log("[AUTH] setUser", u?.email || "null");
+    if (typeof window !== "undefined") {
+      if (u) {
+        localStorage.setItem("sm_has_session", "1");
+      } else {
+        localStorage.removeItem("sm_has_session");
+      }
+    }
     set({ user: u, isInitialized: true });
   },
 
   fetchMe: async () => {
     set({ isLoading: true });
     try {
-      const res = await api.get<AuthUser>("/auth/me");
-      console.log("[AUTH] /me OK", res.data.email);
-      set({ user: res.data, isInitialized: true, isLoading: false });
-      return res.data;
+      const res = await api.get<AuthUser | null>("/auth/me");
+      const user = res.data && res.data.email ? res.data : null;
+      if (typeof window !== "undefined") {
+        if (user) {
+          localStorage.setItem("sm_has_session", "1");
+        } else {
+          localStorage.removeItem("sm_has_session");
+        }
+      }
+      set({ user, isInitialized: true, isLoading: false });
+      return user;
     } catch (e) {
-      console.log("[AUTH] /me failed (not authenticated)");
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("sm_has_session");
+      }
       set({ user: null, isInitialized: true, isLoading: false });
       return null;
     }
   },
 
   logout: async () => {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("sm_has_session");
+    }
     try {
       await api.post("/auth/logout");
-      console.log("[AUTH] Logout OK");
     } catch (e) {
-      console.warn("[AUTH] Logout request failed (ignoring)");
+      // ignore
     }
     set({ user: null });
   },
 
   clearAuth: () => {
-    console.log("[AUTH] clearAuth — session ended");
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("sm_has_session");
+    }
     set({ user: null });
   },
 }));

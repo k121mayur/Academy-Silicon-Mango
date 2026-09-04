@@ -52,11 +52,12 @@ api.interceptors.response.use(
   async (err: AxiosError) => {
     const original = err.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
-    // Only attempt refresh on 401, once per request, and never for the refresh endpoint itself.
+    // Only attempt refresh on 401, once per request, and never for refresh or me endpoints.
     if (
       err.response?.status === 401 &&
       !original._retry &&
-      !original.url?.includes("/auth/refresh")
+      !original.url?.includes("/auth/refresh") &&
+      !original.url?.includes("/auth/me")
     ) {
       original._retry = true;
 

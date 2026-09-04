@@ -35,7 +35,7 @@ from app.core.security import (
     verify_password,
 )
 from app.db.session import get_db
-from app.dependencies.auth import get_current_user
+from app.dependencies.auth import get_current_user, get_current_user_optional
 from app.models.user import User, UserRole
 from app.schemas.auth import (
     AuthResponse,
@@ -52,6 +52,7 @@ from app.schemas.auth import (
 from app.services.auth_service import (
     authenticate_user,
     get_or_create_google_user,
+    get_user_by_id,
     is_profile_complete,
     issue_tokens,
     request_password_reset_otp,
@@ -303,17 +304,63 @@ async def password_reset_verify(
     return MessageResponse(message="Password reset. Please sign in with your new password.")
 
 
-@router.get("/me", response_model=MeResponse)
-async def me(user: User = Depends(get_current_user)):
-    pub = _user_public(user)
-    return MeResponse(
-        id=pub.id,
-        email=pub.email,
-        role=pub.role,
-        display_name=pub.display_name,
-        avatar_url=pub.avatar_url,
-        profile_complete=is_profile_complete(user),
-    )
+@router.get("/me", response_model=Optional[MeResponse])
+async def me(
+    response: Response,
+    access_token: Optional[str] = Cookie(default=None),
+    refresh_token: Optional[str] = Cookie(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    user = await get_current_user_optional(access_token, db)
+    if user:
+        pub = _user_public(user)
+        return MeResponse(
+            id=pub.id,
+            email=pub.email,
+            role=pub.role,
+            display_name=pub.display_name,
+            avatar_url=pub.avatar_url,
+            profile_complete=is_profile_complete(user),
+        )
+
+    # If access token is missing or expired, but we have a refresh token, try silent refresh
+    if refresh_token:
+        try:
+            payload = decode_token(refresh_token)
+            if payload and payload.get("type") == "refresh":
+                jti = payload.get("jti")
+                sub = payload.get("sub")
+                if sub and not (jti and await is_blacklisted(jti, "refresh")):
+                    iat = payload.get("iat")
+                    if not (iat and await password_changed_after(sub, iat)):
+                        user = await get_user_by_id(db, sub)
+                        if user and user.is_active:
+                            # Rotate: blacklist old refresh, issue new pair
+                            if jti:
+                                from datetime import datetime, timezone
+                                exp = payload.get("exp", 0)
+                                now = int(datetime.now(timezone.utc).timestamp())
+                                ttl = max(exp - now, 1)
+                                await blacklist_token(jti, ttl, kind="refresh")
+
+                            access, _ = create_access_token(
+                                sub=str(user.id), role=user.role.value, email=user.email
+                            )
+                            new_refresh, _ = create_refresh_token(sub=str(user.id))
+                            set_auth_cookies(response, access, new_refresh)
+                            pub = _user_public(user)
+                            return MeResponse(
+                                id=pub.id,
+                                email=pub.email,
+                                role=pub.role,
+                                display_name=pub.display_name,
+                                avatar_url=pub.avatar_url,
+                                profile_complete=is_profile_complete(user),
+                            )
+        except Exception:
+            pass
+
+    return None
 
 
 # -------- Google OAuth --------
