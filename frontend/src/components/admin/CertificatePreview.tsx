@@ -34,35 +34,45 @@ export interface CertificateFieldConfig {
   qr: QrFieldConfig;
 }
 
-export function getProportionalConfig(w: number, h: number): CertificateFieldConfig {
-  const leftX = Math.round(w * 0.09325);
+export function getProportionalConfig(
+  w: number,
+  h: number,
+  align: "left" | "center" | "right" = "left"
+): CertificateFieldConfig {
+  const targetX =
+    align === "center"
+      ? Math.round(w / 2)
+      : align === "right"
+      ? Math.round(w * (1 - 0.09325))
+      : Math.round(w * 0.09325);
+
   return {
     date: {
-      x: leftX,
+      x: targetX,
       y: Math.round(h * 0.289),
       font_size: Math.max(12, Math.round(h * 0.019)),
       font_color: "#000000",
-      align: "left",
+      align,
       enabled: true,
     },
     name: {
-      x: leftX,
+      x: targetX,
       y: Math.round(h * 0.4643),
       font_size: Math.max(18, Math.round(h * 0.035)),
       font_color: "#000000",
-      align: "left",
+      align,
       enabled: true,
     },
     course: {
-      x: leftX,
+      x: targetX,
       y: Math.round(h * 0.565),
       font_size: Math.max(14, Math.round(h * 0.0245)),
       font_color: "#000000",
-      align: "left",
+      align,
       enabled: true,
     },
     qr: {
-      x: Math.round(w * 0.85),
+      x: align === "right" ? Math.round(w * 0.15) : Math.round(w * 0.85),
       y: Math.round(h * 0.88),
       size: Math.max(60, Math.round(h * 0.09)),
       enabled: false,
@@ -245,7 +255,7 @@ export function CertificatePreview({
           fontFamily: '"Times New Roman", Times, serif',
           fontSize: `${fontPx}px`,
           color: cfg.font_color ?? "#000000",
-          textAlign: "left",
+          textAlign: align,
           lineHeight: 1,
           touchAction: "none",
           textShadow: "0 0 2px rgba(255,255,255,0.5)",
@@ -330,7 +340,11 @@ export function CertificatePreview({
                   className="absolute top-0 bottom-0 pointer-events-none z-20 border-l border-dashed border-primary"
                   style={{ left: activeGuideX * scale }}
                 >
-                  <span className="inline-block bg-primary text-white text-[10px] font-mono px-1 py-0.5 rounded-br shadow-sm">
+                  <span
+                    className={`inline-block bg-primary text-white text-[10px] font-mono px-1 py-0.5 shadow-sm ${
+                      activeGuideX > natural.w / 2 ? "rounded-bl -translate-x-full" : "rounded-br"
+                    }`}
+                  >
                     X={activeGuideX}px
                   </span>
                 </div>

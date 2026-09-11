@@ -26,9 +26,8 @@ const DEFAULT_CONFIG: CertificateFieldConfig = getProportionalConfig(1024, 730);
 const NAME_MAX_CHARS = 40;
 
 function isLegacyConfig(cfg: any): boolean {
-  if (!cfg) return true;
-  if (cfg.name?.x === 400 && cfg.name?.y === 320) return true;
-  if (!cfg.name?.align || cfg.name?.align === "center") return true;
+  if (!cfg || !cfg.name) return true;
+  if (cfg.name.x === 400 && cfg.name.y === 320) return true;
   return false;
 }
 
@@ -56,15 +55,52 @@ export default function AdminCertificates() {
   const isNewUploadRef = useRef(false);
 
   const [config, setConfig] = useState<CertificateFieldConfig>(DEFAULT_CONFIG);
+  const [syncAllTextFields, setSyncAllTextFields] = useState(true);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
 
+  const getTargetXForAlign = (align: "left" | "center" | "right") => {
+    const dims = naturalDimensions ?? { w: 1024, h: 730 };
+    if (align === "center") return Math.round(dims.w / 2);
+    if (align === "right") return Math.round(dims.w * (1 - 0.09325));
+    return Math.round(dims.w * 0.09325);
+  };
+
+  const handleFieldAlignChange = (field: "date" | "name" | "course", newAlign: "left" | "center" | "right") => {
+    const targetX = getTargetXForAlign(newAlign);
+
+    if (syncAllTextFields) {
+      setConfig({
+        ...config,
+        date: { ...config.date, x: targetX, align: newAlign },
+        name: { ...config.name, x: targetX, align: newAlign },
+        course: { ...config.course, x: targetX, align: newAlign },
+      });
+      toast.success(
+        newAlign === "center"
+          ? `All text fields centered at X=${targetX}px (Certificate Center)`
+          : newAlign === "right"
+          ? `All text fields right-anchored at X=${targetX}px (Right Margin)`
+          : `All text fields left-anchored at X=${targetX}px (Left Margin)`
+      );
+    } else {
+      setConfig({
+        ...config,
+        [field]: { ...config[field], x: targetX, align: newAlign },
+      });
+      toast.success(
+        `${field === "name" ? "Student Name" : field === "course" ? "Course Title" : "Issue Date"} ${newAlign}-aligned at X=${targetX}px`
+      );
+    }
+  };
+
   const handleNaturalDimensions = (dims: { w: number; h: number }) => {
     setNaturalDimensions(dims);
-    // Auto-align whenever a new template is uploaded or if current template is uncalibrated / legacy center config
+    // Auto-align whenever a new template is uploaded or if current template is uncalibrated / legacy placeholder
     if (isNewUploadRef.current || !template?.field_config || isLegacyConfig(template?.field_config)) {
       isNewUploadRef.current = false;
-      const prop = getProportionalConfig(dims.w, dims.h);
+      const align = config.name.align ?? "left";
+      const prop = getProportionalConfig(dims.w, dims.h, align);
       setConfig(prop);
       toast.success(`Fields auto-aligned to template layout (${dims.w}×${dims.h}px)`);
     }
@@ -303,40 +339,48 @@ export default function AdminCertificates() {
 
           {courseId && previewTemplateUrl && (
             <Card>
-              <CardHeader className="space-y-2">
+              <CardHeader className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-title-md font-semibold">3. Field positions (px)</p>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const dims = naturalDimensions ?? { w: 1024, h: 730 };
-                        setConfig(getProportionalConfig(dims.w, dims.h));
-                        toast.success(`Auto-aligned fields to template (${dims.w}×${dims.h}px)`);
-                      }}
-                      className="text-[11px] font-medium text-primary hover:underline px-2 py-1 rounded bg-primary/10 hover:bg-primary/20 transition-colors"
-                      title="Automatically calculate left margin, spacing, and sizes matching this template layout"
-                    >
-                      Auto-Align to Template
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const targetX = config.name.x;
-                        setConfig({
-                          ...config,
-                          date: { ...config.date, x: targetX, align: "left" },
-                          name: { ...config.name, x: targetX, align: "left" },
-                          course: { ...config.course, x: targetX, align: "left" },
-                        });
-                        toast.success(`Left-aligned Date, Name, and Course to X=${targetX}px`);
-                      }}
-                      className="text-[11px] font-medium text-primary hover:underline px-2 py-1 rounded bg-primary/10 hover:bg-primary/20 transition-colors"
-                      title="Snap Date, Name, and Course to the exact same left margin coordinate"
-                    >
-                      Align All Left (X={config.name.x})
-                    </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const dims = naturalDimensions ?? { w: 1024, h: 730 };
+                      const align = config.name.align ?? "left";
+                      setConfig(getProportionalConfig(dims.w, dims.h, align));
+                      toast.success(`Auto-aligned fields to template (${dims.w}×${dims.h}px, ${align})`);
+                    }}
+                    className="text-[11px] font-medium text-primary hover:underline px-2 py-1 rounded bg-primary/10 hover:bg-primary/20 transition-colors"
+                    title="Automatically calculate margins, spacing, and sizes matching this template layout"
+                  >
+                    Auto-Align to Template
+                  </button>
+                </div>
+
+                <div className="bg-surface-containerLow/80 border border-ink-outlineVariant/40 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold uppercase tracking-wide text-ink">
+                      Text Alignment
+                    </label>
+                    <label className="flex items-center gap-1.5 text-[11px] text-ink-outline cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={syncAllTextFields}
+                        onChange={(e) => setSyncAllTextFields(e.target.checked)}
+                        className="rounded text-primary focus:ring-primary h-3.5 w-3.5"
+                      />
+                      <span>Sync all text fields</span>
+                    </label>
                   </div>
+                  <select
+                    value={config.name.align ?? "left"}
+                    onChange={(e) => handleFieldAlignChange("name", e.target.value as any)}
+                    className="w-full h-9 border border-ink-outlineVariant rounded-lg px-2.5 text-body-sm font-medium bg-surface-lowest cursor-pointer shadow-xs focus:ring-1 focus:ring-primary text-ink"
+                  >
+                    <option value="left">Left Align (Shift to Left Margin)</option>
+                    <option value="center">Center Align (Shift to Certificate Center)</option>
+                    <option value="right">Right Align (Shift to Right Margin)</option>
+                  </select>
                 </div>
               </CardHeader>
               <CardBody className="space-y-3">
@@ -382,10 +426,24 @@ export default function AdminCertificates() {
                         </label>
                       </div>
 
-                      {f.align === "left" && isEnabled && (
+                      {isEnabled && (
                         <p className="text-[11px] text-primary/80 bg-primary/5 rounded p-1.5 leading-relaxed">
-                          <strong>Left-Fixed Anchor:</strong> X={f.x}px locks the left margin.
-                          Changing font size or text length expands rightward without shifting this alignment.
+                          {f.align === "center" ? (
+                            <>
+                              <strong>Center Anchor:</strong> X={f.x}px locks the horizontal centerline.
+                              Changing font size expands symmetrically from the center of the certificate.
+                            </>
+                          ) : f.align === "right" ? (
+                            <>
+                              <strong>Right Anchor:</strong> X={f.x}px locks the right margin.
+                              Changing font size expands leftward without shifting the right alignment.
+                            </>
+                          ) : (
+                            <>
+                              <strong>Left Anchor:</strong> X={f.x}px locks the left margin.
+                              Changing font size expands rightward without shifting the left alignment.
+                            </>
+                          )}
                         </p>
                       )}
 
@@ -431,16 +489,13 @@ export default function AdminCertificates() {
                         <select
                           value={f.align ?? "left"}
                           onChange={(e) =>
-                            setConfig({
-                              ...config,
-                              [field]: { ...f, align: e.target.value as any },
-                            })
+                            handleFieldAlignChange(field, e.target.value as any)
                           }
                           className="w-full h-8 border border-ink-outlineVariant rounded px-2 text-body-sm bg-surface-lowest"
                         >
-                          <option value="left">Left (Anchored at X)</option>
-                          <option value="center">Center</option>
-                          <option value="right">Right</option>
+                          <option value="left">Left (Anchored to Left Margin)</option>
+                          <option value="center">Center (Centered on Certificate)</option>
+                          <option value="right">Right (Anchored to Right Margin)</option>
                         </select>
                       </div>
                     </div>
@@ -586,9 +641,9 @@ function NumberInput({
 
 function mergeConfig(base: CertificateFieldConfig, override: Partial<CertificateFieldConfig>): CertificateFieldConfig {
   const out: CertificateFieldConfig = {
-    name: { ...base.name, ...(override.name ?? {}), align: "left" },
-    course: { ...base.course, ...(override.course ?? {}), align: "left" },
-    date: { ...base.date, ...(override.date ?? {}), align: "left" },
+    name: { ...base.name, ...(override.name ?? {}), align: override.name?.align ?? base.name.align ?? "left" },
+    course: { ...base.course, ...(override.course ?? {}), align: override.course?.align ?? base.course.align ?? "left" },
+    date: { ...base.date, ...(override.date ?? {}), align: override.date?.align ?? base.date.align ?? "left" },
     qr: { ...base.qr, ...(override.qr ?? {}) },
   };
   return out;

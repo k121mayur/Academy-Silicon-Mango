@@ -23,35 +23,43 @@ DEFAULT_FIELD_CONFIG: dict[str, dict[str, Any]] = {
 }
 
 
-def get_proportional_config(w: int, h: int) -> dict[str, dict[str, Any]]:
-    left_x = int(round(w * 0.09325))
+def get_proportional_config(w: int, h: int, align: str = "left") -> dict[str, dict[str, Any]]:
+    if align == "center":
+        target_x = int(round(w / 2))
+    elif align == "right":
+        target_x = int(round(w * (1 - 0.09325)))
+    else:
+        target_x = int(round(w * 0.09325))
+
+    qr_x = int(round(w * 0.15)) if align == "right" else int(round(w * 0.85))
+
     return {
         "date": {
-            "x": left_x,
+            "x": target_x,
             "y": int(round(h * 0.289)),
             "font_size": max(12, int(round(h * 0.019))),
             "font_color": "#000000",
-            "align": "left",
+            "align": align,
             "enabled": True,
         },
         "name": {
-            "x": left_x,
+            "x": target_x,
             "y": int(round(h * 0.4643)),
             "font_size": max(18, int(round(h * 0.035))),
             "font_color": "#000000",
-            "align": "left",
+            "align": align,
             "enabled": True,
         },
         "course": {
-            "x": left_x,
+            "x": target_x,
             "y": int(round(h * 0.565)),
             "font_size": max(14, int(round(h * 0.0245))),
             "font_color": "#000000",
-            "align": "left",
+            "align": align,
             "enabled": True,
         },
         "qr": {
-            "x": int(round(w * 0.85)),
+            "x": qr_x,
             "y": int(round(h * 0.88)),
             "size": max(60, int(round(h * 0.09))),
             "enabled": False,

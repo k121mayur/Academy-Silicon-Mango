@@ -500,9 +500,9 @@ const DEFAULT_CERT_CONFIG: CertificateFieldConfig = {
 function mergeCertConfig(override: any): CertificateFieldConfig {
   const o = override ?? {};
   return {
-    name: { ...DEFAULT_CERT_CONFIG.name, ...(o.name ?? {}), align: "left" },
-    course: { ...DEFAULT_CERT_CONFIG.course, ...(o.course ?? {}), align: "left" },
-    date: { ...DEFAULT_CERT_CONFIG.date, ...(o.date ?? {}), align: "left" },
+    name: { ...DEFAULT_CERT_CONFIG.name, ...(o.name ?? {}), align: o.name?.align ?? DEFAULT_CERT_CONFIG.name.align },
+    course: { ...DEFAULT_CERT_CONFIG.course, ...(o.course ?? {}), align: o.course?.align ?? DEFAULT_CERT_CONFIG.course.align },
+    date: { ...DEFAULT_CERT_CONFIG.date, ...(o.date ?? {}), align: o.date?.align ?? DEFAULT_CERT_CONFIG.date.align },
     qr: { ...DEFAULT_CERT_CONFIG.qr, ...(o.qr ?? {}) },
   };
 }
