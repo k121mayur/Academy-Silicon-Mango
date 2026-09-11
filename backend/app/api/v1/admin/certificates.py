@@ -66,6 +66,22 @@ async def upload_template(
     res = await db.execute(select(CertificateTemplate).where(CertificateTemplate.course_id == course_id))
     tmpl = res.scalar_one_or_none()
     url = await save_upload(file, "certificate_templates")
+
+    # Auto-calculate proportional left-aligned field layout for the uploaded template
+    if not cfg or not cfg.get("name") or (cfg.get("name", {}).get("x") == 400 and cfg.get("name", {}).get("y") == 320):
+        from app.services.certificate_render_service import get_proportional_config, _resolve_template_path
+        saved_path = _resolve_template_path(url)
+        if saved_path.exists():
+            if saved_path.suffix.lower() == ".pdf":
+                from pypdf import PdfReader
+                p = PdfReader(str(saved_path)).pages[0]
+                w, h = int(p.mediabox.width), int(p.mediabox.height)
+            else:
+                from PIL import Image
+                with Image.open(saved_path) as img:
+                    w, h = img.size
+            cfg = get_proportional_config(w, h)
+
     if tmpl:
         tmpl.template_url = url
         tmpl.field_config = cfg

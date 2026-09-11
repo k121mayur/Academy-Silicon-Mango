@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
@@ -18,16 +18,19 @@ import {
 import {
   CertificatePreview,
   type CertificateFieldConfig,
+  getProportionalConfig,
 } from "@/components/admin/CertificatePreview";
 
-const DEFAULT_CONFIG: CertificateFieldConfig = {
-  name: { x: 400, y: 320, font_size: 28, font_color: "#000000", align: "center" },
-  course: { x: 400, y: 380, font_size: 20, font_color: "#000000", align: "center" },
-  date: { x: 400, y: 460, font_size: 14, font_color: "#000000", align: "center" },
-  qr: { x: 800, y: 600, size: 100 },
-};
+const DEFAULT_CONFIG: CertificateFieldConfig = getProportionalConfig(1024, 730);
 
 const NAME_MAX_CHARS = 40;
+
+function isLegacyConfig(cfg: any): boolean {
+  if (!cfg) return true;
+  if (cfg.name?.x === 400 && cfg.name?.y === 320) return true;
+  if (!cfg.name?.align || cfg.name?.align === "center") return true;
+  return false;
+}
 
 interface EnrolledStudent {
   id: string;
@@ -49,10 +52,23 @@ export default function AdminCertificates() {
   const [file, setFile] = useState<File | null>(null);
   const [pendingTemplateType, setPendingTemplateType] = useState<"pdf" | "image" | null>(null);
   const [pendingTemplatePreview, setPendingTemplatePreview] = useState<string | null>(null);
+  const [naturalDimensions, setNaturalDimensions] = useState<{ w: number; h: number } | null>(null);
+  const isNewUploadRef = useRef(false);
 
   const [config, setConfig] = useState<CertificateFieldConfig>(DEFAULT_CONFIG);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
+
+  const handleNaturalDimensions = (dims: { w: number; h: number }) => {
+    setNaturalDimensions(dims);
+    // Auto-align whenever a new template is uploaded or if current template is uncalibrated / legacy center config
+    if (isNewUploadRef.current || !template?.field_config || isLegacyConfig(template?.field_config)) {
+      isNewUploadRef.current = false;
+      const prop = getProportionalConfig(dims.w, dims.h);
+      setConfig(prop);
+      toast.success(`Fields auto-aligned to template layout (${dims.w}×${dims.h}px)`);
+    }
+  };
 
   useEffect(() => {
     listCourses({ limit: 100 }).then((r) => setCourses(r.data));
@@ -125,6 +141,7 @@ export default function AdminCertificates() {
 
   const handleFileChange = (f: File) => {
     setFile(f);
+    isNewUploadRef.current = true;
     if (pendingTemplatePreview) URL.revokeObjectURL(pendingTemplatePreview);
     const isPdf = f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf");
     setPendingTemplateType(isPdf ? "pdf" : "image");
@@ -286,20 +303,92 @@ export default function AdminCertificates() {
 
           {courseId && previewTemplateUrl && (
             <Card>
-              <CardHeader>
-                <p className="text-title-md font-semibold">3. Field positions (px)</p>
+              <CardHeader className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-title-md font-semibold">3. Field positions (px)</p>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const dims = naturalDimensions ?? { w: 1024, h: 730 };
+                        setConfig(getProportionalConfig(dims.w, dims.h));
+                        toast.success(`Auto-aligned fields to template (${dims.w}×${dims.h}px)`);
+                      }}
+                      className="text-[11px] font-medium text-primary hover:underline px-2 py-1 rounded bg-primary/10 hover:bg-primary/20 transition-colors"
+                      title="Automatically calculate left margin, spacing, and sizes matching this template layout"
+                    >
+                      Auto-Align to Template
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const targetX = config.name.x;
+                        setConfig({
+                          ...config,
+                          date: { ...config.date, x: targetX, align: "left" },
+                          name: { ...config.name, x: targetX, align: "left" },
+                          course: { ...config.course, x: targetX, align: "left" },
+                        });
+                        toast.success(`Left-aligned Date, Name, and Course to X=${targetX}px`);
+                      }}
+                      className="text-[11px] font-medium text-primary hover:underline px-2 py-1 rounded bg-primary/10 hover:bg-primary/20 transition-colors"
+                      title="Snap Date, Name, and Course to the exact same left margin coordinate"
+                    >
+                      Align All Left (X={config.name.x})
+                    </button>
+                  </div>
+                </div>
               </CardHeader>
               <CardBody className="space-y-3">
-                {(["name", "course", "date"] as const).map((field) => {
+                {(["date", "name", "course"] as const).map((field) => {
                   const f = config[field];
+                  const isEnabled = f.enabled !== false;
+                  const fieldTitle =
+                    field === "name"
+                      ? "Student Name"
+                      : field === "course"
+                      ? "Course Title"
+                      : "Issue Date";
                   return (
                     <div
                       key={field}
-                      className="bg-surface-containerLow rounded-xl p-3 space-y-2"
+                      className={`bg-surface-containerLow rounded-xl p-3 space-y-2 transition-opacity ${
+                        isEnabled ? "opacity-100" : "opacity-60"
+                      }`}
                     >
-                      <p className="text-label uppercase tracking-wide text-ink-outline">
-                        {field}
-                      </p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-label uppercase tracking-wide text-ink-outline font-semibold">
+                          {fieldTitle}
+                        </p>
+                        <label className="flex items-center gap-1.5 text-label cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={isEnabled}
+                            onChange={(e) =>
+                              setConfig({
+                                ...config,
+                                [field]: { ...f, enabled: e.target.checked },
+                              })
+                            }
+                            className="rounded text-primary focus:ring-primary h-3.5 w-3.5"
+                          />
+                          <span
+                            className={
+                              isEnabled ? "text-ink font-medium" : "text-ink-outline line-through"
+                            }
+                          >
+                            {isEnabled ? "Enabled" : "Disabled"}
+                          </span>
+                        </label>
+                      </div>
+
+                      {f.align === "left" && isEnabled && (
+                        <p className="text-[11px] text-primary/80 bg-primary/5 rounded p-1.5 leading-relaxed">
+                          <strong>Left-Fixed Anchor:</strong> X={f.x}px locks the left margin.
+                          Changing font size or text length expands rightward without shifting this alignment.
+                        </p>
+                      )}
+
                       <div className="grid grid-cols-4 gap-2">
                         <NumberInput
                           label="X"
@@ -340,7 +429,7 @@ export default function AdminCertificates() {
                       <div>
                         <label className="text-[10px] uppercase text-ink-outline">Align</label>
                         <select
-                          value={f.align ?? "center"}
+                          value={f.align ?? "left"}
                           onChange={(e) =>
                             setConfig({
                               ...config,
@@ -349,7 +438,7 @@ export default function AdminCertificates() {
                           }
                           className="w-full h-8 border border-ink-outlineVariant rounded px-2 text-body-sm bg-surface-lowest"
                         >
-                          <option value="left">Left</option>
+                          <option value="left">Left (Anchored at X)</option>
                           <option value="center">Center</option>
                           <option value="right">Right</option>
                         </select>
@@ -357,8 +446,38 @@ export default function AdminCertificates() {
                     </div>
                   );
                 })}
-                <div className="bg-surface-containerLow rounded-xl p-3 space-y-2">
-                  <p className="text-label uppercase tracking-wide text-ink-outline">qr code</p>
+                <div
+                  className={`bg-surface-containerLow rounded-xl p-3 space-y-2 transition-opacity ${
+                    config.qr.enabled !== false ? "opacity-100" : "opacity-60"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <p className="text-label uppercase tracking-wide text-ink-outline font-semibold">
+                      QR Code
+                    </p>
+                    <label className="flex items-center gap-1.5 text-label cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={config.qr.enabled !== false}
+                        onChange={(e) =>
+                          setConfig({
+                            ...config,
+                            qr: { ...config.qr, enabled: e.target.checked },
+                          })
+                        }
+                        className="rounded text-primary focus:ring-primary h-3.5 w-3.5"
+                      />
+                      <span
+                        className={
+                          config.qr.enabled !== false
+                            ? "text-ink font-medium"
+                            : "text-ink-outline line-through"
+                        }
+                      >
+                        {config.qr.enabled !== false ? "Enabled" : "Disabled"}
+                      </span>
+                    </label>
+                  </div>
                   <div className="grid grid-cols-3 gap-2">
                     <NumberInput
                       label="X"
@@ -433,6 +552,7 @@ export default function AdminCertificates() {
                 dateStr={dateStr}
                 qrUrl={`${window.location.origin}/verify/sample-preview`}
                 onChange={setConfig}
+                onNaturalDimensions={handleNaturalDimensions}
               />
             )}
           </CardBody>
@@ -466,9 +586,9 @@ function NumberInput({
 
 function mergeConfig(base: CertificateFieldConfig, override: Partial<CertificateFieldConfig>): CertificateFieldConfig {
   const out: CertificateFieldConfig = {
-    name: { ...base.name, ...(override.name ?? {}) },
-    course: { ...base.course, ...(override.course ?? {}) },
-    date: { ...base.date, ...(override.date ?? {}) },
+    name: { ...base.name, ...(override.name ?? {}), align: "left" },
+    course: { ...base.course, ...(override.course ?? {}), align: "left" },
+    date: { ...base.date, ...(override.date ?? {}), align: "left" },
     qr: { ...base.qr, ...(override.qr ?? {}) },
   };
   return out;

@@ -17,12 +17,14 @@ export interface TextFieldConfig {
   font_size: number;
   font_color?: string;
   align?: "left" | "center" | "right";
+  enabled?: boolean;
 }
 
 export interface QrFieldConfig {
   x: number;
   y: number;
   size: number;
+  enabled?: boolean;
 }
 
 export interface CertificateFieldConfig {
@@ -30,6 +32,42 @@ export interface CertificateFieldConfig {
   course: TextFieldConfig;
   date: TextFieldConfig;
   qr: QrFieldConfig;
+}
+
+export function getProportionalConfig(w: number, h: number): CertificateFieldConfig {
+  const leftX = Math.round(w * 0.09325);
+  return {
+    date: {
+      x: leftX,
+      y: Math.round(h * 0.289),
+      font_size: Math.max(12, Math.round(h * 0.019)),
+      font_color: "#000000",
+      align: "left",
+      enabled: true,
+    },
+    name: {
+      x: leftX,
+      y: Math.round(h * 0.4643),
+      font_size: Math.max(18, Math.round(h * 0.035)),
+      font_color: "#000000",
+      align: "left",
+      enabled: true,
+    },
+    course: {
+      x: leftX,
+      y: Math.round(h * 0.565),
+      font_size: Math.max(14, Math.round(h * 0.0245)),
+      font_color: "#000000",
+      align: "left",
+      enabled: true,
+    },
+    qr: {
+      x: Math.round(w * 0.85),
+      y: Math.round(h * 0.88),
+      size: Math.max(60, Math.round(h * 0.09)),
+      enabled: false,
+    },
+  };
 }
 
 interface Props {
@@ -41,6 +79,7 @@ interface Props {
   dateStr: string;
   qrUrl: string;
   onChange?: (next: CertificateFieldConfig) => void;
+  onNaturalDimensions?: (size: { w: number; h: number }) => void;
   /** When true, the preview is display-only: no dragging, no edit affordances. */
   readOnly?: boolean;
 }
@@ -56,6 +95,7 @@ export function CertificatePreview({
   dateStr,
   qrUrl,
   onChange,
+  onNaturalDimensions,
   readOnly = false,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -94,7 +134,9 @@ export function CertificatePreview({
         if (!ctx) throw new Error("canvas-2d-unavailable");
         await page.render({ canvasContext: ctx, viewport }).promise;
         if (cancelled) return;
-        setNatural({ w: viewport.width, h: viewport.height });
+        const dims = { w: viewport.width, h: viewport.height };
+        setNatural(dims);
+        onNaturalDimensions?.(dims);
         setPdfDataUrl(canvas.toDataURL("image/png"));
       } catch (err) {
         if (cancelled) return;
@@ -128,6 +170,8 @@ export function CertificatePreview({
     return natural.h * scale;
   }, [natural, scale]);
 
+  const [activeGuideX, setActiveGuideX] = useState<number | null>(null);
+
   // Pointer drag handlers — convert display deltas back to template-natural coords.
   const dragState = useRef<{
     field: FieldKey;
@@ -143,6 +187,7 @@ export function CertificatePreview({
     e.stopPropagation();
     (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
     const f = fieldConfig[field];
+    setActiveGuideX(f.x);
     dragState.current = {
       field,
       startNatX: f.x,
@@ -159,6 +204,7 @@ export function CertificatePreview({
     const dy = (e.clientY - s.startClientY) / scale;
     const nextX = clamp(Math.round(s.startNatX + dx), 0, natural.w);
     const nextY = clamp(Math.round(s.startNatY + dy), 0, natural.h);
+    setActiveGuideX(nextX);
     const current = fieldConfig[s.field];
     const updated = { ...current, x: nextX, y: nextY };
     onChange?.({ ...fieldConfig, [s.field]: updated });
@@ -173,13 +219,14 @@ export function CertificatePreview({
       }
     }
     dragState.current = null;
+    setActiveGuideX(null);
   };
 
   const renderTextOverlay = (field: "name" | "course" | "date", value: string) => {
     const cfg = fieldConfig[field];
-    if (!natural) return null;
+    if (!natural || cfg.enabled === false) return null;
     const fontPx = cfg.font_size * scale;
-    const align = cfg.align ?? "center";
+    const align = cfg.align ?? "left";
     const translateX = align === "center" ? "-50%" : align === "right" ? "-100%" : "0";
     return (
       <div
@@ -188,6 +235,8 @@ export function CertificatePreview({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        onMouseEnter={() => !dragState.current && setActiveGuideX(cfg.x)}
+        onMouseLeave={() => !dragState.current && setActiveGuideX(null)}
         className={`absolute select-none whitespace-nowrap ${readOnly ? "" : "cursor-move"}`}
         style={{
           left: cfg.x * scale,
@@ -196,13 +245,14 @@ export function CertificatePreview({
           fontFamily: '"Times New Roman", Times, serif',
           fontSize: `${fontPx}px`,
           color: cfg.font_color ?? "#000000",
+          textAlign: "left",
           lineHeight: 1,
           touchAction: "none",
           textShadow: "0 0 2px rgba(255,255,255,0.5)",
         }}
-        title={readOnly ? undefined : `Drag ${field} (x=${cfg.x}, y=${cfg.y})`}
+        title={readOnly ? undefined : `Drag ${field} (x=${cfg.x}, y=${cfg.y}, align=${align})`}
       >
-        <span className={readOnly ? "" : "ring-1 ring-primary/30 hover:ring-primary px-1 rounded-sm"}>
+        <span className={readOnly ? "" : "outline outline-1 outline-primary/40 hover:outline-primary hover:bg-primary/5 rounded-xs"}>
           {value || (readOnly ? "" : `[${field}]`)}
         </span>
       </div>
@@ -211,7 +261,7 @@ export function CertificatePreview({
 
   const renderQrOverlay = () => {
     const cfg = fieldConfig.qr;
-    if (!natural) return null;
+    if (!natural || cfg.enabled === false) return null;
     const size = cfg.size * scale;
     return (
       <div
@@ -219,6 +269,8 @@ export function CertificatePreview({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        onMouseEnter={() => !dragState.current && setActiveGuideX(cfg.x)}
+        onMouseLeave={() => !dragState.current && setActiveGuideX(null)}
         className={`absolute ${readOnly ? "" : "cursor-move ring-1 ring-primary/30 hover:ring-primary"}`}
         style={{
           left: cfg.x * scale,
@@ -264,13 +316,25 @@ export function CertificatePreview({
             onLoad={(e) => {
               const el = e.currentTarget;
               if (templateType === "image") {
-                setNatural({ w: el.naturalWidth, h: el.naturalHeight });
+                const dims = { w: el.naturalWidth, h: el.naturalHeight };
+                setNatural(dims);
+                onNaturalDimensions?.(dims);
               }
             }}
             draggable={false}
           />
           {natural && (
             <>
+              {activeGuideX !== null && !readOnly && (
+                <div
+                  className="absolute top-0 bottom-0 pointer-events-none z-20 border-l border-dashed border-primary"
+                  style={{ left: activeGuideX * scale }}
+                >
+                  <span className="inline-block bg-primary text-white text-[10px] font-mono px-1 py-0.5 rounded-br shadow-sm">
+                    X={activeGuideX}px
+                  </span>
+                </div>
+              )}
               {renderTextOverlay("name", studentName)}
               {renderTextOverlay("course", courseTitle)}
               {renderTextOverlay("date", dateStr)}

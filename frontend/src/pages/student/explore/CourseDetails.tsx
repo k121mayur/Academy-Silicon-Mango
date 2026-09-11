@@ -489,10 +489,10 @@ function CertificateTab({ course }: { course: PublicCourseDetail }) {
 }
 
 const DEFAULT_CERT_CONFIG: CertificateFieldConfig = {
-  name: { x: 400, y: 320, font_size: 28, font_color: "#000000", align: "center" },
-  course: { x: 400, y: 380, font_size: 20, font_color: "#000000", align: "center" },
-  date: { x: 400, y: 460, font_size: 14, font_color: "#000000", align: "center" },
-  qr: { x: 800, y: 600, size: 100 },
+  name: { x: 746, y: 2650, font_size: 200, font_color: "#000000", align: "left", enabled: true },
+  course: { x: 746, y: 3225, font_size: 140, font_color: "#000000", align: "left", enabled: true },
+  date: { x: 746, y: 1650, font_size: 108, font_color: "#000000", align: "left", enabled: true },
+  qr: { x: 7000, y: 5000, size: 400, enabled: false },
 };
 
 /** Merge a saved (possibly partial) field_config over the defaults so the preview
@@ -500,9 +500,9 @@ const DEFAULT_CERT_CONFIG: CertificateFieldConfig = {
 function mergeCertConfig(override: any): CertificateFieldConfig {
   const o = override ?? {};
   return {
-    name: { ...DEFAULT_CERT_CONFIG.name, ...(o.name ?? {}) },
-    course: { ...DEFAULT_CERT_CONFIG.course, ...(o.course ?? {}) },
-    date: { ...DEFAULT_CERT_CONFIG.date, ...(o.date ?? {}) },
+    name: { ...DEFAULT_CERT_CONFIG.name, ...(o.name ?? {}), align: "left" },
+    course: { ...DEFAULT_CERT_CONFIG.course, ...(o.course ?? {}), align: "left" },
+    date: { ...DEFAULT_CERT_CONFIG.date, ...(o.date ?? {}), align: "left" },
     qr: { ...DEFAULT_CERT_CONFIG.qr, ...(o.qr ?? {}) },
   };
 }

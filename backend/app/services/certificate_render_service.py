@@ -16,11 +16,47 @@ from app.core.config import settings
 
 
 DEFAULT_FIELD_CONFIG: dict[str, dict[str, Any]] = {
-    "name": {"x": 400, "y": 320, "font_size": 28, "font_color": "#000000", "align": "center"},
-    "course": {"x": 400, "y": 380, "font_size": 20, "font_color": "#000000", "align": "center"},
-    "date": {"x": 400, "y": 460, "font_size": 14, "font_color": "#000000", "align": "center"},
-    "qr": {"x": 800, "y": 600, "size": 100},
+    "name": {"x": 746, "y": 2650, "font_size": 200, "font_color": "#000000", "align": "left", "enabled": True},
+    "course": {"x": 746, "y": 3225, "font_size": 140, "font_color": "#000000", "align": "left", "enabled": True},
+    "date": {"x": 746, "y": 1650, "font_size": 108, "font_color": "#000000", "align": "left", "enabled": True},
+    "qr": {"x": 7000, "y": 5000, "size": 400, "enabled": False},
 }
+
+
+def get_proportional_config(w: int, h: int) -> dict[str, dict[str, Any]]:
+    left_x = int(round(w * 0.09325))
+    return {
+        "date": {
+            "x": left_x,
+            "y": int(round(h * 0.289)),
+            "font_size": max(12, int(round(h * 0.019))),
+            "font_color": "#000000",
+            "align": "left",
+            "enabled": True,
+        },
+        "name": {
+            "x": left_x,
+            "y": int(round(h * 0.4643)),
+            "font_size": max(18, int(round(h * 0.035))),
+            "font_color": "#000000",
+            "align": "left",
+            "enabled": True,
+        },
+        "course": {
+            "x": left_x,
+            "y": int(round(h * 0.565)),
+            "font_size": max(14, int(round(h * 0.0245))),
+            "font_color": "#000000",
+            "align": "left",
+            "enabled": True,
+        },
+        "qr": {
+            "x": int(round(w * 0.85)),
+            "y": int(round(h * 0.88)),
+            "size": max(60, int(round(h * 0.09))),
+            "enabled": False,
+        },
+    }
 
 
 def _clamp_name(name: str) -> str:
@@ -60,6 +96,9 @@ def _merged_config(field_config: dict | None) -> dict[str, dict[str, Any]]:
                 continue
             cfg.setdefault(k, {})
             cfg[k].update(v)
+            # Ensure text alignment defaults to left
+            if k in ("name", "course", "date") and not cfg[k].get("align"):
+                cfg[k]["align"] = "left"
     return cfg
 
 
@@ -80,7 +119,7 @@ def _draw_text_on_image(
 ) -> None:
     size = int(cfg.get("font_size", 20))
     color = cfg.get("font_color") or "#000000"
-    align = cfg.get("align", "center")
+    align = cfg.get("align", "left")
     x = int(cfg.get("x", 0))
     y = int(cfg.get("y", 0))
 
@@ -111,17 +150,21 @@ def _render_on_image(
     img = Image.open(template_path).convert("RGB")
     draw = ImageDraw.Draw(img)
 
-    _draw_text_on_image(draw, student_name, cfg["name"])
-    _draw_text_on_image(draw, course_title, cfg["course"])
-    _draw_text_on_image(draw, date_str, cfg["date"])
+    if cfg.get("name", {}).get("enabled", True) is not False:
+        _draw_text_on_image(draw, student_name, cfg["name"])
+    if cfg.get("course", {}).get("enabled", True) is not False:
+        _draw_text_on_image(draw, course_title, cfg["course"])
+    if cfg.get("date", {}).get("enabled", True) is not False:
+        _draw_text_on_image(draw, date_str, cfg["date"])
 
     qr_cfg = cfg.get("qr") or {}
-    qr_size = int(qr_cfg.get("size", 100))
-    qr_x = int(qr_cfg.get("x", 0))
-    qr_y = int(qr_cfg.get("y", 0))
-    qr_png = _qr_png_bytes(qr_data)
-    qr_img = Image.open(io.BytesIO(qr_png)).resize((qr_size, qr_size))
-    img.paste(qr_img, (qr_x - qr_size // 2, qr_y - qr_size // 2))
+    if qr_cfg.get("enabled", True) is not False:
+        qr_size = int(qr_cfg.get("size", 100))
+        qr_x = int(qr_cfg.get("x", 0))
+        qr_y = int(qr_cfg.get("y", 0))
+        qr_png = _qr_png_bytes(qr_data)
+        qr_img = Image.open(io.BytesIO(qr_png)).resize((qr_size, qr_size))
+        img.paste(qr_img, (qr_x - qr_size // 2, qr_y - qr_size // 2))
 
     pdf_buf = io.BytesIO()
     img.save(pdf_buf, format="PDF", resolution=150.0)
@@ -153,7 +196,7 @@ def _render_on_pdf(
     def draw_text(text: str, fcfg: dict[str, Any]) -> None:
         size = int(fcfg.get("font_size", 20))
         color = fcfg.get("font_color") or "#000000"
-        align = fcfg.get("align", "center")
+        align = fcfg.get("align", "left")
         x = float(fcfg.get("x", 0))
         y = float(fcfg.get("y", 0))
         try:
@@ -176,24 +219,28 @@ def _render_on_pdf(
         else:
             c.drawString(x, pdf_y, text)
 
-    draw_text(student_name, cfg["name"])
-    draw_text(course_title, cfg["course"])
-    draw_text(date_str, cfg["date"])
+    if cfg.get("name", {}).get("enabled", True) is not False:
+        draw_text(student_name, cfg["name"])
+    if cfg.get("course", {}).get("enabled", True) is not False:
+        draw_text(course_title, cfg["course"])
+    if cfg.get("date", {}).get("enabled", True) is not False:
+        draw_text(date_str, cfg["date"])
 
     qr_cfg = cfg.get("qr") or {}
-    qr_size = float(qr_cfg.get("size", 100))
-    qr_x = float(qr_cfg.get("x", 0))
-    qr_y = float(qr_cfg.get("y", 0))
-    qr_png = _qr_png_bytes(qr_data)
-    qr_reader = ImageReader(io.BytesIO(qr_png))
-    c.drawImage(
-        qr_reader,
-        qr_x - qr_size / 2,
-        page_h - qr_y - qr_size / 2,
-        width=qr_size,
-        height=qr_size,
-        mask="auto",
-    )
+    if qr_cfg.get("enabled", True) is not False:
+        qr_size = float(qr_cfg.get("size", 100))
+        qr_x = float(qr_cfg.get("x", 0))
+        qr_y = float(qr_cfg.get("y", 0))
+        qr_png = _qr_png_bytes(qr_data)
+        qr_reader = ImageReader(io.BytesIO(qr_png))
+        c.drawImage(
+            qr_reader,
+            qr_x - qr_size / 2,
+            page_h - qr_y - qr_size / 2,
+            width=qr_size,
+            height=qr_size,
+            mask="auto",
+        )
 
     c.save()
     overlay_buf.seek(0)
@@ -221,10 +268,24 @@ def render_certificate(
     The field_config x/y coordinates are template-pixel coords (top-left origin),
     matching the live preview overlay in the admin UI.
     """
-    cfg = _merged_config(field_config)
     template_path = _resolve_template_path(template_url)
     if not template_path.exists():
         raise FileNotFoundError(f"Certificate template missing: {template_path}")
+
+    # Determine template dimensions
+    if _is_pdf(template_path):
+        reader = PdfReader(str(template_path))
+        w = int(reader.pages[0].mediabox.width)
+        h = int(reader.pages[0].mediabox.height)
+    else:
+        with Image.open(template_path) as img:
+            w, h = img.size
+
+    # If field_config is missing or has legacy (400, 320) placeholder, calculate proportional config
+    if not field_config or (field_config.get("name", {}).get("x") == 400 and field_config.get("name", {}).get("y") == 320):
+        cfg = get_proportional_config(w, h)
+    else:
+        cfg = _merged_config(field_config)
 
     clamped_name = _clamp_name(student_name or "")
     date_str = _format_date(end_date)
