@@ -153,25 +153,25 @@ export default function CourseDetails() {
         {/* Left: hero + tabs */}
         <div className="lg:col-span-2 min-w-0 space-y-5">
           {/* Hero */}
-          <div className="relative min-h-[14rem] md:h-64 rounded-2xl overflow-hidden bg-surface-container animate-slide-up flex flex-col justify-end">
+          <div className="relative min-h-[16rem] md:h-72 lg:h-80 rounded-2xl overflow-hidden bg-surface-container border border-ink-outlineVariant/30 animate-slide-up flex flex-col justify-end">
             {course.banner_url && (
               <>
                 <img
                   src={absoluteApiUrl(course.banner_url)}
                   alt=""
                   aria-hidden="true"
-                  className="absolute inset-0 w-full h-full object-cover blur-lg scale-110 opacity-40 pointer-events-none select-none"
+                  className="absolute inset-0 w-full h-full object-cover blur-lg scale-110 opacity-30 pointer-events-none select-none"
                 />
                 <img
                   src={absoluteApiUrl(course.banner_url)}
                   alt={course.title || "Course banner"}
-                  className="relative z-[1] w-full h-full object-contain"
+                  className="absolute inset-0 w-full h-full object-contain z-[1] select-none"
                 />
               </>
             )}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent z-[2]" />
+            <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black/85 via-black/40 to-transparent z-[2] pointer-events-none" />
             <div className="relative z-10 p-5 md:p-6 text-white">
-              <div className="flex items-center gap-2 mb-2 flex-wrap text-label uppercase tracking-wider opacity-90">
+              <div className="flex items-center gap-2 mb-2 flex-wrap text-label uppercase tracking-wider opacity-90 drop-shadow">
                 {course.category && <span>{course.category}</span>}
                 <span className="opacity-50">·</span>
                 <span>{course.course_type === "self_paced" ? "Self-paced" : "Live cohort"}</span>
