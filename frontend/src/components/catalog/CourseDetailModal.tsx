@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { RichTextView } from "@/components/shared/RichTextView";
 import { CourseDTO, getCourse } from "@/services/admin.service";
 import { formatCurrency } from "@/lib/utils";
+import { absoluteApiUrl } from "@/lib/api";
 
 interface Props {
   courseId: string | null;
@@ -64,15 +65,23 @@ export function CourseDetailModal({ courseId, onClose, onEdit, onTogglePublish }
         className="bg-surface-lowest w-full max-w-5xl md:rounded-2xl shadow-modal overflow-hidden flex flex-col animate-slide-up max-h-screen md:max-h-[92vh]"
       >
         {/* Hero banner */}
-        <div className="relative h-56 md:h-72 bg-gradient-to-br from-primary-container via-secondary-container to-tertiary-container flex-shrink-0">
+        <div className="relative h-56 md:h-72 bg-surface-container flex-shrink-0 overflow-hidden">
           {course?.banner_url && (
-            <img
-              src={course.banner_url}
-              alt={course.title}
-              className="absolute inset-0 w-full h-full object-cover"
-            />
+            <>
+              <img
+                src={absoluteApiUrl(course.banner_url)}
+                alt=""
+                aria-hidden="true"
+                className="absolute inset-0 w-full h-full object-cover blur-lg scale-110 opacity-40 pointer-events-none select-none"
+              />
+              <img
+                src={absoluteApiUrl(course.banner_url)}
+                alt={course.title}
+                className="relative z-[1] w-full h-full object-contain"
+              />
+            </>
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent z-[2]" />
           <button
             onClick={onClose}
             className="absolute top-4 right-4 w-10 h-10 grid place-items-center rounded-full bg-black/40 hover:bg-black/60 text-white backdrop-blur-sm transition-colors z-10"

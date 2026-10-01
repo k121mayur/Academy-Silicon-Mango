@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/Button";
@@ -6,7 +6,7 @@ import { Input, Textarea } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { extractErrorMessage } from "@/lib/api";
+import { extractErrorMessage, absoluteApiUrl } from "@/lib/api";
 import {
   createCourse,
   updateCourse,
@@ -47,9 +47,48 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
   const [syllabusFile, setSyllabusFile] = useState<File | null>(null);
   const [bannerUrl, setBannerUrl] = useState<string | null>(initial?.banner_url || null);
   const [syllabusUrl, setSyllabusUrl] = useState<string | null>(initial?.syllabus_pdf_url || null);
+  const [bannerPreview, setBannerPreview] = useState<string | null>(initial?.banner_url ? absoluteApiUrl(initial.banner_url) : null);
+  const [bannerMeta, setBannerMeta] = useState<{ width: number; height: number; ratio: number } | null>(null);
   const [demoUrl, setDemoUrl] = useState<string>(initial?.demo_youtube_url || "");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const clearErr = (field: string) => setErrors((prev) => { const n = { ...prev }; delete n[field]; return n; });
+
+  useEffect(() => {
+    if (initial?.banner_url && !bannerFile) {
+      const img = new Image();
+      img.onload = () => {
+        setBannerMeta({
+          width: img.naturalWidth,
+          height: img.naturalHeight,
+          ratio: img.naturalWidth / img.naturalHeight,
+        });
+      };
+      img.src = absoluteApiUrl(initial.banner_url);
+    }
+  }, [initial?.banner_url]);
+
+  const handleBannerSelect = (f: File) => {
+    setBannerFile(f);
+    clearErr("banner");
+    const objUrl = URL.createObjectURL(f);
+    setBannerPreview(objUrl);
+    const img = new Image();
+    img.onload = () => {
+      setBannerMeta({
+        width: img.naturalWidth,
+        height: img.naturalHeight,
+        ratio: img.naturalWidth / img.naturalHeight,
+      });
+    };
+    img.src = objUrl;
+  };
+
+  const handleBannerClear = () => {
+    setBannerFile(null);
+    setBannerUrl(null);
+    setBannerPreview(null);
+    setBannerMeta(null);
+  };
 
   const addTag = () => {
     const t = tagInput.trim();
@@ -239,12 +278,44 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
             <FileUpload
               label="Banner image"
               accept="image/*"
-              value={bannerUrl ? `${bannerUrl}` : null}
-              onChange={(f) => { setBannerFile(f); clearErr("banner"); }}
-              onClear={() => { setBannerFile(null); setBannerUrl(null); }}
-              hint="PNG/JPG · 16:9 recommended"
+              value={bannerPreview || (bannerUrl ? `${bannerUrl}` : null)}
+              onChange={handleBannerSelect}
+              onClear={handleBannerClear}
+              hint="Recommended: 1280 × 720 px (16:9 ratio) · PNG/JPG · Max 2 MB"
             />
             {errors.banner && <p className="text-label text-danger mt-1">{errors.banner}</p>}
+
+            {/* Banner aspect ratio feedback indicator */}
+            {bannerMeta && (
+              <div className="mt-2.5">
+                {bannerMeta.ratio >= 1.70 && bannerMeta.ratio <= 1.85 ? (
+                  <div className="text-label text-success flex items-center gap-1.5 bg-success/10 border border-success/25 rounded-xl p-2.5">
+                    <span className="icon text-[18px]">check_circle</span>
+                    <span>
+                      <strong>Optimal 16:9 ratio</strong> ({bannerMeta.width} × {bannerMeta.height} px). Fills the catalog card edge-to-edge.
+                    </span>
+                  </div>
+                ) : (
+                  <div className="text-label text-ink-variant flex items-start gap-2 bg-surface-containerLow border border-ink-outlineVariant/40 rounded-xl p-2.5">
+                    <span className="icon text-[18px] text-primary shrink-0 mt-0.5">info</span>
+                    <div className="space-y-0.5">
+                      <p className="font-semibold text-ink">
+                        Uploaded size: {bannerMeta.width} × {bannerMeta.height} px ({bannerMeta.ratio.toFixed(2)}:1)
+                      </p>
+                      <p className="text-[12px] text-ink-outline">
+                        The card uses a 16:9 ratio. Your image will be displayed completely without cropping using an ambient blurred backdrop. For a seamless edge-to-edge fit, 1280 × 720 px is recommended.
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {(bannerMeta.width < 640 || bannerMeta.height < 360) && (
+                  <div className="mt-1.5 text-label text-warning flex items-center gap-1.5 bg-warning/10 border border-warning/25 rounded-xl p-2">
+                    <span className="icon text-[16px]">warning</span>
+                    <span>Low resolution ({bannerMeta.width} × {bannerMeta.height} px). Recommended minimum is 1280 × 720 px.</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <div>
             <FileUpload
@@ -268,6 +339,73 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
             hint="Shown as a 'Demo Session' tab on the course page. Leave blank to hide the tab."
             error={errors.demoUrl}
           />
+
+          {/* Live Catalog Card Preview */}
+          <div className="md:col-span-2 pt-3 border-t border-ink-outlineVariant/20">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-label uppercase tracking-wider font-semibold text-ink-variant flex items-center gap-1.5">
+                <span className="icon text-[16px] text-primary">visibility</span>
+                Live Catalog Card Preview
+              </span>
+              <span className="text-caption text-ink-outline">16:9 responsive display preview</span>
+            </div>
+
+            <div className="max-w-sm mx-auto sm:mx-0 bg-surface-lowest rounded-2xl border border-primary/30 shadow-card overflow-hidden flex flex-col pointer-events-none select-none">
+              <div className="relative aspect-video w-full overflow-hidden bg-surface-container">
+                {bannerPreview ? (
+                  <>
+                    <img
+                      src={bannerPreview}
+                      alt=""
+                      aria-hidden="true"
+                      className="absolute inset-0 w-full h-full object-cover blur-lg scale-110 opacity-30 pointer-events-none"
+                    />
+                    <img
+                      src={bannerPreview}
+                      alt="Banner Preview"
+                      className="relative z-[1] w-full h-full object-contain"
+                    />
+                  </>
+                ) : (
+                  <div className="h-full w-full bg-gradient-to-br from-primary-container to-primary-fixed flex items-center justify-center">
+                    <span className="icon text-[48px] text-primary-on/40">school</span>
+                  </div>
+                )}
+                <div className="absolute top-2.5 left-2.5 flex flex-wrap gap-1 z-10">
+                  <span className="px-2 py-0.5 text-[11px] rounded-full bg-primary-fill text-primary-on font-semibold shadow-sm">
+                    {courseType === "live" ? "Live cohort" : "Self-paced"}
+                  </span>
+                  <span className="px-2 py-0.5 text-[11px] rounded-full bg-white/90 text-ink backdrop-blur-sm font-semibold shadow-sm inline-flex items-center gap-0.5">
+                    <span className="icon text-[11px]">translate</span>
+                    {language || "English"}
+                  </span>
+                </div>
+                {Number(discount) > 0 && (
+                  <span className="absolute top-2.5 right-2.5 px-2 py-0.5 text-[11px] rounded-full bg-ink/80 text-white backdrop-blur-sm font-semibold z-10">
+                    {Math.round(Number(discount))}% off
+                  </span>
+                )}
+              </div>
+              <div className="p-4 flex flex-col space-y-2">
+                <div className="flex items-center gap-1.5 text-caption text-ink-outline">
+                  <span>{durationValue} {durationUnit} live cohort</span>
+                  <span>·</span>
+                  <span>{category || "Category"}</span>
+                </div>
+                <p className="font-display font-semibold text-title-sm text-ink truncate">
+                  {title || "Course Title"}
+                </p>
+                <div className="flex items-center justify-between pt-2 border-t border-ink-outlineVariant/20 mt-1">
+                  <span className="font-display font-bold text-title-md text-ink">
+                    {formatCurrency(finalPrice)}
+                  </span>
+                  <span className="px-3 py-1 rounded-lg bg-primary-fill text-primary-on text-caption font-semibold">
+                    Enroll Now →
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
         </CardBody>
       </Card>
 

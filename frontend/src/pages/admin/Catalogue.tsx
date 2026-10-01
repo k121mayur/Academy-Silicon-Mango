@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Pagination } from "@/components/ui/Pagination";
-import { extractErrorMessage } from "@/lib/api";
+import { extractErrorMessage, absoluteApiUrl } from "@/lib/api";
 import { CourseDTO, listCourses, togglePublishCourse } from "@/services/admin.service";
 import { formatCurrency } from "@/lib/utils";
 import { CourseDetailModal } from "@/components/catalog/CourseDetailModal";
@@ -202,22 +202,30 @@ function CourseCard({
       className="group relative bg-surface-lowest rounded-2xl overflow-hidden border border-ink-outlineVariant/30 cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-modal hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 flex flex-col"
     >
       {/* Banner */}
-      <div className="relative h-48 overflow-hidden bg-gradient-to-br from-primary-container via-secondary-container to-tertiary-container">
+      <div className="relative aspect-video w-full overflow-hidden bg-surface-container">
         {course.banner_url ? (
-          <img
-            src={course.banner_url}
-            alt={course.title}
-            loading="lazy"
-            className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-          />
+          <>
+            <img
+              src={absoluteApiUrl(course.banner_url)}
+              alt=""
+              aria-hidden="true"
+              className="absolute inset-0 w-full h-full object-cover blur-lg scale-110 opacity-30 pointer-events-none select-none"
+            />
+            <img
+              src={absoluteApiUrl(course.banner_url)}
+              alt={course.title}
+              loading="lazy"
+              className="relative z-[1] w-full h-full object-contain transition-transform duration-500 group-hover:scale-105"
+            />
+          </>
         ) : (
-          <div className="absolute inset-0 grid place-items-center text-primary-onContainer opacity-50">
+          <div className="absolute inset-0 grid place-items-center text-primary-onContainer opacity-50 bg-gradient-to-br from-primary-container via-secondary-container to-tertiary-container">
             <span className="icon text-[64px]">menu_book</span>
           </div>
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity z-[2] pointer-events-none" />
 
-        <div className="absolute top-3 left-3 right-3 flex items-start justify-between gap-2">
+        <div className="absolute top-3 left-3 right-3 flex items-start justify-between gap-2 z-10 pointer-events-none">
           <div className="flex flex-wrap items-center gap-1.5 min-w-0">
             {course.category && (
               <span className="px-2.5 py-1 rounded-full text-label font-medium bg-white/95 text-ink backdrop-blur-sm shadow-sm truncate max-w-[140px]">

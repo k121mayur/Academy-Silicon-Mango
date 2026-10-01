@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import api from "@/lib/api";
+import api, { absoluteApiUrl } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Reveal } from "@/components/ui/Reveal";
 import { SkeletonCard } from "@/components/ui/Skeleton";
@@ -60,7 +60,8 @@ export default function Landing() {
   const { data: coursesData, isLoading: loadingCourses } = useQuery({
     queryKey: qk.public.courses(),
     queryFn: () => listPublicCourses(),
-    staleTime: 5 * 60_000,
+    staleTime: 0,
+    refetchOnMount: "always",
   });
   const courses = (coursesData || []) as PublicCourse[];
 
@@ -704,11 +705,13 @@ function CourseCard({ course: c }: { course: PublicCourse }) {
       className="group bg-surface-lowest rounded-2xl border border-primary/30 shadow-card overflow-hidden h-full flex flex-col ring-1 ring-primary/10 transition-all duration-300 hover:-translate-y-1 hover:shadow-modal hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
     >
       {/* Banner */}
-      <div className="h-32 relative overflow-hidden">
+      <div className="relative aspect-video w-full overflow-hidden bg-surface-container">
         {c.banner_url ? (
           <Img
-            src={c.banner_url}
+            src={absoluteApiUrl(c.banner_url)}
             alt={c.title}
+            fit="contain"
+            ambient
             wrapperClassName="h-full w-full"
             className="group-hover:scale-105 transition-transform duration-500 ease-out"
           />
@@ -717,7 +720,7 @@ function CourseCard({ course: c }: { course: PublicCourse }) {
             <span className="icon text-[52px] text-primary-on/40">{icon}</span>
           </div>
         )}
-        <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
+        <div className="absolute top-3 left-3 flex flex-wrap gap-1.5 z-10 pointer-events-none">
           <span className="px-2.5 py-1 text-label rounded-full bg-primary-fill text-primary-on font-semibold shadow-sm">
             {c.course_type === "live" ? "Live cohort" : "Self-paced"}
           </span>
@@ -727,11 +730,11 @@ function CourseCard({ course: c }: { course: PublicCourse }) {
           </span>
         </div>
         {hasDiscount && (
-          <span className="absolute top-3 right-3 px-2.5 py-1 text-label rounded-full bg-ink/80 text-white backdrop-blur-sm font-semibold">
+          <span className="absolute top-3 right-3 px-2.5 py-1 text-label rounded-full bg-ink/80 text-white backdrop-blur-sm font-semibold z-10 pointer-events-none">
             {discountPct}% off
           </span>
         )}
-        <div className="absolute inset-x-0 bottom-0 translate-y-full group-hover:translate-y-0 transition-transform duration-300 bg-black/55 backdrop-blur-sm text-white text-body-sm font-medium py-1.5 text-center">
+        <div className="absolute inset-x-0 bottom-0 translate-y-full group-hover:translate-y-0 transition-transform duration-300 bg-black/55 backdrop-blur-sm text-white text-body-sm font-medium py-1.5 text-center z-10 pointer-events-none">
           View details →
         </div>
       </div>

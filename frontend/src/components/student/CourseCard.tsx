@@ -38,26 +38,34 @@ export function CourseCard({ course, to }: { course: PublicCourseListItem; to?: 
       className="group relative bg-surface-lowest rounded-2xl overflow-hidden border border-ink-outlineVariant/30 transition-all duration-300 hover:-translate-y-1 hover:shadow-modal hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 flex flex-col"
     >
       {/* Banner */}
-      <div className="relative h-44 overflow-hidden bg-gradient-to-br from-primary-container via-secondary-container to-tertiary-container">
+      <div className="relative aspect-video w-full overflow-hidden bg-surface-container">
         {course.banner_url ? (
-          <img
-            src={absoluteApiUrl(course.banner_url)}
-            alt={course.title}
-            loading="lazy"
-            className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-          />
+          <>
+            <img
+              src={absoluteApiUrl(course.banner_url)}
+              alt=""
+              aria-hidden="true"
+              className="absolute inset-0 w-full h-full object-cover blur-lg scale-110 opacity-30 pointer-events-none select-none"
+            />
+            <img
+              src={absoluteApiUrl(course.banner_url)}
+              alt={course.title}
+              loading="lazy"
+              className="relative z-[1] w-full h-full object-contain transition-transform duration-500 group-hover:scale-105"
+            />
+          </>
         ) : (
-          <div className="absolute inset-0 grid place-items-center text-primary-onContainer opacity-50">
+          <div className="absolute inset-0 grid place-items-center text-primary-onContainer opacity-50 bg-gradient-to-br from-primary-container via-secondary-container to-tertiary-container">
             <span className="icon text-[56px]">menu_book</span>
           </div>
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity z-[2] pointer-events-none" />
         {course.is_published === false && (
-          <Badge tone="warning" className="absolute bottom-3 right-3 z-10 shadow-md">
+          <Badge tone="warning" className="absolute bottom-3 right-3 z-10 shadow-md pointer-events-none">
             Draft — admin preview only
           </Badge>
         )}
-        <div className="absolute top-3 left-3 right-3 flex items-start justify-between gap-2">
+        <div className="absolute top-3 left-3 right-3 flex items-start justify-between gap-2 z-10 pointer-events-none">
           <div className="flex flex-wrap items-center gap-1.5 min-w-0">
             {course.category && (
               <span className="px-2.5 py-1 rounded-full text-label font-medium bg-white/95 text-ink backdrop-blur-sm shadow-sm truncate max-w-[140px]">
@@ -143,7 +151,7 @@ export function CourseCard({ course, to }: { course: PublicCourseListItem; to?: 
 export function CourseCardSkeleton() {
   return (
     <div className="bg-surface-containerLow rounded-2xl overflow-hidden animate-pulse">
-      <div className="h-44 bg-surface-container" />
+      <div className="aspect-video w-full bg-surface-container" />
       <div className="p-4 space-y-3">
         <div className="h-4 bg-surface-container rounded w-3/4" />
         <div className="h-3 bg-surface-container rounded w-full" />

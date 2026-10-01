@@ -19,7 +19,7 @@ export function SkeletonCard({ className }: { className?: string }) {
         className
       )}
     >
-      <Skeleton className="h-32 rounded-none shrink-0" />
+      <Skeleton className="aspect-video w-full rounded-none shrink-0" />
       <div className="p-5 flex flex-col flex-1 space-y-3">
         <Skeleton className="h-4 w-28" />
         <Skeleton className="h-6 w-3/4" />

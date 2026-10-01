@@ -31,20 +31,28 @@ export function WebinarCard({ webinar }: { webinar: PublicWebinarListItem }) {
       to={`/webinars/${webinar.slug}`}
       className="group relative bg-surface-lowest rounded-2xl overflow-hidden border border-ink-outlineVariant/30 transition-[transform,box-shadow,border-color] duration-300 ease-out hover:-translate-y-1 hover:shadow-card-hover hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 flex flex-col"
     >
-      <div className="relative h-44 overflow-hidden bg-gradient-to-br from-primary-container via-secondary-container to-tertiary-container">
+      <div className="relative aspect-video w-full overflow-hidden bg-surface-container">
         {webinar.flyer_url || webinar.banner_url ? (
-          <img
-            src={absoluteApiUrl((webinar.flyer_url || webinar.banner_url) as string)}
-            alt={webinar.title}
-            loading="lazy"
-            className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-          />
+          <>
+            <img
+              src={absoluteApiUrl((webinar.flyer_url || webinar.banner_url) as string)}
+              alt=""
+              aria-hidden="true"
+              className="absolute inset-0 w-full h-full object-cover blur-lg scale-110 opacity-30 pointer-events-none select-none"
+            />
+            <img
+              src={absoluteApiUrl((webinar.flyer_url || webinar.banner_url) as string)}
+              alt={webinar.title}
+              loading="lazy"
+              className="relative z-[1] w-full h-full object-contain transition-transform duration-500 group-hover:scale-105"
+            />
+          </>
         ) : (
-          <div className="absolute inset-0 grid place-items-center text-primary-onContainer opacity-50">
+          <div className="absolute inset-0 grid place-items-center text-primary-onContainer opacity-50 bg-gradient-to-br from-primary-container via-secondary-container to-tertiary-container">
             <span className="icon text-[56px]">videocam</span>
           </div>
         )}
-        <div className="absolute top-3 left-3 right-3 flex items-start justify-between gap-2">
+        <div className="absolute top-3 left-3 right-3 flex items-start justify-between gap-2 z-10 pointer-events-none">
           <Badge tone={STATUS_TONE[webinar.status]} className="shadow-sm">
             {webinar.status === "live" && (
               <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse mr-0.5" />
