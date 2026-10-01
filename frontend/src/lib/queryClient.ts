@@ -44,3 +44,14 @@ export function shouldPersistQuery(query: Query): boolean {
   }
   return false;
 }
+
+// Cross-tab synchronization: when an admin in one tab modifies courses or banners,
+// other open tabs (e.g. homepage, student catalogue) invalidate their public caches immediately.
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === "sm_courses_updated_at") {
+      queryClient.invalidateQueries({ queryKey: ["public"] });
+    }
+  });
+}
+

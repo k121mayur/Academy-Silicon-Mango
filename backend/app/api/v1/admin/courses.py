@@ -256,6 +256,8 @@ async def upload_banner(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ):
+    if not (file.content_type or "").startswith("image/"):
+        raise APIError(code="INVALID_FILE_TYPE", message="Only image files (PNG, JPG, WEBP) are accepted for course banners.", status_code=400)
     course = await db.get(Course, course_id)
     if not course:
         raise APIError(code="NOT_FOUND", message="Course not found", status_code=404)

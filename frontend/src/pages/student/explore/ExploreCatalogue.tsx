@@ -45,7 +45,8 @@ export default function ExploreCatalogue() {
   const { data: allCourses } = useQuery({
     queryKey: qk.public.courses(),
     queryFn: () => listPublicCourses(),
-    staleTime: 5 * 60_000,
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   const availableLanguages = useMemo(() => {
@@ -62,7 +63,8 @@ export default function ExploreCatalogue() {
     queryKey: qk.public.courses(debounced, language, selectedType),
     queryFn: () => listPublicCourses(debounced, language, selectedType),
     placeholderData: keepPreviousData,
-    staleTime: 5 * 60_000,
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   const courses = data ?? [];

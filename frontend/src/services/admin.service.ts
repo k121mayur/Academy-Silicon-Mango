@@ -1,4 +1,5 @@
 import api from "@/lib/api";
+import { queryClient } from "@/lib/queryClient";
 
 export interface CourseDTO {
   id: string;
@@ -124,31 +125,47 @@ export async function getCourse(id: string) {
   const res = await api.get<CourseDTO>(`/admin/courses/${id}`);
   return res.data;
 }
+
+export function notifyCoursesChanged() {
+  queryClient.invalidateQueries({ queryKey: ["public"] });
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.setItem("sm_courses_updated_at", String(Date.now()));
+    } catch {}
+  }
+}
+
 export async function createCourse(payload: Partial<CourseDTO>) {
   const res = await api.post<CourseDTO>("/admin/courses", payload);
+  notifyCoursesChanged();
   return res.data;
 }
 export async function updateCourse(id: string, payload: Partial<CourseDTO>) {
   const res = await api.put<CourseDTO>(`/admin/courses/${id}`, payload);
+  notifyCoursesChanged();
   return res.data;
 }
 export async function deleteCourse(id: string) {
   await api.delete(`/admin/courses/${id}`);
+  notifyCoursesChanged();
 }
 export async function togglePublishCourse(id: string) {
   const res = await api.patch<CourseDTO>(`/admin/courses/${id}/publish`);
+  notifyCoursesChanged();
   return res.data;
 }
 export async function uploadCourseBanner(id: string, file: File) {
   const fd = new FormData();
   fd.append("file", file);
   const res = await api.post(`/admin/courses/${id}/banner`, fd);
+  notifyCoursesChanged();
   return res.data.data.banner_url as string;
 }
 export async function uploadCourseSyllabus(id: string, file: File) {
   const fd = new FormData();
   fd.append("file", file);
   const res = await api.post(`/admin/courses/${id}/syllabus`, fd);
+  notifyCoursesChanged();
   return res.data.data.syllabus_pdf_url as string;
 }
 // ---- Batches ----
