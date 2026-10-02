@@ -10,8 +10,8 @@ export const qk = {
     certificates: () => ["student", "certificates"] as const,
   },
   public: {
-    courses: (search?: string, language?: string, type?: string) =>
-      ["public", "courses", search ?? "", language ?? "", type ?? ""] as const,
+    courses: (search?: string, language?: string, type?: string, category?: string) =>
+      ["public", "courses", search ?? "", language ?? "", type ?? "", category ?? ""] as const,
     course: (id: string) => ["public", "course", id] as const,
     courseBatches: (id: string) => ["public", "course", id, "batches"] as const,
     nextBatch: () => ["public", "nextBatch"] as const,

@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, Request, Response
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import APIError, err_otp_rate_limited
@@ -205,6 +205,7 @@ async def public_courses(
     search: Optional[str] = Query(None),
     language: Optional[str] = Query(None),
     course_type: Optional[str] = Query(None, alias="type"),
+    category: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     viewer: Optional[User] = Depends(get_current_user_optional),
@@ -233,6 +234,27 @@ async def public_courses(
             stmt = stmt.where(Course.course_type == CourseType.live)
         elif raw_type in ("self_paced", "self-paced", "recorded"):
             stmt = stmt.where(Course.course_type == CourseType.self_paced)
+    if category and category.strip() and category.strip().lower() != "all":
+        cat = category.strip().lower()
+        if cat == "other":
+            standard_categories = ["data analytics", "artificial intelligence", "ai", "finance"]
+            stmt = stmt.where(
+                or_(
+                    func.lower(func.coalesce(Course.category, "")) == "other",
+                    Course.category.is_(None),
+                    Course.category == "",
+                    ~func.lower(Course.category).in_(standard_categories),
+                )
+            )
+        elif cat in ("artificial intelligence", "ai"):
+            stmt = stmt.where(
+                or_(
+                    func.lower(Course.category) == "artificial intelligence",
+                    func.lower(Course.category) == "ai",
+                )
+            )
+        else:
+            stmt = stmt.where(func.lower(Course.category) == cat)
     rows = (await db.execute(stmt.order_by(Course.created_at.desc()).limit(limit))).scalars().all()
 
     course_ids = [c.id for c in rows]

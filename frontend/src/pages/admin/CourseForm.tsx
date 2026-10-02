@@ -234,7 +234,22 @@ export default function CourseForm({ initial, isEdit }: CourseFormProps) {
         <CardHeader><p className="text-title-md font-semibold">Basic Info</p></CardHeader>
         <CardBody className="grid md:grid-cols-3 gap-4">
           <Input label="Title" value={title} onChange={(e) => { setTitle(e.target.value); clearErr("title"); }} containerClassName="md:col-span-3" error={errors.title} />
-          <Input label="Category" value={category} onChange={(e) => { setCategory(e.target.value); clearErr("category"); }} placeholder="e.g. Web Development" error={errors.category} />
+          <div>
+            <Input
+              label="Category"
+              value={category}
+              onChange={(e) => { setCategory(e.target.value); clearErr("category"); }}
+              placeholder="e.g. Data Analytics, Artificial Intelligence"
+              error={errors.category}
+              list="course-category-suggestions"
+            />
+            <datalist id="course-category-suggestions">
+              <option value="Data Analytics" />
+              <option value="Artificial Intelligence" />
+              <option value="Finance" />
+              <option value="Other" />
+            </datalist>
+          </div>
           <Input label="Language of Instruction" value={language} onChange={(e) => { setLanguage(e.target.value); clearErr("language"); }} placeholder="e.g. English, Hindi, Marathi" error={errors.language} />
           <Select
             label="Course Type"

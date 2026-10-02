@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
@@ -12,11 +12,19 @@ import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { qk } from "@/lib/queryKeys";
 import { listPublicCourses } from "@/services/public.service";
 
+const DEFAULT_CATEGORIES = ["Data Analytics", "Artificial Intelligence", "Finance"];
+
 export default function ExploreCatalogue() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState("");
   const [language, setLanguage] = useState("");
+  const categoryFromUrl = searchParams.get("category") || "";
+  const [category, setCategoryState] = useState(categoryFromUrl);
   const debounced = useDebouncedValue(search, 250);
+
+  useEffect(() => {
+    setCategoryState(searchParams.get("category") || "");
+  }, [searchParams]);
 
   const rawType = (searchParams.get("type") || "").toLowerCase().trim();
   const selectedType =
@@ -41,13 +49,46 @@ export default function ExploreCatalogue() {
     );
   };
 
-  // Discover all distinct languages available in published courses
+  const setCategory = (cat: string) => {
+    setCategoryState(cat);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (cat) {
+          next.set("category", cat);
+        } else {
+          next.delete("category");
+        }
+        return next;
+      },
+      { replace: true }
+    );
+  };
+
+  // Discover all distinct categories and languages available in published courses
   const { data: allCourses } = useQuery({
     queryKey: qk.public.courses(),
     queryFn: () => listPublicCourses(),
     staleTime: 0,
     refetchOnMount: "always",
   });
+
+  const availableCategories = useMemo(() => {
+    const customCats = new Set<string>();
+    (allCourses ?? []).forEach((c) => {
+      if (c.category && c.category.trim()) {
+        const trimmed = c.category.trim();
+        const isDefault = DEFAULT_CATEGORIES.some(
+          (d) => d.toLowerCase() === trimmed.toLowerCase()
+        );
+        if (!isDefault && trimmed.toLowerCase() !== "other") {
+          customCats.add(trimmed);
+        }
+      }
+    });
+    const sortedCustom = Array.from(customCats).sort();
+    return [...DEFAULT_CATEGORIES, ...sortedCustom, "Other"];
+  }, [allCourses]);
 
   const availableLanguages = useMemo(() => {
     const set = new Set<string>();
@@ -60,23 +101,25 @@ export default function ExploreCatalogue() {
   }, [allCourses]);
 
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
-    queryKey: qk.public.courses(debounced, language, selectedType),
-    queryFn: () => listPublicCourses(debounced, language, selectedType),
+    queryKey: qk.public.courses(debounced, language, selectedType, category),
+    queryFn: () => listPublicCourses(debounced, language, selectedType, category),
     placeholderData: keepPreviousData,
     staleTime: 0,
     refetchOnMount: "always",
   });
 
   const courses = data ?? [];
-  const hasActiveFilters = Boolean(debounced.trim() || language || selectedType);
+  const hasActiveFilters = Boolean(debounced.trim() || language || selectedType || category);
 
   const resetFilters = () => {
     setSearch("");
     setLanguage("");
+    setCategoryState("");
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
         next.delete("type");
+        next.delete("category");
         return next;
       },
       { replace: true }
@@ -143,13 +186,22 @@ export default function ExploreCatalogue() {
       </div>
 
       <div className="space-y-3 animate-slide-up" style={{ animationDelay: "40ms" }}>
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+        <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
           <Input
             placeholder="Search courses by title, category or language…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             leftIcon="search"
-            containerClassName="flex-1 max-w-xl"
+            containerClassName="flex-1 min-w-[200px]"
+          />
+          <Select
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            options={[
+              { value: "", label: "All categories" },
+              ...availableCategories.map((cat) => ({ value: cat, label: cat })),
+            ]}
+            containerClassName="w-full md:w-56"
           />
           <Select
             value={language}
@@ -158,56 +210,98 @@ export default function ExploreCatalogue() {
               { value: "", label: "All languages of instruction" },
               ...availableLanguages.map((lang) => ({ value: lang, label: lang })),
             ]}
-            containerClassName="w-full sm:w-64"
+            containerClassName="w-full md:w-60"
           />
           {isFetching && !isLoading && (
             <span className="icon text-ink-outline animate-spin text-[20px] self-center">progress_activity</span>
           )}
         </div>
 
-        {availableLanguages.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5 pt-1">
-            <span className="text-caption text-ink-outline mr-1 flex items-center gap-1">
-              <span className="icon text-[14px]">translate</span>
-              Language:
-            </span>
-            <button
-              type="button"
-              onClick={() => setLanguage("")}
-              className={`px-3 py-1 rounded-full text-label font-medium transition-all ${
-                !language
-                  ? "bg-primary text-white shadow-sm"
-                  : "bg-surface-container hover:bg-surface-containerHigh text-ink"
-              }`}
-            >
-              All
-            </button>
-            {availableLanguages.map((lang) => (
+        <div className="flex flex-col gap-2 pt-1">
+          {availableCategories.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-caption text-ink-outline mr-1 flex items-center gap-1">
+                <span className="icon text-[14px]">category</span>
+                Category:
+              </span>
               <button
-                key={lang}
                 type="button"
-                onClick={() => setLanguage(language.toLowerCase() === lang.toLowerCase() ? "" : lang)}
+                onClick={() => setCategory("")}
                 className={`px-3 py-1 rounded-full text-label font-medium transition-all ${
-                  language.toLowerCase() === lang.toLowerCase()
+                  !category
                     ? "bg-primary text-white shadow-sm"
                     : "bg-surface-container hover:bg-surface-containerHigh text-ink"
                 }`}
               >
-                {lang}
+                All
               </button>
-            ))}
+              {availableCategories.map((cat) => {
+                const isSelected = category.toLowerCase() === cat.toLowerCase();
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setCategory(isSelected ? "" : cat)}
+                    className={`px-3 py-1 rounded-full text-label font-medium transition-all ${
+                      isSelected
+                        ? "bg-primary text-white shadow-sm"
+                        : "bg-surface-container hover:bg-surface-containerHigh text-ink"
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+            {availableLanguages.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-caption text-ink-outline mr-1 flex items-center gap-1">
+                  <span className="icon text-[14px]">translate</span>
+                  Language:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setLanguage("")}
+                  className={`px-3 py-1 rounded-full text-label font-medium transition-all ${
+                    !language
+                      ? "bg-primary text-white shadow-sm"
+                      : "bg-surface-container hover:bg-surface-containerHigh text-ink"
+                  }`}
+                >
+                  All
+                </button>
+                {availableLanguages.map((lang) => (
+                  <button
+                    key={lang}
+                    type="button"
+                    onClick={() => setLanguage(language.toLowerCase() === lang.toLowerCase() ? "" : lang)}
+                    className={`px-3 py-1 rounded-full text-label font-medium transition-all ${
+                      language.toLowerCase() === lang.toLowerCase()
+                        ? "bg-primary text-white shadow-sm"
+                        : "bg-surface-container hover:bg-surface-containerHigh text-ink"
+                    }`}
+                  >
+                    {lang}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {hasActiveFilters && (
               <button
                 type="button"
                 onClick={resetFilters}
-                className="text-label text-ink-outline hover:text-danger ml-2 flex items-center gap-0.5 underline underline-offset-2 transition-colors"
+                className="text-label text-ink-outline hover:text-danger flex items-center gap-0.5 underline underline-offset-2 transition-colors py-1"
               >
                 <span className="icon text-[14px]">clear</span>
                 Clear filters
               </button>
             )}
           </div>
-        )}
+        </div>
       </div>
 
       {isError ? (
@@ -225,7 +319,7 @@ export default function ExploreCatalogue() {
             hasActiveFilters
               ? `No ${selectedType === "live" ? "live " : selectedType === "self_paced" ? "self-paced " : ""}courses found${
                   debounced ? ` matching "${debounced}"` : ""
-                }${language ? ` with language "${language}"` : ""}. Try adjusting your filters.`
+                }${category ? ` in category "${category}"` : ""}${language ? ` with language "${language}"` : ""}. Try adjusting your filters.`
               : "New courses are on the way — check back soon."
           }
           icon="travel_explore"

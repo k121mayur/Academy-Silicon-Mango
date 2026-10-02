@@ -92,7 +92,7 @@ export interface PublicNextBatchResponse {
   course: PublicNextBatchCourse;
 }
 
-export async function listPublicCourses(search?: string, language?: string, type?: string) {
+export async function listPublicCourses(search?: string, language?: string, type?: string, category?: string) {
   const params: Record<string, string> = {};
   if (search && search.trim()) params.search = search.trim();
   if (language && language.trim() && language.trim().toLowerCase() !== "all") {
@@ -100,6 +100,9 @@ export async function listPublicCourses(search?: string, language?: string, type
   }
   if (type && type.trim() && type.trim().toLowerCase() !== "all") {
     params.type = type.trim();
+  }
+  if (category && category.trim() && category.trim().toLowerCase() !== "all") {
+    params.category = category.trim();
   }
   const res = await api.get("/public/courses", {
     params: Object.keys(params).length > 0 ? params : undefined,
